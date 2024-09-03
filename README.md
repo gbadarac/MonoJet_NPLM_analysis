@@ -7,3 +7,7 @@ Reference papers:
 
 ## instruction to install the Falkon library
 Follow the instructions in [https://falkonml.github.io/falkon/install.html]
+
+## simple piece of code to start off:
+- `run-NPLM-toy.ipynb`
+- `run-NPLM-toy.py`
