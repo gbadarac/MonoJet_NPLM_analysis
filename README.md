@@ -12,3 +12,18 @@ Follow the instructions in [https://falkonml.github.io/falkon/install.html]
 ## simple piece of code to start off:
 - `run-NPLM-toy.ipynb`
 - `run-NPLM-toy.py`
+
+## to run on slurm cluster:
+- `submit_toy.sh`: submits the script `toy.py` with arguments (example: `python toy.py -m h_4 -s 0 -b 10000 -r 50000 -t 100 -l 5`)
+- `toy.py`: runs multiple toys according to the arguments
+  -   `-m`, `--manifold`, type=str, help="manifold type (must be in folders.keys())", required=True
+  -   `-s`, `--signal`, type=int, help="signal (number of signal events)", required=True
+  -   `-b`, `--background`, type=int, help="background (number of background events)", required=True
+  -   `-r`, `--reference`, type=int, help="reference (number of reference events, must be larger than background)", required=True
+  -   `-t`, `--toys`, type=int, help="toys", required=True)
+  -   `-l`, `--signalclass`, type=int, help="class number identifying the signal", required=True
+
+To run:
+  ```
+  sbatch submit_toy.sh
+  ```
