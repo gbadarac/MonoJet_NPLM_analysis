@@ -154,7 +154,7 @@ os.environ['HIDDEN_FEATURES'] = str(hidden_features)
 job_id = os.environ.get('SLURM_JOB_ID', 'job')  # Get SLURM job ID for unique naming
 
 # Create job folder name based on parameters
-job_folder_name = f'job_{job_id}_blocks{num_blocks}_features{hidden_features}'
+job_folder_name = f'{job_id}_blocks{num_blocks}_features{hidden_features}'
 output_dir = f'/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_outputs/{job_folder_name}'
 os.makedirs(output_dir, exist_ok=True)
 
