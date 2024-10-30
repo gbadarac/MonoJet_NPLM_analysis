@@ -135,9 +135,6 @@ prior = base_distribution.sample(1000).numpy()  # Sample 1000 points with 2 feat
 trained = flow.sample(1000).detach().numpy()  # Sample 1000 points with 2 features each
 
 
-# Define output directory
-output_dir = '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_outputs'
-
 # After creating the scatter plot
 plt.scatter(prior[:, 0], prior[:, 1], color='gray', label='Base/Prior distribution')
 plt.scatter(bkg_coord[:10000, 0], bkg_coord[:10000, 1], color='blue', label='Background/Target distribution')
@@ -154,12 +151,12 @@ os.environ['HIDDEN_FEATURES'] = str(hidden_features)
 job_id = os.environ.get('SLURM_JOB_ID', 'job')  # Get SLURM job ID for unique naming
 
 # Create job folder name based on parameters
-job_folder_name = f'{job_id}_blocks{num_blocks}_features{hidden_features}'
+job_folder_name = f'job_{job_id}_blocks{num_blocks}_features{hidden_features}'
 output_dir = f'/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_outputs/{job_folder_name}'
 os.makedirs(output_dir, exist_ok=True)
 
 # Save the figure with a unique name
-plt.savefig(os.path.join(output_dir, f'plot_{job_id}_blocks{num_blocks}_features{hidden_features}.png'))
+plt.savefig(os.path.join(output_dir, f'job_{job_id}_blocks{num_blocks}_features{hidden_features}.png'))
 plt.close()  # Close the figure to free memory
 
 
