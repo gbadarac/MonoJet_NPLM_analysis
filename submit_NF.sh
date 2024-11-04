@@ -13,9 +13,6 @@
 # Load required modules or activate conda environment if necessary
 source /t3home/gbadarac/miniforge3/bin/activate my_project  # Modify this line to match your setup
 
-# Check GPU availability
-srun nvidia-smi
-
 # Create the output directory with the same job folder name as in the Python script
 mkdir -p /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_outputs/${SLURM_JOB_ID}_blocks${N_BLOCKS}_features${HIDDEN_FEATURES}/
 
