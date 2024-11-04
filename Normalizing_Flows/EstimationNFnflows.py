@@ -23,6 +23,8 @@ parser = argparse.ArgumentParser(description='Normalizing Flow Training Script')
 parser.add_argument('--n_epochs', type=int, required=True, help='Number of epochs for training')
 parser.add_argument('--learning_rate', type=float, required=True, help='Learning rate for training')
 parser.add_argument('--outdir', type=str, required=True, help='Output directory for saving results')
+parser.add_argument('--hidden_features', type=int, required=True, help='Number of neurons in the Neural Network')
+parser.add_argument('--num_blocks', type=int, required=True, help='Number of layers in the Neural Network')
 
 args = parser.parse_args()
 
@@ -78,9 +80,7 @@ features=2 #dimensionality of the data being transformed.
 # Define transformations (bijectors)
 # you don't need to define a customed bijector anymore 
 
-hidden_features = 5 #number of neurons in the NN 
-num_blocks = 1 #number of layers in the NN 
-transformations = transforms.MaskedAffineAutoregressiveTransform(features, hidden_features, num_blocks)
+transformations = transforms.MaskedAffineAutoregressiveTransform(features, args.hidden_features, args.num_blocks)
 
 # The higher the number of hidden_features/num_blocks, the more expressive the transformation will be, 
 # allowing it to capture more complex relationships in the data.
@@ -151,5 +151,4 @@ plt.legend()
 plot_path = os.path.join(args.outdir, f'plot.png')
 plt.savefig(plot_path)
 
-# Optionally, save other results like the final model state or loss values if needed
-# torch.save(flow.state_dict(), os.path.join(args.outdir, 'flow_model.pth'))
+
