@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# ### Normalizing flow using nflows package and toy data 
-# 
+# Normalizing flow using nflows package and toy data 
+
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -10,6 +10,7 @@ import scipy.stats
 from scipy.stats import rel_breitwigner
 import torch
 import os
+import argparse
 #instead of manually defining bijectors and distributions, 
 #import necessary components from nflows
 from nflows import distributions, flows, transforms
@@ -17,9 +18,18 @@ import nflows.transforms as transforms
 from nflows.flows import Flow
 
 
-# ## Setup: 
-# - #### bkg: exponential falling distribution
-# - #### signal: Breit-Wigner at certain mass 
+# Add argument parsing for command line arguments
+parser = argparse.ArgumentParser(description='Normalizing Flow Training Script')
+parser.add_argument('--n_epochs', type=int, required=True, help='Number of epochs for training')
+parser.add_argument('--learning_rate', type=float, required=True, help='Learning rate for training')
+parser.add_argument('--outdir', type=str, required=True, help='Output directory for saving results')
+
+args = parser.parse_args()
+
+
+#Setup: 
+# - bkg: exponential falling distribution
+# - signal: Breit-Wigner at certain mass 
 
 
 # Generate background and signal data
@@ -40,8 +50,6 @@ plt.show()
 bkg_btag = np.random.uniform(low=0.0, high=1.0, size=n_bkg)
 sig_btag = np.random.normal(0.85, 0.05, n_sig)
 
-print(bkg_btag)
-
 
 #Combining energy and b-tagging score for both bkg and signal 
 #Convert background coordinates to tensor
@@ -51,18 +59,14 @@ bkg_coord = bkg_coord.astype('float32') #bkg coordinates converted to float32 fo
 #sig_coord = np.column_stack((sig, sig_btag))
 #sig_coord = sig_coord.astype('float32')
 
-print(bkg_coord.shape)
-
 #sample points from target distribution 
 y = torch.from_numpy(bkg_coord[:100000])  # Take the first 100,000 samples
-
-print(y.shape)
 
 
 # Note: the bkg distribution is the posterior/target distribution which the Normalizing Flow should learn to approximate. 
 
-# ## Normalizing flow model:
-# #### Set up simple normalizing flow with arbitrary inputs and outputs just to test 
+# Normalizing flow model:
+# Set up simple normalizing flow with arbitrary inputs and outputs just to test 
 
 
 # Define base distribution
@@ -87,7 +91,7 @@ transformations = transforms.MaskedAffineAutoregressiveTransform(features, hidde
 # Using a neural network inside the transformations in normalizing flows does make the training loop "deeper" 
 # in the sense that you're not just applying a single transformation but a series of transformations that are learned through the neural network.
 
-# ### Setting up the normalizing flow and the training loop
+# Setting up the normalizing flow and the training loop
 
 #Create the flow
 flow = Flow(transformations, base_distribution) #encapsules the entire flow model in a more structured way
@@ -95,16 +99,14 @@ flow = Flow(transformations, base_distribution) #encapsules the entire flow mode
 #Training loop
 #The training loop remains similar,
 #but with flow.log_prob(y) directly calculating the log probability using the nflows implementation.
-opt = torch.optim.Adam(flow.parameters(), lr=5e-4)
 
-#print(base_distribution)
-#print(flow)
+opt = torch.optim.Adam(flow.parameters(), args.learning_rate)
 
 last_loss = np.inf
 patience = 0
-n_epochs = 4001
 
-for idx in range(n_epochs):
+
+for idx in range(args.n_epochs):
     opt.zero_grad()
 
     # Minimize KL(p || q)
@@ -134,6 +136,8 @@ prior = base_distribution.sample(1000).numpy()  # Sample 1000 points with 2 feat
 # Sample points from the trained flow
 trained = flow.sample(1000).detach().numpy()  # Sample 1000 points with 2 features each
 
+# Create output directory if it doesn't exist
+os.makedirs(args.outdir, exist_ok=True)
 
 # After creating the scatter plot
 plt.scatter(prior[:, 0], prior[:, 1], color='gray', label='Base/Prior distribution')
@@ -143,21 +147,9 @@ plt.xlabel("Latent b-tagging score")
 plt.ylabel("Energy [GeV]")
 plt.legend()
 
-# Set environment variables
-os.environ['N_BLOCKS'] = str(num_blocks)
-os.environ['HIDDEN_FEATURES'] = str(hidden_features)
+# Save the plot to the output directory
+plot_path = os.path.join(args.outdir, f'plot.png')
+plt.savefig(plot_path)
 
-# Get SLURM job ID, n_blocks, and hidden_features for unique naming
-job_id = os.environ.get('SLURM_JOB_ID', 'job')  # Get SLURM job ID for unique naming
-
-# Create job folder name based on parameters
-job_folder_name = f'job_{job_id}_blocks{num_blocks}_features{hidden_features}'
-output_dir = f'/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_outputs/{job_folder_name}'
-os.makedirs(output_dir, exist_ok=True)
-
-# Save the figure with a unique name
-plt.savefig(os.path.join(output_dir, f'job_{job_id}_blocks{num_blocks}_features{hidden_features}.png'))
-plt.close()  # Close the figure to free memory
-
-
-
+# Optionally, save other results like the final model state or loss values if needed
+# torch.save(flow.state_dict(), os.path.join(args.outdir, 'flow_model.pth'))
