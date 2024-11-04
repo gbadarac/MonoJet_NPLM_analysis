@@ -78,8 +78,8 @@ features=2 #dimensionality of the data being transformed.
 # Define transformations (bijectors)
 # you don't need to define a customed bijector anymore 
 
-hidden_features = 16 #number of neurons in the NN 
-num_blocks = 3 #number of layers in the NN 
+hidden_features = 5 #number of neurons in the NN 
+num_blocks = 1 #number of layers in the NN 
 transformations = transforms.MaskedAffineAutoregressiveTransform(features, hidden_features, num_blocks)
 
 # The higher the number of hidden_features/num_blocks, the more expressive the transformation will be, 
