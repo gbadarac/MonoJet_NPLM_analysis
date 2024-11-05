@@ -16,9 +16,9 @@ source /t3home/gbadarac/miniforge3/bin/activate my_project  # Modify this line t
 n_epochs=4001
 learning_rate=5e-4
 outdir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_outputs
-hidden_features=16 #neurons
-num_blocks=3 #layers
-#batch
+hidden_features=32 #neurons
+num_blocks=6 #layers
+#batch_size
 
 # Create a job-specific output directory
 job_outdir=${outdir}/job_${hidden_features}_neurons_${num_blocks}_layers_${SLURM_JOB_ID}
@@ -35,7 +35,6 @@ do
 done
 
 #Pass arguments to the python script:
-
 # Run the script with print flushing instantaneous.
 export PYTHONUNBUFFERED=TRUE
 python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNFnflows.py --n_epochs ${n_epochs} --learning_rate ${learning_rate} --outdir ${job_outdir} --hidden_features ${hidden_features} --num_blocks ${num_blocks}

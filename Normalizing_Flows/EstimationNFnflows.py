@@ -147,8 +147,14 @@ plt.xlabel("Latent b-tagging score")
 plt.ylabel("Energy [GeV]")
 plt.legend()
 
+# Display 'hidden_features' and 'num_blocks' along with their values in the plot
+text_str = f"hidden_features: {args.hidden_features}\nnum_blocks: {args.num_blocks}"
+plt.text(0.05, 0.95, text_str, transform=plt.gca().transAxes, fontsize=10, verticalalignment='top',
+         bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', alpha=0.7))
+
 # Save the plot to the output directory
-plot_path = os.path.join(args.outdir, f'plot.png')
+filename = f"plot_{args.hidden_features}_neurons_{args.num_blocks}_layers.png"
+plot_path = os.path.join(args.outdir, filename)
 plt.savefig(plot_path)
 
 
