@@ -21,7 +21,7 @@ num_blocks=6 #layers
 #batch_size
 
 # Create a job-specific output directory
-job_outdir=${outdir}/job_${hidden_features}_neurons_${num_blocks}_layers_${SLURM_JOB_ID}
+job_outdir=${outdir}/job_${hidden_features}_neurons_${num_blocks}_layers_not_scaled_${SLURM_JOB_ID}
 echo ${job_outdir}
 mkdir -p ${job_outdir}  # Ensure the output directory exists
 
