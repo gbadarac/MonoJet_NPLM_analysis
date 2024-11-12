@@ -16,12 +16,12 @@ source /t3home/gbadarac/miniforge3/bin/activate my_project  # Modify this line t
 n_epochs=4001
 learning_rate=5e-4
 outdir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_outputs
-hidden_features=32 #neurons
-num_blocks=6 #layers
+hidden_features=1 #neurons
+num_blocks=2 #layers
 #batch_size
 
 # Create a job-specific output directory
-job_outdir=${outdir}/job_${hidden_features}_neurons_${num_blocks}_layers_${n_epochs}_epochs_LRscheduler_${SLURM_JOB_ID}
+job_outdir=${outdir}/job_${hidden_features}_neurons_${num_blocks}_layers_${n_epochs}_epochs_${SLURM_JOB_ID}
 echo ${job_outdir}
 mkdir -p ${job_outdir}  # Ensure the output directory exists
 

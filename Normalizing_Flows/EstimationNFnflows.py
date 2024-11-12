@@ -14,9 +14,14 @@ import sklearn
 #instead of manually defining bijectors and distributions, 
 #import necessary components from nflows
 from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler
+
 from nflows import distributions, flows, transforms
 import nflows.transforms as transforms
 from nflows.flows import Flow
+
+from nflows.transforms.splines import rational_quadratic
+from nflows.transforms import PiecewiseRationalQuadraticCouplingTransform
 
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -48,12 +53,15 @@ sig_btag = np.random.normal(0.85, 0.05, n_sig)
 
 #Combining energy and b-tagging score for both bkg and signal 
 bkg_coord = np.column_stack((bkg_btag, bkg))  # Combine btag and bkg for training
-bkg_coord = bkg_coord.astype('float32') #bkg coordinates converted to float32 for compatibility with python 
 
 #Initialize the scaler 
 scaler = StandardScaler()
+#scaler = MinMaxScaler(feature_range=(-1,1))
+
 #Scale the target distribution 
 bkg_coord_scaled = scaler.fit_transform(bkg_coord)
+
+bkg_coord_scaled = bkg_coord_scaled.astype('float32') #bkg coordinates converted to float32 for compatibility with python 
 
 #sig_coord = np.column_stack((sig, sig_btag))
 #sig_coord = sig_coord.astype('float32')
@@ -61,6 +69,7 @@ bkg_coord_scaled = scaler.fit_transform(bkg_coord)
 
 # Define base distribution
 base_distribution = distributions.StandardNormal(shape=(2,))
+
 # Sample points from the base distribution
 # base distribution = prior distribution that the Normalizing Flow will transform 
 prior = base_distribution.sample(10000).numpy()  # Sample 10000 points with 2 features each
@@ -73,7 +82,8 @@ features=2 #dimensionality of the data being transformed.
 
 # Define transformations (bijectors)
 # you don't need to define a customed bijector anymore 
-transformations = transforms.MaskedAffineAutoregressiveTransform(features, args.hidden_features, args.num_blocks)
+#transformations = transforms.MaskedAffineAutoregressiveTransform(features, args.hidden_features, args.num_blocks)
+transformations = transforms.MaskedPiecewiseQuadraticAutoregressiveTransform(features, args.hidden_features, args.num_blocks, tails='linear')
 
 # The higher the number of hidden_features/num_blocks, the more expressive the transformation will be, 
 # allowing it to capture more complex relationships in the data.
@@ -99,13 +109,13 @@ flow = Flow(transformations, base_distribution) #encapsules the entire flow mode
 #Training loop
 opt = torch.optim.Adam(flow.parameters(), args.learning_rate)
 
-
+'''
 #Add the learning rate scheduler 
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.n_epochs, eta_min=0)  
 # T_max is the maximum number of iterations 
 # eta_min is the minimum learning rate
 lr_schedule=[]
-
+'''
 
 train_losses=[]
 val_losses=[]
@@ -137,7 +147,7 @@ for idx in range(args.n_epochs):
         patience_counter = 0 # Reset patience counter if the loss improves
     else:
         patience_counter += 1
-        if patience_counter >= 10: # If no improvement for 5 epochs, stop training
+        if patience_counter >= 5: # If no improvement for 5 epochs, stop training
             print("Early stopping triggered")
             break
     
@@ -152,7 +162,7 @@ for idx in range(args.n_epochs):
     train_loss.backward()
     opt.step()
     
-
+'''
     # Append current learning rate to lr_schedule
     lr_schedule.append(opt.param_groups[0]['lr'])
     
@@ -175,10 +185,12 @@ plt.text(0.6, 0.95, text_str, transform=plt.gca().transAxes, fontsize=10, vertic
 lr_name = f"lr_schedule.png"
 lr_path = os.path.join(args.outdir, lr_name)
 plt.savefig(lr_path)
-
+'''
 
 # Sample points from the trained flow
 trained = flow.sample(10000).detach().numpy()  # Sample 10000 points with 2 features each
+
+
 
 # Function to calculate KL divergence between target and trained distribution
 def calculate_kl_divergence(target, trained, eps=1e-8):
@@ -205,10 +217,10 @@ kl_div = calculate_kl_divergence(bkg_coord_scaled[:10000], trained)
 os.makedirs(args.outdir, exist_ok=True)
 
 # After creating the scatter plot
-plt.scatter(bkg_coord_scaled[:10000, 1], bkg_coord_scaled[:10000, 0], color='blue', label='Background/Target distribution')
 #plt.scatter(bkg_coord[:10000, 0], bkg_coord[:10000, 1], color='blue', label='Background/Target distribution')
 plt.scatter(prior[:, 0], prior[:, 1], color='gray', label='Base/Prior distribution')
 plt.scatter(trained[:, 0], trained[:, 1], color='green', label='Trained distribution')
+plt.scatter(bkg_coord_scaled[:10000, 0], bkg_coord_scaled[:10000, 1], color='blue', label='Background/Target distribution')
 plt.xlabel("Latent b-tagging score")
 plt.ylabel("Energy [GeV]")
 plt.title("Scatter Plot of Scaled Distributions: Target, Prior and Trained")
