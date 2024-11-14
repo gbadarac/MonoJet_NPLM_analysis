@@ -8,16 +8,18 @@ import matplotlib.pyplot as plt
 import scipy.stats
 from scipy.stats import rv_continuous
 from scipy.stats import rel_breitwigner
+from scipy.stats import gaussian_kde
 import torch #Pytorch used to build and train ML models 
 import flowtorch.bijectors as bij #contains different bijectors or transformation layers to build complex distributions
 import flowtorch.distributions as dist #provides a way to define Normalizing Flows as a combination of a base distribtion and a set of transformations 
+
 torch.cuda.is_available() #checking if a GPU is available for computations 
 
 import sklearn
 #instead of manually defining bijectors and distributions, 
 #import necessary components from nflows
 from sklearn.preprocessing import StandardScaler
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import RobustScaler
 
 import os
 import argparse
@@ -27,6 +29,8 @@ parser = argparse.ArgumentParser(description='Normalizing Flow Training Script')
 parser.add_argument('--n_epochs', type=int, required=True, help='Number of epochs for training')
 parser.add_argument('--learning_rate', type=float, required=True, help='Learning rate for training')
 parser.add_argument('--outdir', type=str, required=True, help='Output directory for saving results')
+parser.add_argument('--num_layers', type=int, required=True, help='Number of spline layers to use')
+parser.add_argument('--num_bins', type=int, required=True, help='Number of bins within transformations')
 args = parser.parse_args()
 
 #Setup: 
@@ -53,6 +57,7 @@ bkg_coord = np.column_stack((bkg, bkg_btag))
 
 # Define base distribution
 base_distribution = torch.distributions.Independent(torch.distributions.Normal(torch.zeros(2), torch.ones(2)), 1) 
+#base_distribution = torch.distributions.Independent(torch.distributions.Normal(torch.zeros(2), torch.full((2,), 3.0)), 1)
 
 # Define target distribution
 # Initialize the scaler 
@@ -62,13 +67,25 @@ scaler = StandardScaler()
 bkg_coord_scaled = scaler.fit_transform(bkg_coord)
 bkg_coord_scaled = bkg_coord_scaled.astype('float32') #bkg coordinates converted to float32 for compatibility with python 
 
+print("bkg_coord min/max:", bkg_coord.min(), bkg_coord.max())
+print("bkg_coord_scaled min/max:", bkg_coord_scaled.min(), bkg_coord_scaled.max())
+
 #Normalizing flow model:
 # Set up simple normalizing flow with arbitrary inputs and outputs just to test 
 
 # Define transformations (bijectors)
-# you don't need to define a customed bijector anymore 
-#transformations = transforms.MaskedAffineAutoregressiveTransform(features, args.hidden_features, args.num_blocks)
-transformations = bij.Spline()
+#transformations = bij.Spline()
+
+#create a list of spline transformations 
+#Create a single spline transformation for testing 
+#spline_layer = bij.Spline(params_fn=None, shape=torch.Size([features]), count_bins=args.num_bins, order='quadratic')
+
+transformations = []
+for _ in range(args.num_layers):
+    # Add a spline transformation layer 
+    spline_layer = bij.Spline(count_bins=args.num_bins, order='quadratic')
+    #spline_layer = bij.Spline(count_bins=args.num_bins)
+    transformations.append(spline_layer)
 
 # The higher the number of hidden_features/num_blocks, the more expressive the transformation will be, 
 # allowing it to capture more complex relationships in the data.
@@ -80,49 +97,28 @@ transformations = bij.Spline()
 # Setting up the normalizing flow and the training loop
 
 #Create and initialize the flow
-flow = dist.Flow(base_distribution, transformations) #encapsules the entire flow model in a more structured way
+#flow = dist.Flow(base_distribution, transformations) #encapsules the entire flow model in a more structured way
+
+# Compose transformations into a single flow 
+flow_transform = bij.Compose(transformations)
+
+# Define flow model 
+flow = dist.Flow(base_distribution, flow_transform)
 
 #Sample points from target distribution for training 
 y = torch.from_numpy(bkg_coord_scaled[:100000])  # Take the first 100,000 samples
-#y = torch.from_numpy(bkg_coord[:100000])  # Take the first 100,000 samples
 
-'''
 # Split the data into training and validation sets (e.g., 80% for training, 20% for validation)
 train_size = int(0.8 * len(y))  # 80% for training
 train_data = y[:train_size]
 val_data = y[train_size:]
-'''
+
+assert not torch.isnan(train_data).any(), "NaN values found in train_data"
+assert not torch.isnan(val_data).any(), "NaN values found in val_data"
 
 #Training loop
 opt = torch.optim.Adam(flow.parameters(), args.learning_rate) 
 
-
-last_loss = np.inf
-patience = 0
-for idx in range(4001): #for each training step the following is computed
-    opt.zero_grad()
-
-    # Minimize KL(p || q)
-    loss = -flow.log_prob(y).mean()
-
-    if idx % 1 == 0:
-        print('epoch', idx, 'loss', loss)
-
-    loss.backward()
-
-    #patience mechanism keeps track of how many epochs have passed without improvement in loss. 
-    #If the loss does not improve for 5 consecutive epochs, the training stops early to prevent overfitting.
-    
-    if loss > last_loss:
-        patience += 1
-    if patience >=5:
-        break
-    last_loss = loss
-    
-    opt.step()
-
-
-'''
 train_losses=[]
 val_losses=[]
 min_loss=np.inf # Initialize minimum validation loss
@@ -167,42 +163,42 @@ for idx in range(args.n_epochs):
 
     train_loss.backward()
     opt.step()
-'''
+
     
 # Sample points from the trained flow
-trained = flow.sample((1000,)).to('cpu').numpy()  # Sample 10000 points with 2 features each
+trained = flow.sample((10000,)).to('cpu').numpy()  # Sample 10000 points with 2 features each
 
 # Sample points from the base distribution
 # base distribution = prior distribution that the Normalizing Flow will transform 
-prior = base_distribution.sample((1000,)).to('cpu').numpy()  # Sample 10000 points with 2 features each
+prior = base_distribution.sample((10000,)).to('cpu').numpy()  # Sample 10000 points with 2 features each
 
-'''
-# Function to calculate KL divergence between target and trained distribution
-def calculate_kl_divergence(target, trained, eps=1e-8):
-    # Ensure target and trained are in probability space and avoid log(0) errors
-    target = np.clip(target, eps, 1)  # Clip target values to avoid zero probabilities
-    trained = np.clip(trained, eps, 1)  # Same for trained values
-    # This prevents taking the logarithm of zero, which would lead to undefined (NaN) values and numerical instability in the KL divergence calculation. 
-    # By clipping to this small positive value, it ensures no probability is exactly zero.
+# Function to calculate KL divergence between two sets of samples
+def calculate_kl_divergence_kde(target, trained, eps=1e-2):
+    # Perform Kernel Density Estimation on both distributions
+    # i.e. estimating the probability density for each distribution 
+    kde_target = gaussian_kde(target.T, bw_method=0.1) 
+    kde_trained = gaussian_kde(trained.T, bw_method=0.1)
 
-    # Convert numpy arrays to PyTorch tensors
-    p_target = torch.from_numpy(target).float()
-    q_trained = torch.from_numpy(trained).float().log()  # q_trained should be in log space
+    # Evaluate densities on target sample points
+    p_target = kde_target(target.T) + eps  # Adding eps to avoid log(0)
+    q_trained = kde_trained(target.T) + eps  # Evaluate trained KDE on target points
+    
+    print("p_target min/max:", p_target.min(), p_target.max())
+    print("q_trained min/max:", q_trained.min(), q_trained.max())
 
-    # Calculate KL divergence
-    kl_divergence = torch.nn.functional.kl_div(q_trained, p_target, reduction='batchmean')
-    return kl_divergence.item()
+    # Calculate KL divergence using the formula KL(P || Q)
+    kl_divergence = np.sum(p_target * (np.log(p_target) - np.log(q_trained))) / len(p_target)
+    return kl_divergence
 
 # Calculate KL divergence
-kl_div = calculate_kl_divergence(bkg_coord_scaled[:10000], trained)
-#kl_div = calculate_kl_divergence(bkg_coord[:10000], trained)
-'''
+kl_div = calculate_kl_divergence_kde(bkg_coord_scaled[:10000], trained[:10000])
+print("Estimated KL Divergence:", kl_div)
+
 
 # Create output directory if it doesn't exist
 os.makedirs(args.outdir, exist_ok=True)
 
 # After creating the scatter plot
-#plt.scatter(bkg_coord[:10000, 0], bkg_coord[:10000, 1], color='blue', label='Background/Target distribution')
 plt.scatter(prior[:, 0], prior[:, 1], color='gray', label='Base/Prior distribution')
 plt.scatter(bkg_coord_scaled[:10000, 0], bkg_coord_scaled[:10000, 1], color='blue', label='Background/Target distribution')
 plt.scatter(trained[:, 0], trained[:, 1], color='green', label='Trained distribution')
@@ -212,8 +208,7 @@ plt.title("Scatter Plot of Scaled Distributions: Target, Prior and Trained")
 plt.legend(loc='upper left')
 
 # Display hidden_features, num_blocks, and KL divergence in the plot
-#text_str = f"n_epochs: {args.n_epochs}\nlearning_rate: {args.learning_rate}\nKL Divergence: {kl_div:.4f}"
-text_str = f"n_epochs: {args.n_epochs}\nlearning_rate: {args.learning_rate}"
+text_str = f"n_epochs: {args.n_epochs}\nlearning_rate: {args.learning_rate}\nnum_layers: {args.num_layers}\nnum_bins: {args.num_bins}\nKL Divergence: {kl_div:.4f}"
 plt.text(0.6, 0.95, text_str, transform=plt.gca().transAxes, fontsize=10, verticalalignment='top',
          bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', alpha=0.7))
 
@@ -222,7 +217,7 @@ scatter_name = f"scatter.png"
 scatter_path = os.path.join(args.outdir, scatter_name)
 plt.savefig(scatter_path)
 
-'''
+
 # Plot training and validation loss per epoch
 # Training loss: measures how well your model is fitting the target distribution
 # Validation loss: measures how well your model generalizes to unseen data fro the same target disribution
@@ -236,7 +231,7 @@ plt.title("Training and Validation Loss per Epoch")
 plt.legend()
 
 # Display the minimum loss and the corresponding epoch in the plot
-text_str = f"n_epochs: {args.n_epochs}\nlearning_rate: {args.learning_rate}\nKL Divergence: {kl_div:.4f}\nMin Loss: {min_loss:.4f} at Epoch {min_loss_epoch}"
+text_str = f"n_epochs: {args.n_epochs}\nlearning_rate: {args.learning_rate}\nnum_layers: {args.num_layers}\nnum_bins: {args.num_bins}\nKL Divergence: {kl_div:.4f}\nMin Loss: {min_loss:.4f} at Epoch {min_loss_epoch}"
 plt.text(0.6, 0.95, text_str, transform=plt.gca().transAxes, fontsize=10, verticalalignment='top',
          bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', alpha=0.7))
 
@@ -244,4 +239,3 @@ plt.text(0.6, 0.95, text_str, transform=plt.gca().transAxes, fontsize=10, vertic
 loss_name = f"loss.png"
 loss_plot_path = os.path.join(args.outdir, loss_name)
 plt.savefig(loss_plot_path)
-'''

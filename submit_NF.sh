@@ -8,20 +8,28 @@
 #SBATCH --partition=gpu                         # Partition for GPU jobs
 #SBATCH --nodes=1                               # Request to run job on a single node
 #SBATCH --ntasks=1                              # Request 1 task (1 CPU)
+#SBATCH --mem=32G                               # Request 32GB of memory
+
 
 # Load required modules or activate conda environment if necessary
 source /t3home/gbadarac/miniforge3/bin/activate my_project  # Modify this line to match your setup
 
 # Default parameters for your normalizing flow training
 n_epochs=4001
-learning_rate=5e-4
+learning_rate=1e-4
+batch_size=256
 outdir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_outputs
-hidden_features=1 #neurons
-num_blocks=2 #layers
+hidden_features=100 #neurons
+num_blocks=5 #layers
+num_bins=15
+num_layers=5
 #batch_size
 
 # Create a job-specific output directory
-job_outdir=${outdir}/job_${hidden_features}_neurons_${num_blocks}_layers_${n_epochs}_epochs_${SLURM_JOB_ID}
+job_outdir=${outdir}/job_${num_layers}_layers_${num_blocks}_transformations_${hidden_features}_neurons_${num_bins}_bins_${batch_size}_batch_size_wider_gaussian_${SLURM_JOB_ID}
+#job_outdir=${outdir}/job_lower_complexity_${batch_size}_batch_size_${learning_rate}_lr_wider_gaussian_${SLURM_JOB_ID}
+#job_outdir=${outdir}/job_batch_implementation_${SLURM_JOB_ID}
+
 echo ${job_outdir}
 mkdir -p ${job_outdir}  # Ensure the output directory exists
 
@@ -37,7 +45,7 @@ done
 #Pass arguments to the python script:
 # Run the script with print flushing instantaneous.
 export PYTHONUNBUFFERED=TRUE
-python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNFnflows.py --n_epochs ${n_epochs} --learning_rate ${learning_rate} --outdir ${job_outdir} --hidden_features ${hidden_features} --num_blocks ${num_blocks}
+python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNFnflows.py --n_epochs ${n_epochs} --learning_rate ${learning_rate} --outdir ${job_outdir} --hidden_features ${hidden_features} --num_blocks ${num_blocks} --num_bins ${num_bins} --num_layers ${num_layers}
 export PYTHONUNBUFFERED=FALSE
 
 

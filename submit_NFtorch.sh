@@ -16,9 +16,12 @@ source /t3home/gbadarac/miniforge3/bin/activate my_project  # Modify this line t
 n_epochs=4001
 learning_rate=5e-4
 outdir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNFtorch_outputs
+num_layers=5
+num_bins=8
 
 # Create a job-specific output directory
-job_outdir=${outdir}/job_plain_${SLURM_JOB_ID}
+job_outdir=${outdir}/job_${num_layers}_layers_${num_bins}_bins_RobustScaler_quadratic_${SLURM_JOB_ID}
+#job_outdir=${outdir}/job_${SLURM_JOB_ID}
 echo ${job_outdir}
 mkdir -p ${job_outdir}  # Ensure the output directory exists
 
@@ -34,7 +37,7 @@ done
 #Pass arguments to the python script:
 # Run the script with print flushing instantaneous.
 export PYTHONUNBUFFERED=TRUE
-python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNFtorch.py --n_epochs ${n_epochs} --learning_rate ${learning_rate} --outdir ${job_outdir} 
+python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNFtorch.py --n_epochs ${n_epochs} --learning_rate ${learning_rate} --outdir ${job_outdir} --num_layers ${num_layers} --num_bins ${num_bins} 
 export PYTHONUNBUFFERED=FALSE
 
 

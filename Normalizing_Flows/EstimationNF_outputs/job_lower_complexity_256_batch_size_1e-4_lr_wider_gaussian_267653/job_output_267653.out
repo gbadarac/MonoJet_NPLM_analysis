@@ -1,0 +1,17 @@
+/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_outputs/job_lower_complexity_256_batch_size_1e-4_lr_wider_gaussian_267653
+Epoch 0, Avg Train Loss: 3.9430, Avg Validation Loss: 3.4097
+Epoch 1, Avg Train Loss: 3.2487, Avg Validation Loss: 3.1102
+Epoch 2, Avg Train Loss: 3.0296, Avg Validation Loss: 2.9557
+Epoch 3, Avg Train Loss: 2.9296, Avg Validation Loss: 2.8993
+Epoch 4, Avg Train Loss: 2.8871, Avg Validation Loss: 2.8569
+Epoch 5, Avg Train Loss: 2.8567, Avg Validation Loss: 2.8314
+Epoch 6, Avg Train Loss: 2.8399, Avg Validation Loss: 2.8244
+Epoch 7, Avg Train Loss: 2.8275, Avg Validation Loss: 2.8211
+Epoch 8, Avg Train Loss: 2.8293, Avg Validation Loss: 2.8072
+Epoch 9, Avg Train Loss: 2.8232, Avg Validation Loss: 2.8029
+Epoch 10, Avg Train Loss: 2.8116, Avg Validation Loss: 2.8082
+Epoch 11, Avg Train Loss: 2.8177, Avg Validation Loss: 2.8090
+Epoch 12, Avg Train Loss: 2.8129, Avg Validation Loss: 2.8107
+Epoch 13, Avg Train Loss: 2.8112, Avg Validation Loss: 2.8083
+Epoch 14, Avg Train Loss: 2.8103, Avg Validation Loss: 2.7982
+Early stopping triggered

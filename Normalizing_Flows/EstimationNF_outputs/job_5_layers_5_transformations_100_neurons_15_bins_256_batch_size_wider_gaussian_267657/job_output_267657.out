@@ -1,0 +1,23 @@
+/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_outputs/job_5_layers_5_transformations_100_neurons_15_bins_256_batch_size_wider_gaussian_267657
+Epoch 0, Avg Train Loss: 3.5261, Avg Validation Loss: 3.1853
+Epoch 1, Avg Train Loss: 3.0517, Avg Validation Loss: 2.9451
+Epoch 2, Avg Train Loss: 2.9295, Avg Validation Loss: 2.8732
+Epoch 3, Avg Train Loss: 2.8869, Avg Validation Loss: 2.9048
+Epoch 4, Avg Train Loss: 2.8739, Avg Validation Loss: 2.8555
+Epoch 5, Avg Train Loss: 2.8607, Avg Validation Loss: 2.8314
+Epoch 6, Avg Train Loss: 2.8442, Avg Validation Loss: 2.8260
+Epoch 7, Avg Train Loss: 2.8381, Avg Validation Loss: 2.8478
+Epoch 8, Avg Train Loss: 2.8374, Avg Validation Loss: 2.8222
+Epoch 9, Avg Train Loss: 2.8293, Avg Validation Loss: 2.8217
+Epoch 10, Avg Train Loss: 2.8236, Avg Validation Loss: 2.8229
+Epoch 11, Avg Train Loss: 2.8261, Avg Validation Loss: 2.8078
+Epoch 12, Avg Train Loss: 2.8200, Avg Validation Loss: 2.8195
+Epoch 13, Avg Train Loss: 2.8191, Avg Validation Loss: 2.7975
+Epoch 14, Avg Train Loss: 2.8155, Avg Validation Loss: 2.8143
+Epoch 15, Avg Train Loss: 2.8141, Avg Validation Loss: 2.8217
+Epoch 16, Avg Train Loss: 2.8231, Avg Validation Loss: 2.8049
+Epoch 17, Avg Train Loss: 2.8151, Avg Validation Loss: 2.8153
+Epoch 18, Avg Train Loss: 2.8139, Avg Validation Loss: 2.8148
+Epoch 19, Avg Train Loss: 2.8147, Avg Validation Loss: 2.7931
+Epoch 20, Avg Train Loss: 2.8094, Avg Validation Loss: 2.7966
+Early stopping triggered
