@@ -36,7 +36,7 @@ parser.add_argument('--outdir', type=str, required=True, help='Output directory 
 parser.add_argument('--num_layers', type=int, required=True, help='Number of flow layers (each flow layer contains seeral transformations/blocks)')
 parser.add_argument('--num_blocks', type=int, required=True, help='Number of transformations/blocks in each flow layer')
 parser.add_argument('--hidden_features', type=int, required=True, help='Number of neurons in the NN inside each transformation/block')
-parser.add_argument('--num_bins', type=int, required=True, help='Number of bins for the piecewise rational quadratic split within transformations')
+parser.add_argument('--num_bins', type=int, required=True, help='Number of network parameters for each layer of spline transformations')
 args = parser.parse_args()
 
 #Setup: 
@@ -77,7 +77,7 @@ bkg_coord_scaled = bkg_coord_scaled.astype('float32') #bkg coordinates converted
 # Define base distribution
 base_distribution = distributions.StandardNormal(shape=(num_features,))
 
-
+'''
 # Define a broader multivariate normal distribution
 class MultivariateScaledNormal(distributions.Distribution):
     def __init__(self, num_features, scale=3.0):
@@ -96,21 +96,19 @@ class MultivariateScaledNormal(distributions.Distribution):
         return torch.stack([torch.distributions.Normal(self.mean[i], self.stddev[i]).sample((num_samples,)) for i in range(self.mean.shape[0])], dim=-1)
 
 base_distribution = MultivariateScaledNormal(num_features, scale=2.0)
-
+'''
 
 #Normalizing flow model:
 # Set up simple normalizing flow with arbitrary inputs and outputs just to test 
 
 # Define transformations (bijectors)
-# you don't need to define a customed bijector anymore 
 #transformations = transforms.MaskedAffineAutoregressiveTransform(features, args.hidden_features, args.num_blocks)
 
 num_context=0
-num_layers=5
 
 def make_flow(num_features,num_context, perm=True):
-    #base_dist = distributions.StandardNormal(shape=(num_features,))
-    base_dist = MultivariateScaledNormal(num_features, scale=3.0)
+    base_dist = distributions.StandardNormal(shape=(num_features,))
+    #base_dist = MultivariateScaledNormal(num_features, scale=3.0)
 
     transforms = []
     if num_context == 0:
@@ -123,7 +121,7 @@ def make_flow(num_features,num_context, perm=True):
                                                                                 num_blocks=args.num_blocks,
                                                                                 tail_bound=3.5, #range over whoch the spline trasnformation is defined 
                                                                                 tails='linear',
-                                                                                dropout_probability=0,
+                                                                                dropout_probability=0.2,
                                                                                 use_batch_norm=False))
         if i < args.num_layers - 1 and perm:
             transforms.append(ReversePermutation(features=num_features))
@@ -163,6 +161,18 @@ val_dataset = TensorDataset(val_data)
 train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
 
+'''
+#assign higher weights to underrepresented regions in the target distribution
+def compute_importance_weights(target_data, base_distribution):
+    # Compute the log-probabilities under the target distribution and the base distribution
+    target_log_prob = flow.log_prob(target_data)  # Log-probability of the data under the model (flow)
+    base_log_prob = base_distribution.log_prob(target_data)  # Log-probability of the data under the prior (base dist)
+
+    # Calculate importance weights: p_target(x) / p_prior(x)
+    importance_weights = torch.exp(target_log_prob - base_log_prob)
+    return importance_weights
+'''
+
 train_losses=[]
 val_losses=[]
 
@@ -178,11 +188,17 @@ for idx in range(args.n_epochs):
     for batch in train_loader:
         batch_data = batch[0]
         opt.zero_grad() #zero the gradients
+        '''
+        # Compute the importance weights for the batch
+        importance_weights = compute_importance_weights(batch_data, base_distribution)
+        '''
         # Minimize KL(p || q)
         train_loss = -flow.log_prob(batch_data).mean() #calculating the log probability for batch
+        #train_loss = - (flow.log_prob(batch_data) * importance_weights).mean()  # Weighted log-likelihood loss
         train_loss.backward()
         opt.step()
         total_train_loss += train_loss.item() * batch_data.size(0) #accumulate batch loss 
+
 
     #Calculate average training loss
     avg_train_loss = total_train_loss / len(train_data)
@@ -197,8 +213,16 @@ for idx in range(args.n_epochs):
     with torch.no_grad():
         for val_batch in val_loader:
             val_batch_data = val_batch[0]
+            '''
+            # Calculate the importance weights for the validation batch
+            importance_weights = compute_importance_weights(val_batch_data, base_distribution)
+            
+            # Ensure the importance weights are a 1D tensor with the same batch size as val_batch_data
+            assert importance_weights.shape[0] == val_batch_data.shape[0], "Batch size mismatch between data and importance weights"
+            '''
             # Minimize KL(p || q)
             val_loss = -flow.log_prob(val_batch_data).mean() #calculating the log probability for validation
+            #val_loss = -(flow.log_prob(val_batch_data)* importance_weights).mean() #calculating the log probability for validation
             total_val_loss += val_loss.item() * val_batch_data.size(0) #accumulate batch loss 
 
     #Calculate average training loss
@@ -209,6 +233,7 @@ for idx in range(args.n_epochs):
     # Early stopping based on patience mechanism 
     # Patience mechanism keeps track of how many epochs have passed without improvement in loss. 
     # If the loss does not improve for 5 consecutive epochs, the training stops early to prevent overfitting.
+
     
     if val_loss < min_loss:
         min_loss = val_loss.item()
@@ -299,3 +324,36 @@ plt.text(0.6, 0.95, text_str, transform=plt.gca().transAxes, fontsize=10, vertic
 loss_name = f"loss.png"
 loss_plot_path = os.path.join(args.outdir, loss_name)
 plt.savefig(loss_plot_path)
+
+# Function to plot marginal distributions
+def plot_marginals(target, trained, prior, feature_names, outdir):
+    num_features = target.shape[1]
+    
+    for i in range(num_features):
+        plt.figure(figsize=(8, 6))
+        
+        # Plot target distribution
+        plt.hist(target[:, i], bins=50, alpha=0.5, label='Target', density=True, color='blue')
+        
+        # Plot trained distribution
+        plt.hist(trained[:, i], bins=50, alpha=0.5, label='Trained', density=True, color='green')
+        
+        # Plot prior distribution
+        plt.hist(prior[:, i], bins=50, alpha=0.5, label='Prior', density=True, color='gray')
+        
+        # Add labels and title
+        plt.xlabel(feature_names[i])
+        plt.ylabel("Density")
+        plt.title(f"Marginal Distribution for {feature_names[i]}")
+        plt.legend()
+        
+        # Save the plot
+        plot_path = os.path.join(outdir, f"marginal_feature_{i+1}.png")
+        plt.savefig(plot_path)
+        plt.close()
+
+# Call the function with the necessary arguments
+feature_names = ["b-tagging score", "Energy scaled"]
+plot_marginals(bkg_coord_scaled[:10000], trained, prior, feature_names, args.outdir)
+
+

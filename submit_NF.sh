@@ -8,7 +8,7 @@
 #SBATCH --partition=gpu                         # Partition for GPU jobs
 #SBATCH --nodes=1                               # Request to run job on a single node
 #SBATCH --ntasks=1                              # Request 1 task (1 CPU)
-#SBATCH --mem=32G                               # Request 32GB of memory
+#SBATCH --mem=64G                               # Request 32GB of memory
 
 
 # Load required modules or activate conda environment if necessary
@@ -26,7 +26,7 @@ num_layers=5
 #batch_size
 
 # Create a job-specific output directory
-job_outdir=${outdir}/job_${num_layers}_layers_${num_blocks}_transformations_${hidden_features}_neurons_${num_bins}_bins_${batch_size}_batch_size_wider_gaussian_${SLURM_JOB_ID}
+job_outdir=${outdir}/job_${num_layers}_layers_${num_blocks}_transformations_${hidden_features}_neurons_${num_bins}_bins_${batch_size}_batch_size_check_${SLURM_JOB_ID}
 #job_outdir=${outdir}/job_lower_complexity_${batch_size}_batch_size_${learning_rate}_lr_wider_gaussian_${SLURM_JOB_ID}
 #job_outdir=${outdir}/job_batch_implementation_${SLURM_JOB_ID}
 
