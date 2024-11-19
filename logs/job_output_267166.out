@@ -1,4 +1,0 @@
-/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_outputs/job_4_layers_4_transformations_50_neurons_10_bins_267166
-Epoch 0, Avg Train Loss: 2.6294, Avg Validation Loss: 2.4263
-Epoch 1, Avg Train Loss: 2.3843, Avg Validation Loss: 2.4015
-Epoch 2, Avg Train Loss: 2.3623, Avg Validation Loss: 2.3569

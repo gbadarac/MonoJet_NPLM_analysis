@@ -19,13 +19,13 @@ from nflows.distributions.normal import StandardNormal
 from nflows import distributions, flows, transforms
 import nflows.transforms as transforms
 from nflows.flows import Flow
-
-from torch.utils.data import DataLoader, TensorDataset
-
 from nflows.transforms.base import CompositeTransform
 from nflows.transforms.autoregressive import MaskedPiecewiseRationalQuadraticAutoregressiveTransform
 from nflows.transforms.permutations import ReversePermutation
 
+from torch.utils.data import DataLoader, TensorDataset
+import torch.optim as optim
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 # Add argument parsing for command line arguments
 parser = argparse.ArgumentParser(description='Normalizing Flow Training Script')
@@ -33,7 +33,7 @@ parser.add_argument('--n_epochs', type=int, required=True, help='Number of epoch
 parser.add_argument('--learning_rate', type=float, required=True, help='Learning rate for training')
 parser.add_argument('--batch_size', type=int, required=False, default=1024, help='Batch size for training')
 parser.add_argument('--outdir', type=str, required=True, help='Output directory for saving results')
-parser.add_argument('--num_layers', type=int, required=True, help='Number of flow layers (each flow layer contains seeral transformations/blocks)')
+parser.add_argument('--num_layers', type=int, required=True, help='Number of flow layers (each flow layer contains several transformations/blocks)')
 parser.add_argument('--num_blocks', type=int, required=True, help='Number of transformations/blocks in each flow layer')
 parser.add_argument('--hidden_features', type=int, required=True, help='Number of neurons in the NN inside each transformation/block')
 parser.add_argument('--num_bins', type=int, required=True, help='Number of network parameters for each layer of spline transformations')
@@ -65,7 +65,7 @@ bkg_coord = np.column_stack((bkg_btag, bkg))  # Combine btag and bkg for trainin
 scaler = StandardScaler()
 #scaler = MinMaxScaler(feature_range=(-1,1))
 
-#Scale the target distribution 
+#Scale the target distribution to help the model to converge faster 
 bkg_coord_scaled = scaler.fit_transform(bkg_coord)
 
 bkg_coord_scaled = bkg_coord_scaled.astype('float32') #bkg coordinates converted to float32 for compatibility with python 
@@ -76,27 +76,6 @@ bkg_coord_scaled = bkg_coord_scaled.astype('float32') #bkg coordinates converted
 
 # Define base distribution
 base_distribution = distributions.StandardNormal(shape=(num_features,))
-
-'''
-# Define a broader multivariate normal distribution
-class MultivariateScaledNormal(distributions.Distribution):
-    def __init__(self, num_features, scale=3.0):
-        super().__init__()
-        # Create a diagonal covariance matrix (independent components)
-        self.mean = torch.zeros(num_features)
-        self.scale = scale  # scaling factor for wider distribution
-        self.stddev = torch.full((num_features,), scale)  # standard deviation for each component
-
-    def log_prob(self, x, context=None):
-        # Compute log-probability for a diagonal Gaussian
-        return torch.sum(torch.distributions.Normal(self.mean, self.stddev).log_prob(x), dim=-1)
-
-    def sample(self, num_samples, context=None):
-        # Sample from the diagonal Gaussian
-        return torch.stack([torch.distributions.Normal(self.mean[i], self.stddev[i]).sample((num_samples,)) for i in range(self.mean.shape[0])], dim=-1)
-
-base_distribution = MultivariateScaledNormal(num_features, scale=2.0)
-'''
 
 #Normalizing flow model:
 # Set up simple normalizing flow with arbitrary inputs and outputs just to test 
@@ -119,12 +98,12 @@ def make_flow(num_features,num_context, perm=True):
                                                                                 hidden_features=args.hidden_features,
                                                                                 num_bins=args.num_bins,
                                                                                 num_blocks=args.num_blocks,
-                                                                                tail_bound=3.5, #range over whoch the spline trasnformation is defined 
+                                                                                tail_bound=10.0, #range over which the spline trasnformation is defined 
                                                                                 tails='linear',
                                                                                 dropout_probability=0.2,
                                                                                 use_batch_norm=False))
         if i < args.num_layers - 1 and perm:
-            transforms.append(ReversePermutation(features=num_features))
+            transforms.append(ReversePermutation(features=num_features)) #Shuffles feature order to increase expressivity
     transform = CompositeTransform(transforms)
     flow = Flow(transform, base_dist)
     return flow
@@ -140,7 +119,6 @@ def make_flow(num_features,num_context, perm=True):
 
 #Sample points from target distribution for training 
 y = torch.from_numpy(bkg_coord_scaled[:100000])  # Take the first 100,000 samples
-#y = torch.from_numpy(bkg_coord[:100000])  # Take the first 100,000 samples
 
 # Split the data into training and validation sets (e.g., 80% for training, 20% for validation)
 train_size = int(0.8 * len(y))  # 80% for training
@@ -161,17 +139,9 @@ val_dataset = TensorDataset(val_data)
 train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
 
-'''
-#assign higher weights to underrepresented regions in the target distribution
-def compute_importance_weights(target_data, base_distribution):
-    # Compute the log-probabilities under the target distribution and the base distribution
-    target_log_prob = flow.log_prob(target_data)  # Log-probability of the data under the model (flow)
-    base_log_prob = base_distribution.log_prob(target_data)  # Log-probability of the data under the prior (base dist)
-
-    # Calculate importance weights: p_target(x) / p_prior(x)
-    importance_weights = torch.exp(target_log_prob - base_log_prob)
-    return importance_weights
-'''
+# Define scheduler
+scheduler = CosineAnnealingLR(optimizer=opt, T_max=args.n_epochs, eta_min=1e-3)  # eta_min: minimum LR, T_max: total number of epochs for one cosine cycle 
+#scheduler = OneCycleLR(optimizer=opt, max_lr=5e-4, steps_per_epoch=len(train_loader), epochs=args.n_epochs)  
 
 train_losses=[]
 val_losses=[]
@@ -182,77 +152,66 @@ patience_counter=0 # Initialize patience counter
 
 for idx in range(args.n_epochs):
     flow.train() #set to taining mode 
-    total_train_loss=0
+    total_train_loss=0.0
     
     #loop over training 
     for batch in train_loader:
         batch_data = batch[0]
-        opt.zero_grad() #zero the gradients
-        '''
-        # Compute the importance weights for the batch
-        importance_weights = compute_importance_weights(batch_data, base_distribution)
-        '''
-        # Minimize KL(p || q)
+        opt.zero_grad() #zero the gradients and make predictions for a set of inputs 
+        
+        # Minimize KL(p || q), i.e. calculate the loss
         train_loss = -flow.log_prob(batch_data).mean() #calculating the log probability for batch
-        #train_loss = - (flow.log_prob(batch_data) * importance_weights).mean()  # Weighted log-likelihood loss
-        train_loss.backward()
-        opt.step()
+        train_loss.backward() 
+        opt.step() #model updates its parameters (weights) 
         total_train_loss += train_loss.item() * batch_data.size(0) #accumulate batch loss 
 
-
-    #Calculate average training loss
+    #Calculate average training loss for the current epoch
     avg_train_loss = total_train_loss / len(train_data)
     # Append the loss for plotting later
     train_losses.append(avg_train_loss)
     
     #Validation loss (analogously to training loss)
     flow.eval() #set to evaluation mode 
-    total_val_loss=0
+    total_val_loss=0.0
     
     #loop over validation 
     with torch.no_grad():
         for val_batch in val_loader:
             val_batch_data = val_batch[0]
-            '''
-            # Calculate the importance weights for the validation batch
-            importance_weights = compute_importance_weights(val_batch_data, base_distribution)
             
-            # Ensure the importance weights are a 1D tensor with the same batch size as val_batch_data
-            assert importance_weights.shape[0] == val_batch_data.shape[0], "Batch size mismatch between data and importance weights"
-            '''
             # Minimize KL(p || q)
             val_loss = -flow.log_prob(val_batch_data).mean() #calculating the log probability for validation
-            #val_loss = -(flow.log_prob(val_batch_data)* importance_weights).mean() #calculating the log probability for validation
             total_val_loss += val_loss.item() * val_batch_data.size(0) #accumulate batch loss 
-
-    #Calculate average training loss
-    avg_val_loss = total_val_loss / len(val_data)
+    
+    #Calculate average validation loss for the current epoch
+    avg_val_loss = total_val_loss / len(val_data) 
     # Append the loss for plotting later
     val_losses.append(avg_val_loss)
     
+    # Scheduler step for CosineAnnealingLR
+    scheduler.step() #adjusts the learning rate at each epoch based on cosine formula 
+
     # Early stopping based on patience mechanism 
     # Patience mechanism keeps track of how many epochs have passed without improvement in loss. 
     # If the loss does not improve for 5 consecutive epochs, the training stops early to prevent overfitting.
 
-    
-    if val_loss < min_loss:
-        min_loss = val_loss.item()
+    if avg_val_loss < min_loss: #compare the epoch-level validation loss to min_loss
+        min_loss = avg_val_loss
         min_loss_epoch = idx # Track the epoch where minimum loss occurs
         patience_counter = 0 # Reset patience counter if the loss improves
     else:
         patience_counter += 1
-        if patience_counter >= 5: # If no improvement for 5 epochs, stop training
+        if patience_counter >= 10: # If no improvement for 5 epochs, stop training
             print("Early stopping triggered")
             break
     
     # Use val_loss for early stopping because it provides a measure of how well the model generalizes to unseen data.
     # By monitoring val_loss instead of train_loss, we ensure that training does not continue if the model starts to overfit.
     # Early stopping based on val_loss helps prevent the model from improving solely on training data performance, which could lead to overfitting.   
-    
+
     # Print progress every epoch
     if idx % 1 == 0:
         print(f"Epoch {idx}, Avg Train Loss: {avg_train_loss:.4f}, Avg Validation Loss: {avg_val_loss:.4f}")
-
     
 # Sample points from the trained flow
 trained = flow.sample(10000).detach().numpy()  # Sample 10000 points with 2 features each
@@ -278,13 +237,11 @@ def calculate_kl_divergence(target, trained, eps=1e-8):
 
 # Calculate KL divergence
 kl_div = calculate_kl_divergence(bkg_coord_scaled[:10000], trained)
-#kl_div = calculate_kl_divergence(bkg_coord[:10000], trained)
 
 # Create output directory if it doesn't exist
 os.makedirs(args.outdir, exist_ok=True)
 
 # After creating the scatter plot
-#plt.scatter(bkg_coord[:10000, 0], bkg_coord[:10000, 1], color='blue', label='Background/Target distribution')
 plt.scatter(prior[:, 0], prior[:, 1], color='gray', label='Base/Prior distribution')
 plt.scatter(bkg_coord_scaled[:10000, 0], bkg_coord_scaled[:10000, 1], color='blue', label='Background/Target distribution')
 plt.scatter(trained[:, 0], trained[:, 1], color='green', label='Trained distribution')
@@ -294,7 +251,7 @@ plt.title("Scatter Plot of Scaled Distributions: Target, Prior and Trained")
 plt.legend(loc='lower left')
 
 # Display hidden_features, num_blocks, and KL divergence in the plot
-text_str = f"num_layers: {args.num_layers}\nnum_blocks: {args.num_blocks}\nhidden_features: {args.hidden_features}\nnum_bins: {args.num_bins}\nn_epochs: {args.n_epochs}\nKL Divergence: {kl_div:.4f}"
+text_str = f"learning_rate: {args.learning_rate}\nnum_layers: {args.num_layers}\nnum_blocks: {args.num_blocks}\nhidden_features: {args.hidden_features}\nnum_bins: {args.num_bins}\nn_epochs: {args.n_epochs}\nKL Divergence: {kl_div:.4f}"
 plt.text(0.6, 0.95, text_str, transform=plt.gca().transAxes, fontsize=10, verticalalignment='top',
          bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', alpha=0.7))
 
@@ -316,7 +273,7 @@ plt.title("Training and Validation Loss per Epoch")
 plt.legend()
 
 # Display the minimum loss and the corresponding epoch in the plot
-text_str = f"num_layers: {args.num_layers}\nnum_blocks: {args.num_blocks}\nhidden_features: {args.hidden_features}\nnum_bins: {args.num_bins}\nn_epochs: {args.n_epochs}\nKL Divergence: {kl_div:.4f}\nMin Loss: {min_loss:.4f} at Epoch {min_loss_epoch}"
+text_str = f"learning_rate: {args.learning_rate}\nnum_layers: {args.num_layers}\nnum_blocks: {args.num_blocks}\nhidden_features: {args.hidden_features}\nnum_bins: {args.num_bins}\nn_epochs: {args.n_epochs}\nKL Divergence: {kl_div:.4f}\nMin Loss: {min_loss:.4f} at Epoch {min_loss_epoch}"
 plt.text(0.6, 0.95, text_str, transform=plt.gca().transAxes, fontsize=10, verticalalignment='top',
          bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', alpha=0.7))
 
