@@ -10,23 +10,21 @@
 #SBATCH --ntasks=1                              # Request 1 task (1 CPU)
 #SBATCH --mem=64G                               # Request 32GB of memory
 
-
 # Load required modules or activate conda environment if necessary
 source /t3home/gbadarac/miniforge3/bin/activate my_project  # Modify this line to match your setup
 
 # Default parameters for your normalizing flow training
 n_epochs=1001
-learning_rate=5e-6
+learning_rate=5e-5
 batch_size=512 #number of data samples processed before updating the model's parameters
 outdir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_outputs
 hidden_features=50
-num_blocks=5
+num_blocks=3
 num_bins=10
-num_layers=5
+num_layers=3
 
 # Create a job-specific output directory
-job_outdir=${outdir}/job_${learning_rate}_lr_${num_layers}_layers_${num_blocks}_transformations_${hidden_features}_neurons_${num_bins}_bins_${batch_size}_batch_size_CosineLRsheduler_${SLURM_JOB_ID}
-#job_outdir=${outdir}/job_lower_complexity_${batch_size}_batch_size_${learning_rate}_lr_wider_gaussian_${SLURM_JOB_ID}
+job_outdir=${outdir}/job_${learning_rate}_lr_${num_layers}_layers_${num_blocks}_transformations_${hidden_features}_neurons_${num_bins}_bins_${batch_size}_batch_size_${SLURM_JOB_ID}
 #job_outdir=${outdir}/job_batch_implementation_${SLURM_JOB_ID}
 
 echo ${job_outdir}
@@ -46,7 +44,6 @@ done
 export PYTHONUNBUFFERED=TRUE
 python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNFnflows.py --n_epochs ${n_epochs} --learning_rate ${learning_rate} --outdir ${job_outdir} --hidden_features ${hidden_features} --num_blocks ${num_blocks} --num_bins ${num_bins} --num_layers ${num_layers}
 export PYTHONUNBUFFERED=FALSE
-
 
 # Move the logs with the rest of the results of the run.
 mv ./logs/job_output_${SLURM_JOB_ID}.out ${job_outdir}

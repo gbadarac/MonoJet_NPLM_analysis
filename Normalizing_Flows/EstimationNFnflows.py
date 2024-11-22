@@ -44,11 +44,10 @@ args = parser.parse_args()
 # - signal: Breit-Wigner at certain mass 
 
 # Generate background and signal data
-n_bkg = 400000
-n_sig = 20
+n_bkg = 800000
+n_sig = 40
 bkg = np.random.exponential(scale=100.0, size=n_bkg)
 sig = rel_breitwigner.rvs(450, size=n_sig)
-
 # Adding b-tagging information (a form of event classification)
 bkg_btag = np.random.uniform(low=0.0, high=1.0, size=n_bkg)
 sig_btag = np.random.normal(0.85, 0.05, n_sig)
@@ -248,11 +247,11 @@ plt.scatter(trained[:, 0], trained[:, 1], color='green', label='Trained distribu
 plt.xlabel("Latent b-tagging score")
 plt.ylabel("Energy [GeV]")
 plt.title("Scatter Plot of Scaled Distributions: Target, Prior and Trained")
-plt.legend(loc='lower left')
+plt.legend(loc='lower left', fontsize=8)
 
 # Display hidden_features, num_blocks, and KL divergence in the plot
 text_str = f"learning_rate: {args.learning_rate}\nnum_layers: {args.num_layers}\nnum_blocks: {args.num_blocks}\nhidden_features: {args.hidden_features}\nnum_bins: {args.num_bins}\nn_epochs: {args.n_epochs}\nKL Divergence: {kl_div:.4f}"
-plt.text(0.6, 0.95, text_str, transform=plt.gca().transAxes, fontsize=10, verticalalignment='top',
+plt.text(0.7, 0.95, text_str, transform=plt.gca().transAxes, fontsize=8, verticalalignment='top',
          bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', alpha=0.7))
 
 # Save the plot to the output directory
@@ -270,11 +269,11 @@ plt.plot(val_losses, label="Validation Loss", color='red', linestyle='--') #vali
 plt.xlabel("Epochs")
 plt.ylabel("Loss")
 plt.title("Training and Validation Loss per Epoch")
-plt.legend()
+plt.legend(fontsize=8)
 
 # Display the minimum loss and the corresponding epoch in the plot
 text_str = f"learning_rate: {args.learning_rate}\nnum_layers: {args.num_layers}\nnum_blocks: {args.num_blocks}\nhidden_features: {args.hidden_features}\nnum_bins: {args.num_bins}\nn_epochs: {args.n_epochs}\nKL Divergence: {kl_div:.4f}\nMin Loss: {min_loss:.4f} at Epoch {min_loss_epoch}"
-plt.text(0.6, 0.95, text_str, transform=plt.gca().transAxes, fontsize=10, verticalalignment='top',
+plt.text(0.7, 0.95, text_str, transform=plt.gca().transAxes, fontsize=8, verticalalignment='top',
          bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', alpha=0.7))
 
 # Save the training loss plot
@@ -286,31 +285,68 @@ plt.savefig(loss_plot_path)
 def plot_marginals(target, trained, prior, feature_names, outdir):
     num_features = target.shape[1]
     
+    
     for i in range(num_features):
-        plt.figure(figsize=(8, 6))
+        fig, (ax_main, ax_ratio) = plt.subplots(2, 1, figsize=(8, 10), gridspec_kw={'height_ratios': [3, 1]})
         
-        # Plot target distribution
-        plt.hist(target[:, i], bins=50, alpha=0.5, label='Target', density=True, color='blue')
+        # Use log of the energy for plotting if the feature is energy (index 1)
+        if i == 1:  # Assuming energy is the second feature (index 1)
+            # Add a small constant to avoid log(0) or negative values
+            epsilon = 1e-2  # A larger constant if necessary
+            target_feature = np.log(target[:, i] + epsilon)
+            trained_feature = np.log(trained[:, i] + epsilon)
+            prior_feature = np.log(prior[:, i] + epsilon)
+            
+            # Debugging: Check for NaNs or Infs
+            print(f"Target feature (min, max, NaNs, Infs) before plot: {np.min(target_feature)}, {np.max(target_feature)}, {np.isnan(target_feature).sum()}, {np.isinf(target_feature).sum()}")
+            print(f"Trained feature (min, max, NaNs, Infs) before plot: {np.min(trained_feature)}, {np.max(trained_feature)}, {np.isnan(trained_feature).sum()}, {np.isinf(trained_feature).sum()}")
+            
+            feature_label = f"log({feature_names[i]})"
+        else:
+            target_feature = target[:, i]
+            trained_feature = trained[:, i]
+            prior_feature = prior[:, i]
+            feature_label = feature_names[i]
         
-        # Plot trained distribution
-        plt.hist(trained[:, i], bins=50, alpha=0.5, label='Trained', density=True, color='green')
+        # Debugging: Check if the feature has valid values
+        print(f"Feature {feature_label}: min={np.min(target_feature)}, max={np.max(target_feature)}, valid={np.isfinite(target_feature).sum()}")
         
-        # Plot prior distribution
-        plt.hist(prior[:, i], bins=50, alpha=0.5, label='Prior', density=True, color='gray')
+        # Main plot (marginal distribution)
+        bins = np.linspace(np.min(target_feature), np.max(target_feature), 50)  # Define the bin edges
+        ax_main.hist(target_feature, bins=bins, alpha=0.5, label='Target', density=True, color='blue')
+        ax_main.hist(prior_feature, bins=bins, alpha=0.5, label='Prior', density=True, color='gray')
+        ax_main.hist(trained_feature, bins=bins, alpha=0.5, label='Trained', density=True, color='green')
+
+        ax_main.set_xlabel(feature_label)
+        ax_main.set_ylabel("Density")
+        ax_main.set_title(f"Marginal Distribution for {feature_label}")
+        ax_main.legend()
+
+        # Calculate bin-by-bin ratio of counts (target/trained)
+        target_hist, _ = np.histogram(target_feature, bins=bins)
+        trained_hist, _ = np.histogram(trained_feature, bins=bins)
+
+        # To avoid division by zero, add a small constant
+        ratio = np.divide(trained_hist + 1e-6, target_hist + 1e-6)
+
+        '''
+        # Ratio plot (target/trained ratio)
+        ax_ratio.plot(bins[:-1], ratio, label='Trained/Target Ratio', color='red', alpha=0.7)
+        '''
         
-        # Add labels and title
-        plt.xlabel(feature_names[i])
-        plt.ylabel("Density")
-        plt.title(f"Marginal Distribution for {feature_names[i]}")
-        plt.legend()
+        ax_ratio.set_xlabel(feature_label)
+        ax_ratio.set_ylabel("Ratio (Trained/Target)")
+        ax_ratio.set_title(f"Bin-by-bin Ratio")
+        ax_ratio.legend()
         
         # Save the plot
         plot_path = os.path.join(outdir, f"marginal_feature_{i+1}.png")
+        plt.tight_layout()
         plt.savefig(plot_path)
         plt.close()
 
 # Call the function with the necessary arguments
-feature_names = ["b-tagging score", "Energy scaled"]
+feature_names = ["b-tagging score", "energy scaled"]
 plot_marginals(bkg_coord_scaled[:10000], trained, prior, feature_names, args.outdir)
 
 
