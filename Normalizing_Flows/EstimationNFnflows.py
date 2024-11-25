@@ -13,7 +13,7 @@ import argparse
 import sklearn
 #instead of manually defining bijectors and distributions, 
 #import necessary components from nflows
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 from nflows.distributions.normal import StandardNormal
 from nflows import distributions, flows, transforms
@@ -57,24 +57,32 @@ num_features=2 #dimensionality of the data being transformed.
 
 # Note: the bkg distribution is the posterior/target distribution which the Normalizing Flow should learn to approximate.
 
-#Combining energy and b-tagging score for both bkg and signal 
+##Combining energy and b-tagging score for both bkg and signal 
 bkg_coord = np.column_stack((bkg_btag, bkg))  # Combine btag and bkg for training
-
 #Initialize the scaler 
 scaler = StandardScaler()
-#scaler = MinMaxScaler(feature_range=(-1,1))
-
 #Scale the target distribution to help the model to converge faster 
 bkg_coord_scaled = scaler.fit_transform(bkg_coord)
 
-bkg_coord_scaled = bkg_coord_scaled.astype('float32') #bkg coordinates converted to float32 for compatibility with python 
+# Shift the entire dataset to make sure all values are positive
+shift = -bkg_coord_scaled[:, 1].min() + 1e-6  # Get the absolute value of the minimum across all features
 
-#sig_coord = np.column_stack((sig, sig_btag))
-#sig_coord = sig_coord.astype('float32')
-#sig_coord_scaled = scaler.fit_transform(sig_coord)
+bkg_coord_scaled[:, 1] += shift  # Add the shift to the entire dataset
+
+bkg_coord_scaled = bkg_coord_scaled.astype('float32') #bkg coordinates converted to float32 for compatibility with python 
 
 # Define base distribution
 base_distribution = distributions.StandardNormal(shape=(num_features,))
+
+# Sample points from the base distribution
+prior = base_distribution.sample(10000).numpy()  # Sample 10000 points with 2 features each
+
+
+# Shift the prior distribution to ensure all values are positive
+shift_prior = -prior[:, 1].min() + 1e-6  # Add a small constant to avoid zero values
+prior[:, 1] += shift_prior  # Apply the shift to the energy feature
+
+
 
 #Normalizing flow model:
 # Set up simple normalizing flow with arbitrary inputs and outputs just to test 
@@ -251,7 +259,7 @@ plt.legend(loc='lower left', fontsize=8)
 
 # Display hidden_features, num_blocks, and KL divergence in the plot
 text_str = f"learning_rate: {args.learning_rate}\nnum_layers: {args.num_layers}\nnum_blocks: {args.num_blocks}\nhidden_features: {args.hidden_features}\nnum_bins: {args.num_bins}\nn_epochs: {args.n_epochs}\nKL Divergence: {kl_div:.4f}"
-plt.text(0.7, 0.95, text_str, transform=plt.gca().transAxes, fontsize=8, verticalalignment='top',
+plt.text(0.05, 0.95, text_str, transform=plt.gca().transAxes, fontsize=8, verticalalignment='top',
          bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', alpha=0.7))
 
 # Save the plot to the output directory
@@ -273,7 +281,7 @@ plt.legend(fontsize=8)
 
 # Display the minimum loss and the corresponding epoch in the plot
 text_str = f"learning_rate: {args.learning_rate}\nnum_layers: {args.num_layers}\nnum_blocks: {args.num_blocks}\nhidden_features: {args.hidden_features}\nnum_bins: {args.num_bins}\nn_epochs: {args.n_epochs}\nKL Divergence: {kl_div:.4f}\nMin Loss: {min_loss:.4f} at Epoch {min_loss_epoch}"
-plt.text(0.7, 0.95, text_str, transform=plt.gca().transAxes, fontsize=8, verticalalignment='top',
+plt.text(0.6, 0.95, text_str, transform=plt.gca().transAxes, fontsize=8, verticalalignment='top',
          bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', alpha=0.7))
 
 # Save the training loss plot
@@ -282,9 +290,8 @@ loss_plot_path = os.path.join(args.outdir, loss_name)
 plt.savefig(loss_plot_path)
 
 # Function to plot marginal distributions
-def plot_marginals(target, trained, prior, feature_names, outdir):
+def plot_marginals(target, trained, feature_names, bins, outdir):
     num_features = target.shape[1]
-    
     
     for i in range(num_features):
         fig, (ax_main, ax_ratio) = plt.subplots(2, 1, figsize=(8, 10), gridspec_kw={'height_ratios': [3, 1]})
@@ -292,53 +299,64 @@ def plot_marginals(target, trained, prior, feature_names, outdir):
         # Use log of the energy for plotting if the feature is energy (index 1)
         if i == 1:  # Assuming energy is the second feature (index 1)
             # Add a small constant to avoid log(0) or negative values
-            epsilon = 1e-2  # A larger constant if necessary
-            target_feature = np.log(target[:, i] + epsilon)
-            trained_feature = np.log(trained[:, i] + epsilon)
-            prior_feature = np.log(prior[:, i] + epsilon)
+            # Filter values above 0 for the energy feature
+            valid_target = target[:, i] > 0
+            valid_trained = trained[:, i] > 0
             
-            # Debugging: Check for NaNs or Infs
-            print(f"Target feature (min, max, NaNs, Infs) before plot: {np.min(target_feature)}, {np.max(target_feature)}, {np.isnan(target_feature).sum()}, {np.isinf(target_feature).sum()}")
-            print(f"Trained feature (min, max, NaNs, Infs) before plot: {np.min(trained_feature)}, {np.max(trained_feature)}, {np.isnan(trained_feature).sum()}, {np.isinf(trained_feature).sum()}")
-            
+            # Filter the target and trained distributions
+            target_feature = np.log(target[valid_target, i])
+            trained_feature = np.log(trained[valid_trained, i])
             feature_label = f"log({feature_names[i]})"
         else:
             target_feature = target[:, i]
             trained_feature = trained[:, i]
-            prior_feature = prior[:, i]
             feature_label = feature_names[i]
         
-        # Debugging: Check if the feature has valid values
-        print(f"Feature {feature_label}: min={np.min(target_feature)}, max={np.max(target_feature)}, valid={np.isfinite(target_feature).sum()}")
-        
-        # Main plot (marginal distribution)
-        bins = np.linspace(np.min(target_feature), np.max(target_feature), 50)  # Define the bin edges
-        ax_main.hist(target_feature, bins=bins, alpha=0.5, label='Target', density=True, color='blue')
-        ax_main.hist(prior_feature, bins=bins, alpha=0.5, label='Prior', density=True, color='gray')
-        ax_main.hist(trained_feature, bins=bins, alpha=0.5, label='Trained', density=True, color='green')
+        # Determine global range for bin edges
+        all_data = np.concatenate([target_feature, trained_feature])
+        global_min, global_max = np.min(all_data), np.max(all_data)
+        bin_edges = np.linspace(global_min, global_max, bins + 1)  # Define bins globally
 
+        # Main plot (marginal distribution)
+        ax_main.hist(target_feature, bins=bin_edges, alpha=0.5, label='Target', density=True, color='blue')
+        ax_main.hist(trained_feature, bins=bin_edges, alpha=0.5, label='Trained', density=True, color='green')
         ax_main.set_xlabel(feature_label)
         ax_main.set_ylabel("Density")
         ax_main.set_title(f"Marginal Distribution for {feature_label}")
         ax_main.legend()
 
         # Calculate bin-by-bin ratio of counts (target/trained)
-        target_hist, _ = np.histogram(target_feature, bins=bins)
-        trained_hist, _ = np.histogram(trained_feature, bins=bins)
-
-        # To avoid division by zero, add a small constant
-        ratio = np.divide(trained_hist + 1e-6, target_hist + 1e-6)
-
-        '''
-        # Ratio plot (target/trained ratio)
-        ax_ratio.plot(bins[:-1], ratio, label='Trained/Target Ratio', color='red', alpha=0.7)
-        '''
+        hist_target, bins_target = np.histogram(target_feature, bins=bin_edges, density=True)
+        hist_trained, bins_trained = np.histogram(trained_feature, bins=bin_edges, density=True)
         
+        # Remove empty bins (bins where count is zero)
+        non_zero_bins_target = hist_target > 0
+        non_zero_bins_trained = hist_trained > 0
+
+        # Filter the bins and counts to exclude empty bins
+        bins_target_filtered = bins_target[:-1][non_zero_bins_target]  # Exclude last bin edge
+        hist_target_filtered = hist_target[non_zero_bins_target]
+        
+        bins_trained_filtered = bins_trained[:-1][non_zero_bins_trained]  # Exclude last bin edge
+        hist_trained_filtered = hist_trained[non_zero_bins_trained]
+        
+        # Align bins and calculate ratio (ensure bins match by filtering similarly)
+        common_bins = np.intersect1d(bins_target_filtered, bins_trained_filtered)  # Find common bins
+        bin_centers = (common_bins[:-1] + common_bins[1:]) / 2  # Bin centers
+
+        # Recalculate the histograms using only common bins
+        target_hist_common = np.interp(common_bins[:-1], bins_target_filtered, hist_target_filtered)
+        trained_hist_common = np.interp(common_bins[:-1], bins_trained_filtered, hist_trained_filtered)
+        
+        ratio = trained_hist_common / (target_hist_common + 1e-6)  # Avoid division by zero
+        
+        # Ratio plot (target/trained ratio)
+        ax_ratio.plot(bin_centers, ratio, label='Trained/Target Ratio', color='red', alpha=0.7)
         ax_ratio.set_xlabel(feature_label)
         ax_ratio.set_ylabel("Ratio (Trained/Target)")
         ax_ratio.set_title(f"Bin-by-bin Ratio")
         ax_ratio.legend()
-        
+
         # Save the plot
         plot_path = os.path.join(outdir, f"marginal_feature_{i+1}.png")
         plt.tight_layout()
@@ -347,6 +365,7 @@ def plot_marginals(target, trained, prior, feature_names, outdir):
 
 # Call the function with the necessary arguments
 feature_names = ["b-tagging score", "energy scaled"]
-plot_marginals(bkg_coord_scaled[:10000], trained, prior, feature_names, args.outdir)
-
+n_bins=70
+plot_marginals(bkg_coord_scaled[:10000], trained, prior, feature_names, n_bins, args.outdir)
+        
 
