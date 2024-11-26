@@ -15,10 +15,10 @@ source /t3home/gbadarac/miniforge3/bin/activate my_project  # Modify this line t
 
 # Default parameters for your normalizing flow training
 n_epochs=1001
-learning_rate=5e-5
+learning_rate=5e-6
 batch_size=512 #number of data samples processed before updating the model's parameters
 outdir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_outputs
-hidden_features=50
+hidden_features=60
 num_blocks=3
 num_bins=10
 num_layers=3

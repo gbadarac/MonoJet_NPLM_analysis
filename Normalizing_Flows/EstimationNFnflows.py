@@ -206,6 +206,12 @@ for idx in range(args.n_epochs):
         min_loss = avg_val_loss
         min_loss_epoch = idx # Track the epoch where minimum loss occurs
         patience_counter = 0 # Reset patience counter if the loss improves
+        
+        # Save the best model
+        model_path = os.path.join(args.outdir, "best_model.pth")
+        torch.save(flow.state_dict(), model_path)  
+        # flow.state_dict() returns a dictionary containing all the parameters of the model (weights and biases)
+        # torch.save() saves the parameters to a file named best_model.pth
     else:
         patience_counter += 1
         if patience_counter >= 10: # If no improvement for 5 epochs, stop training
@@ -218,7 +224,13 @@ for idx in range(args.n_epochs):
 
     # Print progress every epoch
     if idx % 1 == 0:
-        print(f"Epoch {idx}, Avg Train Loss: {avg_train_loss:.4f}, Avg Validation Loss: {avg_val_loss:.4f}")
+        print(f"Epoch {idx}, Avg Train Loss: {avg_train_loss:.4f}, Avg Validation Loss: {avg_val_loss:.9f}")
+
+# Load the best model after training
+model_path = os.path.join(args.outdir, "best_model.pth")
+flow.load_state_dict(torch.load(model_path, weights_only=True))
+flow.eval()  # Set the model to evaluation mode
+print("Best model loaded successfully.")
     
 # Sample points from the trained flow
 trained = flow.sample(10000).detach().numpy()  # Sample 10000 points with 2 features each
@@ -229,10 +241,14 @@ prior = base_distribution.sample(10000).numpy()  # Sample 10000 points with 2 fe
 # Function to calculate KL divergence between target and trained distribution
 def calculate_kl_divergence(target, trained, eps=1e-8):
     # Ensure target and trained are in probability space and avoid log(0) errors
-    target = np.clip(target, eps, 1)  # Clip target values to avoid zero probabilities
-    trained = np.clip(trained, eps, 1)  # Same for trained values
+    target = np.clip(target, eps, None)  # Clip target values to avoid zero probabilities
+    trained = np.clip(trained, eps, None)  # Same for trained values
     # This prevents taking the logarithm of zero, which would lead to undefined (NaN) values and numerical instability in the KL divergence calculation. 
     # By clipping to this small positive value, it ensures no probability is exactly zero.
+    
+    # Normalize to make them proper probability distributions
+    target /= np.sum(target)
+    trained /= np.sum(trained)
 
     # Convert numpy arrays to PyTorch tensors
     p_target = torch.from_numpy(target).float()
@@ -244,6 +260,11 @@ def calculate_kl_divergence(target, trained, eps=1e-8):
 
 # Calculate KL divergence
 kl_div = calculate_kl_divergence(bkg_coord_scaled[:10000], trained)
+print("KL divergence saved successfully.")
+# Save KL divergence value
+kl_div_path = os.path.join(args.outdir, "kl_divergence.npy")
+np.save(kl_div_path, kl_div)
+print("KL divergence saved successfully.")
 
 # Create output directory if it doesn't exist
 os.makedirs(args.outdir, exist_ok=True)
@@ -259,7 +280,7 @@ plt.legend(loc='lower left', fontsize=8)
 
 # Display hidden_features, num_blocks, and KL divergence in the plot
 text_str = f"learning_rate: {args.learning_rate}\nnum_layers: {args.num_layers}\nnum_blocks: {args.num_blocks}\nhidden_features: {args.hidden_features}\nnum_bins: {args.num_bins}\nn_epochs: {args.n_epochs}\nKL Divergence: {kl_div:.4f}"
-plt.text(0.05, 0.95, text_str, transform=plt.gca().transAxes, fontsize=8, verticalalignment='top',
+plt.text(0.05, 0.95, text_str, transform=plt.gca().transAxes, fontsize=8.5, verticalalignment='top',
          bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', alpha=0.7))
 
 # Save the plot to the output directory
@@ -280,7 +301,7 @@ plt.title("Training and Validation Loss per Epoch")
 plt.legend(fontsize=8)
 
 # Display the minimum loss and the corresponding epoch in the plot
-text_str = f"learning_rate: {args.learning_rate}\nnum_layers: {args.num_layers}\nnum_blocks: {args.num_blocks}\nhidden_features: {args.hidden_features}\nnum_bins: {args.num_bins}\nn_epochs: {args.n_epochs}\nKL Divergence: {kl_div:.4f}\nMin Loss: {min_loss:.4f} at Epoch {min_loss_epoch}"
+text_str = f"Min Loss: {min_loss:.4f} at Epoch {min_loss_epoch}\nKL Divergence: {kl_div:.4f}"
 plt.text(0.6, 0.95, text_str, transform=plt.gca().transAxes, fontsize=8, verticalalignment='top',
          bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', alpha=0.7))
 
@@ -366,6 +387,6 @@ def plot_marginals(target, trained, feature_names, bins, outdir):
 # Call the function with the necessary arguments
 feature_names = ["b-tagging score", "energy scaled"]
 n_bins=70
-plot_marginals(bkg_coord_scaled[:10000], trained, prior, feature_names, n_bins, args.outdir)
+plot_marginals(bkg_coord_scaled[:10000], trained, feature_names, n_bins, args.outdir)
         
 
