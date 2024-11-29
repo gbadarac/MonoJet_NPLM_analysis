@@ -18,14 +18,15 @@ n_epochs=1001
 learning_rate=5e-6
 batch_size=512 #number of data samples processed before updating the model's parameters
 outdir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_outputs
-hidden_features=60
-num_blocks=3
-num_bins=10
-num_layers=3
+#hidden_features=50
+#num_blocks=3
+#num_bins=10
+#num_layers=3
 
 # Create a job-specific output directory
-job_outdir=${outdir}/job_${learning_rate}_lr_${num_layers}_layers_${num_blocks}_transformations_${hidden_features}_neurons_${num_bins}_bins_${batch_size}_batch_size_${SLURM_JOB_ID}
-#job_outdir=${outdir}/job_batch_implementation_${SLURM_JOB_ID}
+#job_outdir=${outdir}/job_${num_layers}_layers_${num_blocks}_transformations_${hidden_features}_neurons_${num_bins}_bins_${SLURM_JOB_ID}
+job_outdir=${outdir}/job_${num_layers}_${num_blocks}_${hidden_features}_${num_bins}_${SLURM_JOB_ID}
+
 
 echo ${job_outdir}
 mkdir -p ${job_outdir}  # Ensure the output directory exists

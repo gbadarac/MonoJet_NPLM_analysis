@@ -5,6 +5,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+import mplhep as hep
 import scipy.stats
 from scipy.stats import rel_breitwigner
 import torch
@@ -26,6 +27,9 @@ from nflows.transforms.permutations import ReversePermutation
 from torch.utils.data import DataLoader, TensorDataset
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
+
+# Use CMS style
+hep.style.use("CMS")
 
 # Add argument parsing for command line arguments
 parser = argparse.ArgumentParser(description='Normalizing Flow Training Script')
@@ -224,7 +228,7 @@ for idx in range(args.n_epochs):
 
     # Print progress every epoch
     if idx % 1 == 0:
-        print(f"Epoch {idx}, Avg Train Loss: {avg_train_loss:.4f}, Avg Validation Loss: {avg_val_loss:.9f}")
+        print(f"Epoch {idx}, Avg Train Loss: {avg_train_loss:.4f}, Avg Validation Loss: {avg_val_loss:.4f}")
 
 # Load the best model after training
 model_path = os.path.join(args.outdir, "best_model.pth")
@@ -275,12 +279,11 @@ plt.scatter(bkg_coord_scaled[:10000, 0], bkg_coord_scaled[:10000, 1], color='blu
 plt.scatter(trained[:, 0], trained[:, 1], color='green', label='Trained distribution')
 plt.xlabel("Latent b-tagging score")
 plt.ylabel("Energy [GeV]")
-plt.title("Scatter Plot of Scaled Distributions: Target, Prior and Trained")
-plt.legend(loc='lower left', fontsize=8)
+plt.legend(loc='upper right',fontsize=16)
 
 # Display hidden_features, num_blocks, and KL divergence in the plot
-text_str = f"learning_rate: {args.learning_rate}\nnum_layers: {args.num_layers}\nnum_blocks: {args.num_blocks}\nhidden_features: {args.hidden_features}\nnum_bins: {args.num_bins}\nn_epochs: {args.n_epochs}\nKL Divergence: {kl_div:.4f}"
-plt.text(0.05, 0.95, text_str, transform=plt.gca().transAxes, fontsize=8.5, verticalalignment='top',
+text_str = f"learning_rate: {args.learning_rate}\nnum_layers: {args.num_layers}\nnum_blocks: {args.num_blocks}\nhidden_features: {args.hidden_features}\nnum_bins: {args.num_bins}\nn_epochs: {args.n_epochs}"
+plt.text(0.05, 0.95, text_str, transform=plt.gca().transAxes, fontsize=16, verticalalignment='top',
          bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', alpha=0.7))
 
 # Save the plot to the output directory
@@ -297,12 +300,11 @@ plt.plot(train_losses, label="Training Loss", color='blue') #training loss
 plt.plot(val_losses, label="Validation Loss", color='red', linestyle='--') #validation loss 
 plt.xlabel("Epochs")
 plt.ylabel("Loss")
-plt.title("Training and Validation Loss per Epoch")
-plt.legend(fontsize=8)
+plt.legend(fontsize=20)
 
 # Display the minimum loss and the corresponding epoch in the plot
-text_str = f"Min Loss: {min_loss:.4f} at Epoch {min_loss_epoch}\nKL Divergence: {kl_div:.4f}"
-plt.text(0.6, 0.95, text_str, transform=plt.gca().transAxes, fontsize=8, verticalalignment='top',
+text_str = f"Min Loss: {min_loss:.4f} at Epoch {min_loss_epoch}\nKL Divergence: {kl_div:.9f}"
+plt.text(0.6, 0.95, text_str, transform=plt.gca().transAxes, fontsize=16, verticalalignment='top',
          bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', alpha=0.7))
 
 # Save the training loss plot
@@ -328,10 +330,17 @@ def plot_marginals(target, trained, feature_names, bins, outdir):
             target_feature = np.log(target[valid_target, i])
             trained_feature = np.log(trained[valid_trained, i])
             feature_label = f"log({feature_names[i]})"
+            
+            # Set x-axis limits for energy feature
+            x_limits = (-10.5, 2.5)
+            
         else:
             target_feature = target[:, i]
             trained_feature = trained[:, i]
             feature_label = feature_names[i]
+            
+            # Set x-axis limits for non-energy features (e.g., b-tagging score)
+            x_limits = (-2.5,2.5)
         
         # Determine global range for bin edges
         all_data = np.concatenate([target_feature, trained_feature])
@@ -341,10 +350,10 @@ def plot_marginals(target, trained, feature_names, bins, outdir):
         # Main plot (marginal distribution)
         ax_main.hist(target_feature, bins=bin_edges, alpha=0.5, label='Target', density=True, color='blue')
         ax_main.hist(trained_feature, bins=bin_edges, alpha=0.5, label='Trained', density=True, color='green')
-        ax_main.set_xlabel(feature_label)
-        ax_main.set_ylabel("Density")
-        ax_main.set_title(f"Marginal Distribution for {feature_label}")
-        ax_main.legend()
+        ax_main.set_xlabel(feature_label, fontsize=20)
+        ax_main.set_ylabel("Density", fontsize=20)
+        ax_main.legend(fontsize=16)
+        ax_main.set_xlim(x_limits)  # Apply feature-specific x-axis limits
 
         # Calculate bin-by-bin ratio of counts (target/trained)
         hist_target, bins_target = np.histogram(target_feature, bins=bin_edges, density=True)
@@ -373,10 +382,10 @@ def plot_marginals(target, trained, feature_names, bins, outdir):
         
         # Ratio plot (target/trained ratio)
         ax_ratio.plot(bin_centers, ratio, label='Trained/Target Ratio', color='red', alpha=0.7)
-        ax_ratio.set_xlabel(feature_label)
-        ax_ratio.set_ylabel("Ratio (Trained/Target)")
-        ax_ratio.set_title(f"Bin-by-bin Ratio")
-        ax_ratio.legend()
+        ax_ratio.set_ylabel("Ratio (Trained/Target)", fontsize=16)
+        ax_ratio.legend(fontsize=14)
+        ax_ratio.set_xlim(x_limits)  # Apply feature-specific x-axis limits
+        ax_ratio.axhline(y=1, color='black', linestyle='--', linewidth=2)  # Horizontal line at y=1
 
         # Save the plot
         plot_path = os.path.join(outdir, f"marginal_feature_{i+1}.png")
@@ -386,7 +395,7 @@ def plot_marginals(target, trained, feature_names, bins, outdir):
 
 # Call the function with the necessary arguments
 feature_names = ["b-tagging score", "energy scaled"]
-n_bins=70
+n_bins=50
 plot_marginals(bkg_coord_scaled[:10000], trained, feature_names, n_bins, args.outdir)
         
 
