@@ -278,7 +278,7 @@ plt.scatter(prior[:, 0], prior[:, 1], color='gray', label='Base/Prior distributi
 plt.scatter(bkg_coord_scaled[:10000, 0], bkg_coord_scaled[:10000, 1], color='blue', label='Background/Target distribution')
 plt.scatter(trained[:, 0], trained[:, 1], color='green', label='Trained distribution')
 plt.xlabel("Latent b-tagging score")
-plt.ylabel("Energy [GeV]")
+plt.ylabel("Scaled Energy")
 plt.legend(loc='upper right',fontsize=16)
 
 # Display hidden_features, num_blocks, and KL divergence in the plot
@@ -313,51 +313,77 @@ loss_plot_path = os.path.join(args.outdir, loss_name)
 plt.savefig(loss_plot_path)
 
 # Function to plot marginal distributions
-def plot_marginals(target, trained, feature_names, bins, outdir):
+def plot_marginals(target, trained, feature_names, bins, outdir, scaler):
     num_features = target.shape[1]
     
     for i in range(num_features):
         fig, (ax_main, ax_ratio) = plt.subplots(2, 1, figsize=(8, 10), gridspec_kw={'height_ratios': [3, 1]})
         
+        # Initialize target_feature and trained_feature variables
+        target_feature = None
+        trained_feature = None
+        x_limits = None
+        
         # Use log of the energy for plotting if the feature is energy (index 1)
         if i == 1:  # Assuming energy is the second feature (index 1)
-            # Add a small constant to avoid log(0) or negative values
-            # Filter values above 0 for the energy feature
-            valid_target = target[:, i] > 0
-            valid_trained = trained[:, i] > 0
+            # Inverse transform the target and trained data to get the original values
+            target_feature_original = scaler.inverse_transform(np.column_stack((target[:, 0], target[:, 1])))[:, 1]
+            trained_feature_original = scaler.inverse_transform(np.column_stack((trained[:, 0], trained[:, 1])))[:, 1]
             
-            # Filter the target and trained distributions
-            target_feature = np.log(target[valid_target, i])
-            trained_feature = np.log(trained[valid_trained, i])
-            feature_label = f"log({feature_names[i]})"
+            # Add a small constant to avoid log(0) or negative values
+            valid_target = target_feature_original > 0
+            valid_trained = trained_feature_original > 0
+            
+            # Plot original energy (non-log transformed)
+            target_feature = target_feature_original[valid_target]
+            trained_feature = trained_feature_original[valid_trained]
+            feature_label = f"{feature_names[i]}"
             
             # Set x-axis limits for energy feature
             x_limits = (-10.5, 2.5)
             
         else:
-            target_feature = target[:, i]
-            trained_feature = trained[:, i]
+            target_feature_original = scaler.inverse_transform(np.column_stack((target[:, 0], target[:, 1])))[:, i]
+            trained_feature_original = scaler.inverse_transform(np.column_stack((trained[:, 0], trained[:, 1])))[:, i]
+            
+            target_feature = target_feature_original
+            trained_feature = trained_feature_original
             feature_label = feature_names[i]
             
             # Set x-axis limits for non-energy features (e.g., b-tagging score)
-            x_limits = (-2.5,2.5)
+            x_limits = (-2.5, 2.5)
         
         # Determine global range for bin edges
         all_data = np.concatenate([target_feature, trained_feature])
         global_min, global_max = np.min(all_data), np.max(all_data)
         bin_edges = np.linspace(global_min, global_max, bins + 1)  # Define bins globally
-
+        
         # Main plot (marginal distribution)
+        hist_target, bins_target = np.histogram(target_feature, bins=bin_edges, density=True)
+        hist_trained, bins_trained = np.histogram(trained_feature, bins=bin_edges, density=True)
+
+        # Error Propagation: calculate errors for the histograms (square root of the counts for each bin)
+        err_target = np.sqrt(hist_target)
+        err_trained = np.sqrt(hist_trained)
+        
+        # Plot histograms with error bars
+        ax_main.errorbar(bins_target[:-1] + np.diff(bins_target) / 2, hist_target, yerr=err_target, fmt='o', alpha=0.5, label='Target', color='blue')
+        ax_main.errorbar(bins_trained[:-1] + np.diff(bins_trained) / 2, hist_trained, yerr=err_trained, fmt='o', alpha=0.5, label='Trained', color='green')
+        ax_main.set_xlabel(feature_label, fontsize=20)
+        ax_main.set_ylabel("Density", fontsize=20)
+        ax_main.legend(fontsize=16)
+        ax_main.set_xlim(x_limits)  # Apply feature-specific x-axis limits
+
+        '''
         ax_main.hist(target_feature, bins=bin_edges, alpha=0.5, label='Target', density=True, color='blue')
         ax_main.hist(trained_feature, bins=bin_edges, alpha=0.5, label='Trained', density=True, color='green')
         ax_main.set_xlabel(feature_label, fontsize=20)
         ax_main.set_ylabel("Density", fontsize=20)
         ax_main.legend(fontsize=16)
         ax_main.set_xlim(x_limits)  # Apply feature-specific x-axis limits
+        '''
 
         # Calculate bin-by-bin ratio of counts (target/trained)
-        hist_target, bins_target = np.histogram(target_feature, bins=bin_edges, density=True)
-        hist_trained, bins_trained = np.histogram(trained_feature, bins=bin_edges, density=True)
         
         # Remove empty bins (bins where count is zero)
         non_zero_bins_target = hist_target > 0
@@ -378,14 +404,29 @@ def plot_marginals(target, trained, feature_names, bins, outdir):
         target_hist_common = np.interp(common_bins[:-1], bins_target_filtered, hist_target_filtered)
         trained_hist_common = np.interp(common_bins[:-1], bins_trained_filtered, hist_trained_filtered)
         
-        ratio = trained_hist_common / (target_hist_common + 1e-6)  # Avoid division by zero
+        # Calculate errors for the ratio (error propagation)
+        err_target_common = np.interp(common_bins[:-1], bins_target_filtered, np.sqrt(hist_target_filtered))
+        err_trained_common = np.interp(common_bins[:-1], bins_trained_filtered, np.sqrt(hist_trained_filtered))
         
+        # Ratio and its error
+        ratio = trained_hist_common / (target_hist_common + 1e-6)  # Avoid division by zero
+        err_ratio = ratio * np.sqrt((err_target_common / target_hist_common)**2 + (err_trained_common / trained_hist_common)**2)
+        
+        # Ratio plot (target/trained ratio)
+        ax_ratio.errorbar(bin_centers, ratio, yerr=err_ratio, fmt='o', label='Trained/Target Ratio', color='red', alpha=0.7)
+        ax_ratio.set_ylabel("Ratio (Trained/Target)", fontsize=16)
+        ax_ratio.legend(fontsize=14)
+        ax_ratio.set_xlim(x_limits)  # Apply feature-specific x-axis limits
+        ax_ratio.axhline(y=1, color='black', linestyle='--', linewidth=2)  # Horizontal line at y=1
+        
+        '''
         # Ratio plot (target/trained ratio)
         ax_ratio.plot(bin_centers, ratio, label='Trained/Target Ratio', color='red', alpha=0.7)
         ax_ratio.set_ylabel("Ratio (Trained/Target)", fontsize=16)
         ax_ratio.legend(fontsize=14)
         ax_ratio.set_xlim(x_limits)  # Apply feature-specific x-axis limits
         ax_ratio.axhline(y=1, color='black', linestyle='--', linewidth=2)  # Horizontal line at y=1
+        '''
 
         # Save the plot
         plot_path = os.path.join(outdir, f"marginal_feature_{i+1}.png")
@@ -395,7 +436,6 @@ def plot_marginals(target, trained, feature_names, bins, outdir):
 
 # Call the function with the necessary arguments
 feature_names = ["b-tagging score", "energy scaled"]
-n_bins=50
-plot_marginals(bkg_coord_scaled[:10000], trained, feature_names, n_bins, args.outdir)
+n_bins=35
+plot_marginals(bkg_coord_scaled[:10000], trained, feature_names, n_bins, args.outdir, scaler)
         
-
