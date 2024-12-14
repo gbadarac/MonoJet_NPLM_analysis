@@ -14,7 +14,7 @@ import argparse
 import sklearn
 #instead of manually defining bijectors and distributions, 
 #import necessary components from nflows
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.preprocessing import StandardScaler
 
 from nflows.distributions.normal import StandardNormal
 from nflows import distributions, flows, transforms
@@ -313,121 +313,97 @@ loss_plot_path = os.path.join(args.outdir, loss_name)
 plt.savefig(loss_plot_path)
 
 # Function to plot marginal distributions
-def plot_marginals(target, trained, feature_names, bins, outdir, scaler):
+def plot_marginals(target, trained, feature_names, outdir, scaler):
     num_features = target.shape[1]
+    
+    # Inverse transform to get original features
+    target_original = scaler.inverse_transform(target)
+    trained_original = scaler.inverse_transform(trained)
     
     for i in range(num_features):
         fig, (ax_main, ax_ratio) = plt.subplots(2, 1, figsize=(8, 10), gridspec_kw={'height_ratios': [3, 1]})
         
-        # Initialize target_feature and trained_feature variables
-        target_feature = None
-        trained_feature = None
-        x_limits = None
+        target_feature = target_original[:, i]
+        trained_feature = trained_original[:, i]
+        feature_label = feature_names[i]
         
-        # Use log of the energy for plotting if the feature is energy (index 1)
         if i == 1:  # Assuming energy is the second feature (index 1)
-            # Inverse transform the target and trained data to get the original values
-            target_feature_original = scaler.inverse_transform(np.column_stack((target[:, 0], target[:, 1])))[:, 1]
-            trained_feature_original = scaler.inverse_transform(np.column_stack((trained[:, 0], trained[:, 1])))[:, 1]
-            
-            # Add a small constant to avoid log(0) or negative values
-            valid_target = target_feature_original > 0
-            valid_trained = trained_feature_original > 0
-            
-            # Plot original energy (non-log transformed)
-            target_feature = target_feature_original[valid_target]
-            trained_feature = trained_feature_original[valid_trained]
-            feature_label = f"{feature_names[i]}"
-            
             # Set x-axis limits for energy feature
-            x_limits = (-10.5, 2.5)
-            
+            x_limits = (0, 600)
+            bins=50
         else:
-            target_feature_original = scaler.inverse_transform(np.column_stack((target[:, 0], target[:, 1])))[:, i]
-            trained_feature_original = scaler.inverse_transform(np.column_stack((trained[:, 0], trained[:, 1])))[:, i]
-            
-            target_feature = target_feature_original
-            trained_feature = trained_feature_original
-            feature_label = feature_names[i]
-            
             # Set x-axis limits for non-energy features (e.g., b-tagging score)
-            x_limits = (-2.5, 2.5)
+            x_limits = (-0.5, 1.5)
+            bins=15
         
-        # Determine global range for bin edges
+        # Combine data for consistent binning
         all_data = np.concatenate([target_feature, trained_feature])
-        global_min, global_max = np.min(all_data), np.max(all_data)
-        bin_edges = np.linspace(global_min, global_max, bins + 1)  # Define bins globally
+        bin_edges = np.linspace(np.min(all_data), np.max(all_data), bins + 1)
+            
+        # Recalculate the histograms using the same bin edges
+        hist_target_counts, _ = np.histogram(target_feature, bins=bin_edges)
+        hist_trained_counts, _ = np.histogram(trained_feature, bins=bin_edges)
         
-        # Main plot (marginal distribution)
-        hist_target, bins_target = np.histogram(target_feature, bins=bin_edges, density=True)
-        hist_trained, bins_trained = np.histogram(trained_feature, bins=bin_edges, density=True)
-
-        # Error Propagation: calculate errors for the histograms (square root of the counts for each bin)
-        err_target = np.sqrt(hist_target)
-        err_trained = np.sqrt(hist_trained)
+        # Normalize histograms (including empty bins)
+        hist_target = hist_target_counts / np.sum(hist_target_counts)
+        hist_trained = hist_trained_counts / np.sum(hist_trained_counts)
         
-        # Plot histograms with error bars
-        ax_main.errorbar(bins_target[:-1] + np.diff(bins_target) / 2, hist_target, yerr=err_target, fmt='o', alpha=0.5, label='Target', color='blue')
-        ax_main.errorbar(bins_trained[:-1] + np.diff(bins_trained) / 2, hist_trained, yerr=err_trained, fmt='o', alpha=0.5, label='Trained', color='green')
-        ax_main.set_xlabel(feature_label, fontsize=20)
-        ax_main.set_ylabel("Density", fontsize=20)
-        ax_main.legend(fontsize=16)
-        ax_main.set_xlim(x_limits)  # Apply feature-specific x-axis limits
-
+        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+        
+        # Error estimation for histograms
+        err_target = np.sqrt(hist_target_counts) / np.sum(hist_target_counts)
+        err_trained = np.sqrt(hist_trained_counts) / np.sum(hist_trained_counts)
+        
+        # Main plot (marginal histograms)
+        ax_main.bar(bin_centers, hist_target, width=np.diff(bin_edges), alpha=0.3, label='Target', color='blue', edgecolor='black', align='center')
+        ax_main.bar(bin_centers, hist_trained, width=np.diff(bin_edges), alpha=0.3, label='Trained', color='green', edgecolor='black', align='center')
+        ax_main.errorbar(bin_centers, hist_target, yerr=err_target, fmt='o', color='blue', label='Target Error', alpha=0.7)
+        ax_main.errorbar(bin_centers, hist_trained, yerr=err_trained, fmt='o', color='green', label='Trained Error', alpha=0.7)
+        ax_main.set_xlabel(feature_label, fontsize=16)
+        ax_main.set_ylabel("Density", fontsize=16)
+        ax_main.legend(fontsize=14)
+        if x_limits:
+            ax_main.set_xlim(x_limits)
+            
+        # Calculate bin-by-bin ratio of normalized counts (target/trained)
+        
+        # ------------------- FILTERING PART -------------------
+        
+        # Filter bins where both histograms have sufficiently large counts
+        valid_bins = (hist_target_counts > 1e-3) & (hist_trained_counts > 1e-3)  # Avoid empty/low-count bins
+        
+        # Filter histograms and bins for valid data only
+        bin_centers_filtered = bin_centers[valid_bins]
+        target_hist_filtered = hist_target[valid_bins]
+        trained_hist_filtered = hist_trained[valid_bins]
+        
+        # ------------------- Ratio Calculation -------------------
+        
+        # Calculate ratio and its error
+        ratio = trained_hist_filtered / target_hist_filtered
+        
+        # Calculate errors (Poisson errors)
+        err_ratio = ratio * np.sqrt((1 / target_hist_filtered) + (1 / trained_hist_filtered))  # Poisson errors
+        
+        # Apply a maximum error cap (e.g., 50 for error bars) to avoid huge error bars
+        max_error = 20
+        err_ratio = np.minimum(err_ratio, max_error)  # Cap the error bars
+        
         '''
-        ax_main.hist(target_feature, bins=bin_edges, alpha=0.5, label='Target', density=True, color='blue')
-        ax_main.hist(trained_feature, bins=bin_edges, alpha=0.5, label='Trained', density=True, color='green')
-        ax_main.set_xlabel(feature_label, fontsize=20)
-        ax_main.set_ylabel("Density", fontsize=20)
-        ax_main.legend(fontsize=16)
-        ax_main.set_xlim(x_limits)  # Apply feature-specific x-axis limits
+        # Avoid plotting ratio for bins with very high errors or small counts
+        valid_err = (err_ratio < max_error)  # Only plot bins with valid ratio and acceptable error
+        bin_centers_filtered = bin_centers_filtered[valid_err]
+        ratio_filtered = ratio[valid_err]
+        err_ratio_filtered = err_ratio[valid_err]
         '''
-
-        # Calculate bin-by-bin ratio of counts (target/trained)
-        
-        # Remove empty bins (bins where count is zero)
-        non_zero_bins_target = hist_target > 0
-        non_zero_bins_trained = hist_trained > 0
-
-        # Filter the bins and counts to exclude empty bins
-        bins_target_filtered = bins_target[:-1][non_zero_bins_target]  # Exclude last bin edge
-        hist_target_filtered = hist_target[non_zero_bins_target]
-        
-        bins_trained_filtered = bins_trained[:-1][non_zero_bins_trained]  # Exclude last bin edge
-        hist_trained_filtered = hist_trained[non_zero_bins_trained]
-        
-        # Align bins and calculate ratio (ensure bins match by filtering similarly)
-        common_bins = np.intersect1d(bins_target_filtered, bins_trained_filtered)  # Find common bins
-        bin_centers = (common_bins[:-1] + common_bins[1:]) / 2  # Bin centers
-
-        # Recalculate the histograms using only common bins
-        target_hist_common = np.interp(common_bins[:-1], bins_target_filtered, hist_target_filtered)
-        trained_hist_common = np.interp(common_bins[:-1], bins_trained_filtered, hist_trained_filtered)
-        
-        # Calculate errors for the ratio (error propagation)
-        err_target_common = np.interp(common_bins[:-1], bins_target_filtered, np.sqrt(hist_target_filtered))
-        err_trained_common = np.interp(common_bins[:-1], bins_trained_filtered, np.sqrt(hist_trained_filtered))
-        
-        # Ratio and its error
-        ratio = trained_hist_common / (target_hist_common + 1e-6)  # Avoid division by zero
-        err_ratio = ratio * np.sqrt((err_target_common / target_hist_common)**2 + (err_trained_common / trained_hist_common)**2)
         
         # Ratio plot (target/trained ratio)
-        ax_ratio.errorbar(bin_centers, ratio, yerr=err_ratio, fmt='o', label='Trained/Target Ratio', color='red', alpha=0.7)
+        ax_ratio.errorbar(bin_centers_filtered, ratio, yerr=err_ratio, fmt='o', label='Trained/Target Ratio', color='red', alpha=0.7)
         ax_ratio.set_ylabel("Ratio (Trained/Target)", fontsize=16)
-        ax_ratio.legend(fontsize=14)
+        ax_ratio.legend(fontsize=14,loc='upper left')
         ax_ratio.set_xlim(x_limits)  # Apply feature-specific x-axis limits
         ax_ratio.axhline(y=1, color='black', linestyle='--', linewidth=2)  # Horizontal line at y=1
         
-        '''
-        # Ratio plot (target/trained ratio)
-        ax_ratio.plot(bin_centers, ratio, label='Trained/Target Ratio', color='red', alpha=0.7)
-        ax_ratio.set_ylabel("Ratio (Trained/Target)", fontsize=16)
-        ax_ratio.legend(fontsize=14)
-        ax_ratio.set_xlim(x_limits)  # Apply feature-specific x-axis limits
-        ax_ratio.axhline(y=1, color='black', linestyle='--', linewidth=2)  # Horizontal line at y=1
-        '''
-
         # Save the plot
         plot_path = os.path.join(outdir, f"marginal_feature_{i+1}.png")
         plt.tight_layout()
@@ -435,7 +411,5 @@ def plot_marginals(target, trained, feature_names, bins, outdir, scaler):
         plt.close()
 
 # Call the function with the necessary arguments
-feature_names = ["b-tagging score", "energy scaled"]
-n_bins=35
-plot_marginals(bkg_coord_scaled[:10000], trained, feature_names, n_bins, args.outdir, scaler)
-        
+feature_names = ["b-tagging score", "energy [GeV]"]
+plot_marginals(bkg_coord_scaled[:10000], trained, feature_names, args.outdir, scaler)
