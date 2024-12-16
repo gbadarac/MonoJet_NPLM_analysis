@@ -344,15 +344,19 @@ def plot_marginals(target, trained, feature_names, outdir, scaler):
         hist_target_counts, _ = np.histogram(target_feature, bins=bin_edges)
         hist_trained_counts, _ = np.histogram(trained_feature, bins=bin_edges)
         
+        # Total counts for normalization
+        N_target_total = np.sum(hist_target_counts)
+        N_trained_total = np.sum(hist_trained_counts)
+        
         # Normalize histograms (including empty bins)
-        hist_target = hist_target_counts / np.sum(hist_target_counts)
-        hist_trained = hist_trained_counts / np.sum(hist_trained_counts)
+        hist_target = hist_target_counts / N_target_total
+        hist_trained = hist_trained_counts / N_trained_total
         
         bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
         
         # Error estimation for histograms
-        err_target = np.sqrt(hist_target_counts) / np.sum(hist_target_counts)
-        err_trained = np.sqrt(hist_trained_counts) / np.sum(hist_trained_counts)
+        err_target = np.sqrt(hist_target_counts) / N_target_total
+        err_trained = np.sqrt(hist_trained_counts) / N_trained_total
         
         # Main plot (marginal histograms)
         ax_main.bar(bin_centers, hist_target, width=np.diff(bin_edges), alpha=0.3, label='Target', color='blue', edgecolor='black', align='center')
@@ -382,26 +386,14 @@ def plot_marginals(target, trained, feature_names, outdir, scaler):
         # Calculate ratio and its error
         ratio = trained_hist_filtered / target_hist_filtered
         
-        # Calculate errors (Poisson errors)
-        err_ratio = ratio * np.sqrt((1 / target_hist_filtered) + (1 / trained_hist_filtered))  # Poisson errors
-        
-        # Apply a maximum error cap (e.g., 50 for error bars) to avoid huge error bars
-        max_error = 20
-        err_ratio = np.minimum(err_ratio, max_error)  # Cap the error bars
-        
-        '''
-        # Avoid plotting ratio for bins with very high errors or small counts
-        valid_err = (err_ratio < max_error)  # Only plot bins with valid ratio and acceptable error
-        bin_centers_filtered = bin_centers_filtered[valid_err]
-        ratio_filtered = ratio[valid_err]
-        err_ratio_filtered = err_ratio[valid_err]
-        '''
+        err_ratio = ratio * np.sqrt((err_target[valid_bins] / target_hist_filtered) ** 2 +(err_trained[valid_bins] / trained_hist_filtered) ** 2)
         
         # Ratio plot (target/trained ratio)
         ax_ratio.errorbar(bin_centers_filtered, ratio, yerr=err_ratio, fmt='o', label='Trained/Target Ratio', color='red', alpha=0.7)
         ax_ratio.set_ylabel("Ratio (Trained/Target)", fontsize=16)
         ax_ratio.legend(fontsize=14,loc='upper left')
         ax_ratio.set_xlim(x_limits)  # Apply feature-specific x-axis limits
+        ax_ratio.set_ylim(0.0, 2.0)  # Zoom in on the ratio plot
         ax_ratio.axhline(y=1, color='black', linestyle='--', linewidth=2)  # Horizontal line at y=1
         
         # Save the plot
@@ -411,5 +403,5 @@ def plot_marginals(target, trained, feature_names, outdir, scaler):
         plt.close()
 
 # Call the function with the necessary arguments
-feature_names = ["b-tagging score", "energy [GeV]"]
+feature_names = ["b-tagging score", "Energy [GeV]"]
 plot_marginals(bkg_coord_scaled[:10000], trained, feature_names, args.outdir, scaler)
