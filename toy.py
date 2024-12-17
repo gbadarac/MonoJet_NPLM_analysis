@@ -53,6 +53,7 @@ NP = '%s%s_NR%i_NB%i_NS%i_M%i_lam%s_iter%i/'%(manifold, sig_string, N_ref, N_bkg
 if not os.path.exists(folder_out+NP):
     os.makedirs(folder_out+NP)
 
+'''
 ############ begin load data
 # This part needs to be modified according to how the predictions of your model are stored.
 # Here the predictions are saved in npz files
@@ -84,6 +85,32 @@ for bkg_label in bkg_labels:
 
 features_SIG = features[mask_SIG>0]
 features_BKG = features[mask_BKG>0]
+############ end load data
+'''
+############ begin load data
+# Modified to load generated data and ground truth data instead of signal and background
+print('Load data')
+
+# Assuming you have two folders or files: one for generated data and one for ground truth data
+generated_data_path = folders[manifold] + '/generated_data.npz'  # Path to generated data
+ground_truth_data_path = folders[manifold] + '/ground_truth_data.npz'  # Path to ground truth data
+
+# Load generated data
+generated_data = np.load(generated_data_path)
+features_generated = generated_data['latent']  # Replace 'latent' with the appropriate key if different
+print(f"Generated data loaded: {features_generated.shape}")
+
+# Load ground truth data
+ground_truth_data = np.load(ground_truth_data_path)
+features_truth = ground_truth_data['latent']  # Replace 'latent' with the appropriate key if different
+print(f"Ground truth data loaded: {features_truth.shape}")
+
+# Combine data into a single features array with labels
+# Assign labels: 1 for generated data, 0 for ground truth data
+features = np.concatenate((features_generated, features_truth), axis=0)
+labels = np.concatenate((np.ones(len(features_generated)), np.zeros(len(features_truth))))
+
+# At this point, features contain the combined data, and labels distinguish generated (1) and ground truth (0)
 ############ end load data
 
 ######## standardizes data
