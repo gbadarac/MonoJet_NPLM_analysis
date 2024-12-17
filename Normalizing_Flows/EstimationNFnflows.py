@@ -277,8 +277,8 @@ os.makedirs(args.outdir, exist_ok=True)
 plt.scatter(prior[:, 0], prior[:, 1], color='gray', label='Base/Prior distribution')
 plt.scatter(bkg_coord_scaled[:10000, 0], bkg_coord_scaled[:10000, 1], color='blue', label='Background/Target distribution')
 plt.scatter(trained[:, 0], trained[:, 1], color='green', label='Trained distribution')
-plt.xlabel("Latent b-tagging score")
-plt.ylabel("Scaled Energy")
+plt.xlabel("b-tag score (normalized)")
+plt.ylabel("Energy (normalized)")
 plt.legend(loc='upper right',fontsize=16)
 
 # Display hidden_features, num_blocks, and KL divergence in the plot
@@ -403,5 +403,5 @@ def plot_marginals(target, trained, feature_names, outdir, scaler):
         plt.close()
 
 # Call the function with the necessary arguments
-feature_names = ["b-tagging score", "Energy [GeV]"]
+feature_names = ["b-tag score", "Energy [GeV]"]
 plot_marginals(bkg_coord_scaled[:10000], trained, feature_names, args.outdir, scaler)
