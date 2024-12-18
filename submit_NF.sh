@@ -11,7 +11,7 @@
 #SBATCH --mem=64G                               # Request 32GB of memory
 
 # Load required modules or activate conda environment if necessary
-source /t3home/gbadarac/miniforge3/bin/activate my_project  # Modify this line to match your setup
+source /work/gbadarac/envs/my_project/bin/activate my_project  # Modify this line to match your setup
 
 # Default parameters for your normalizing flow training
 n_epochs=1001
