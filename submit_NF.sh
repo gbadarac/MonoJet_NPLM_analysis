@@ -27,7 +27,6 @@ num_layers=4
 #job_outdir=${outdir}/job_${num_layers}_layers_${num_blocks}_transformations_${hidden_features}_neurons_${num_bins}_bins_${SLURM_JOB_ID}
 job_outdir=${outdir}/job_${num_layers}_${num_blocks}_${hidden_features}_${num_bins}_best_model_${SLURM_JOB_ID}
 
-
 echo ${job_outdir}
 mkdir -p ${job_outdir}  # Ensure the output directory exists
 
