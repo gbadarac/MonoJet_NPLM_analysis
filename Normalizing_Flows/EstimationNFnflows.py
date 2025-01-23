@@ -81,12 +81,9 @@ base_distribution = distributions.StandardNormal(shape=(num_features,))
 # Sample points from the base distribution
 prior = base_distribution.sample(10000).numpy()  # Sample 10000 points with 2 features each
 
-
 # Shift the prior distribution to ensure all values are positive
 shift_prior = -prior[:, 1].min() + 1e-6  # Add a small constant to avoid zero values
 prior[:, 1] += shift_prior  # Apply the shift to the energy feature
-
-
 
 #Normalizing flow model:
 # Set up simple normalizing flow with arbitrary inputs and outputs just to test 
