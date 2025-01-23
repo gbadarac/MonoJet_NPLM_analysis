@@ -4,6 +4,8 @@ from FLKutils import *
 from SampleUtils import *
 
 # give a name to each model and provide a path to where the model's prediction for bkg and signal classes are stored
+#DO I HAVE TO KEEP THE MANIFOLD PARSER? I THINK THAT FOR NOW I DON'T HAVE SO MANY MODELS TO COMPARE, BUT MAYBE I WILL IN THE FUTURE 
+#different normalizing flows, path dei modelli generati 
 folders = {
     'r_2': '/n/home11/nswood/NonE_AD/AE_PM_Contrastive/r_2/plots/',
     'r_4': '/n/home11/nswood/NonE_AD/AE_PM_Contrastive/r_4/plots/',
@@ -13,21 +15,29 @@ folders = {
     'r_8_h_8': '/n/home11/nswood/NonE_AD/AE_PM_Contrastive/r_8_h_8/plots/',
 }
 
+
 parser = argparse.ArgumentParser()
 parser.add_argument('-m', '--manifold', type=str, help="manifold type (must be in folders.keys())", required=True)
 parser.add_argument('-s', '--signal', type=int, help="signal (number of signal events)", required=True)
-parser.add_argument('-b', '--background', type=int, help="background (number of background events)", required=True)
-parser.add_argument('-r', '--reference', type=int, help="reference (number of reference events, must be larger than background)", required=True)
+parser.add_argument('-b', '--background', type=int, help="background (number of background events)", required=True) #generated distribution (signal e bkg insieme)
+parser.add_argument('-r', '--reference', type=int, help="reference (number of reference events, must be larger than background)", required=True) #target distribution 
 parser.add_argument('-t', '--toys', type=int, help="toys", required=True)
 parser.add_argument('-l', '--signalclass', type=int, help="class number identifying the signal", required=True)
 args = parser.parse_args()
+#calibration parameter: if calibration==True -> ground truth vs ground truth, else: groundtruth vs generated distribution 
 
+#posso copiare la target qui dal codice del normalizing flow 
+
+#TO REMOVE: SIGNALCLASS ? yes
+
+#parser arguments 
 manifold = args.manifold
 
 N_ref = args.reference
 N_bkg = args.background
 N_sig = args.signal
 w_ref = N_bkg*1./N_ref
+
 
 # class number identifying the signal
 sig_labels=[args.signalclass]
@@ -43,6 +53,7 @@ Ntoys = args.toys
 
 # details about the save path
 folder_out = '/n/home00/ggrosso/NonE_AD/NPLM/out/'
+#folder_out = '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_outputs'
 sig_string = ''
 if N_sig:
     sig_string+='_SIG'
@@ -53,10 +64,21 @@ NP = '%s%s_NR%i_NB%i_NS%i_M%i_lam%s_iter%i/'%(manifold, sig_string, N_ref, N_bkg
 if not os.path.exists(folder_out+NP):
     os.makedirs(folder_out+NP)
 
-'''
 ############ begin load data
 # This part needs to be modified according to how the predictions of your model are stored.
 # Here the predictions are saved in npz files
+
+#caricare best model e poi generare dati con il normalizing flow
+
+'''
+flow.load_state_dict(torch.load(model_path, weights_only=True))
+flow.eval()  # Set the model to evaluation mode
+print("Best model loaded successfully.")
+    
+# Sample points from the trained flow
+trained = flow.sample(10000).detach().numpy()
+'''
+
 print('Load data')
 geom_list = ['Euclidean', 'PoincareBall']
 data= {}
@@ -86,32 +108,7 @@ for bkg_label in bkg_labels:
 features_SIG = features[mask_SIG>0]
 features_BKG = features[mask_BKG>0]
 ############ end load data
-'''
-############ begin load data
-# Modified to load generated data and ground truth data instead of signal and background
-print('Load data')
 
-# Assuming you have two folders or files: one for generated data and one for ground truth data
-generated_data_path = folders[manifold] + '/generated_data.npz'  # Path to generated data
-ground_truth_data_path = folders[manifold] + '/ground_truth_data.npz'  # Path to ground truth data
-
-# Load generated data
-generated_data = np.load(generated_data_path)
-features_generated = generated_data['latent']  # Replace 'latent' with the appropriate key if different
-print(f"Generated data loaded: {features_generated.shape}")
-
-# Load ground truth data
-ground_truth_data = np.load(ground_truth_data_path)
-features_truth = ground_truth_data['latent']  # Replace 'latent' with the appropriate key if different
-print(f"Ground truth data loaded: {features_truth.shape}")
-
-# Combine data into a single features array with labels
-# Assign labels: 1 for generated data, 0 for ground truth data
-features = np.concatenate((features_generated, features_truth), axis=0)
-labels = np.concatenate((np.ones(len(features_generated)), np.zeros(len(features_truth))))
-
-# At this point, features contain the combined data, and labels distinguish generated (1) and ground truth (0)
-############ end load data
 
 ######## standardizes data
 print('standardize')

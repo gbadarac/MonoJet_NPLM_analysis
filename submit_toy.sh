@@ -10,5 +10,6 @@
 # load modules                                                                                                    
 module load python/3.10.9-fasrc01
 module load cuda/11.8.0-fasrc01
+
 # run code                                                                                                        
-python toy.py -m h_4 -s 0 -b 10000 -r 50000 -t 100 -l 5
+python toy.py -m h_4 -s 0 -b 2000 -r 10000 -t 100 -l 5
