@@ -154,6 +154,7 @@ def plot_reconstruction(data, weight_data, ref, weight_ref, ref_preds, xlabels=[
         plt.yticks(fontsize=16, fontname='serif')
         plt.xticks(fontsize=16, fontname='serif')
         plt.xlim(bins[0], bins[-1])
+        plt.ylim(0, 2)
 
         if len(xlabels):
             if not yrange==None and len(xlabels)>0:
