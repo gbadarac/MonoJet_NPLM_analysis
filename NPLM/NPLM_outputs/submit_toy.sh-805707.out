@@ -1,0 +1,134 @@
+CUDA version detected: 11.8
+Output directory set to: /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_outputs/comparison/best_model_NR10000_NG2000_M10000_lam1e-6_iter1000000_job805707/
+Load data
+Best model loaded successfully.
+standardize
+Mean: [-0.00559339  0.98924637]
+Std Dev: [0.9952954 0.9847014]
+flk_sigma 3.0
+Start running toys
+Plotting iteration 0
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+toy 245188
+---LRT = 9.93218994140625
+---Time = 22.0 sec
+	
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Plotting iteration 20
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+toy 245208
+---LRT = 12.659960937500003
+---Time = 5.4 sec
+	
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Plotting iteration 40
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+toy 245228
+---LRT = 18.84179992675781
+---Time = 6.44 sec
+	
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Plotting iteration 60
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+toy 245248
+---LRT = 14.288905334472645
+---Time = 5.39 sec
+	
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Plotting iteration 80
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+toy 245268
+---LRT = 26.262155151367196
+---Time = 6.42 sec
+	
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
+Iteration 0 - penalty 1.000000e-06 - sub-iterations 1000000
