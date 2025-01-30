@@ -4,9 +4,9 @@
 #SBATCH -t 0-01:00           # Runtime in D-HH:MM, minimum of 10 minutes                                          
 #SBATCH -p gpu          # Partition to submit to     
 #SBATCH --account=gpu_gres                      # Account to access GPU resources
-#SBATCH --mem=20000           # Memory pool for all cores (see also --mem-per-cpu)                                 
-#SBATCH -o toy_myoutput_%j.out  # File to which STDOUT will be written, %j inserts jobid            
-#SBATCH -e toy_myerrors_%j.err  # File to which STDERR will be written, %j inserts jobid      
+#SBATCH --mem=20000           # Memory pool for all cores (see also --mem-per-cpu) 
+#SBATCH -o /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_outputs/%x-%j.out  # SLURM output file path
+#SBATCH -e /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_outputs/%x-%j.err  # SLURM error file path
 
 # Set the LD_LIBRARY_PATH to include the directory with libcusolver.so.11
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/t3home/gbadarac/miniforge3/envs/nplm_env/lib/
@@ -23,5 +23,14 @@ export CUDA_HOME=/usr/local/cuda-$CUDA_PATH  # Dynamically set CUDA path based o
 export PATH=$CUDA_HOME/bin:$PATH
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 
-# Run your Python script                                                                                                        
-python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM-embedding/toy.py -m best_model -g 2000 -r 10000 -t 100 -c True
+# Define the output directory for results
+CALIBRATION=True  # Change this if needed
+
+# Run the Python script
+python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM-embedding/toy.py -m best_model -g 2000 -r 10000 -t 100 -c $CALIBRATION
+
+
+
+
+
+

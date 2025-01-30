@@ -7,12 +7,15 @@ import scipy.stats
 from scipy.stats import rel_breitwigner
 import torch
 import os
+import argparse
 from nflows import distributions, flows, transforms
 from nflows.transforms.autoregressive import MaskedPiecewiseRationalQuadraticAutoregressiveTransform
 from nflows.transforms.permutations import ReversePermutation
 from nflows.transforms.base import CompositeTransform
 from nflows.flows import Flow
 import matplotlib.pyplot as plt
+import sys
+
 
 # give a name to each model and provide a path to where the model's prediction for bkg and signal classes are stored
 #different normalizing flows, path dei modelli generati 
@@ -25,7 +28,7 @@ parser.add_argument('-m', '--manifold', type=str, help="manifold type (must be i
 parser.add_argument('-g', '--generated', type=int, help="generated distribution (number of generated events)", required=True) #generated distribution (signal e bkg insieme)
 parser.add_argument('-r', '--reference', type=int, help="reference (number of reference events, must be larger than background)", required=True) #target distribution 
 parser.add_argument('-t', '--toys', type=int, help="toys", required=True)
-parser.add_argument('-c', '--calibration', type=str, help="calibration", required=True)
+parser.add_argument("-c", "--calibration", type=str, default="True", help="Enable calibration mode (True/False)")
 args = parser.parse_args()
 
 #parser arguments 
@@ -35,7 +38,8 @@ N_ref = args.reference
 N_generated = args.generated
 w_ref = N_generated*1./N_ref
 
-calibration = args.calibration
+# Convert string to boolean
+calibration = args.calibration.lower() == "true"
 
 #GROUND TRUTH DISTRIBTION
 # Generate background and signal data
@@ -76,18 +80,25 @@ lam =1e-6
 iterations=1000000
 Ntoys = args.toys
 
-# details about the save path
-if calibration == True:
+## Get SLURM job ID
+job_id = os.getenv('SLURM_JOB_ID', 'local')
+
+# Define output folder based on calibration flag
+if calibration:
     folder_out = '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_outputs/calibration/'
 else:
     folder_out = '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_outputs/comparison/'
-    
-string = ''
-NP = '%s%s_NR%i_NG%i_M%i_lam%s_iter%i/'%(manifold, string, N_ref, N_generated,
-                                                  M, str(lam), iterations)
-if not os.path.exists(folder_out+NP):
-    os.makedirs(folder_out+NP)
 
+# Create unique job directory
+job_dir = f"{args.manifold}_NR{args.reference}_NG{args.generated}_M10000_lam1e-6_iter1000000_job{job_id}/"
+output_dir = os.path.join(folder_out, job_dir)
+os.makedirs(output_dir, exist_ok=True)
+
+# Save path for SLURM script to environment
+os.environ['SLURM_OUTPUT_DIR'] = output_dir
+
+# Print the directory path for debugging
+print(f"Output directory set to: {output_dir}")
 ############ begin load data
 
 # NORMALIZING FLOW GENERATED DISTRIBUTION
@@ -130,29 +141,21 @@ flow.load_state_dict(torch.load(model_path, weights_only=True))
 flow.eval()  # Set the model to evaluation mode
 
 print("Best model loaded successfully.")
-    
-# Sample points from the trained flow
-generated = flow.sample(N_generated).detach().numpy()
 ############ end load data
-
-if calibration == True:
-    data = torch.from_numpy(bkg_coord_scaled[:N_generated]) #reference distribution but sample N_generated events and not N_reference
-else:
-    data = generated
     
 ######## standardizes data
 
-##USE REFERENCE HERE AND MOVE CALIBRATION THING IN THE LOOP 
 print('standardize')
-features_mean, features_std = np.mean(data, axis=0), np.std(data, axis=0)
+reference_np=reference.numpy()  # Convert
+features_mean, features_std = np.mean(reference_np, axis=0), np.std(reference_np, axis=0)
 print('Mean:', features_mean)
 print('Std Dev:', features_std)
 
-features_data=standardize(data, features_mean, features_std)
+features=standardize(reference_np, features_mean, features_std)
 
 #### compute sigma hyper parameter from data
 #### (This doesn't need modifications)
-flk_sigma = candidate_sigma(features_data[:2000, :], perc=flk_sigma_perc)
+flk_sigma = candidate_sigma(reference[:2000, :], perc=flk_sigma_perc)
 print('flk_sigma', flk_sigma)
 
 # run toys
@@ -166,13 +169,15 @@ for i in range(Ntoys):
     
     # Ensure that N_generated_p + N_ref is a valid sample size
     num_samples = int(N_generated_p + N_ref)
-
-    # Directly sample from the trained normalizing flow instead of using features_data
     
-    generated_data = flow.sample(num_samples).detach().numpy()  # Sample from the normalizing flow
-    generated_data = np.float32(generated_data)  # Ensure generated data is a float32 numpy array
+    if calibration:
+        data = torch.from_numpy(bkg_coord_scaled[:num_samples]) #reference distribution but sample N_generated events and not N_reference
+    else:
+        # Sample points from the trained flow
+        data = flow.sample(num_samples).detach().numpy()
+        
+    data = np.float32(data)  # Ensure generated data is a float32 numpy arra    
 
-    
     # Separate signal and background for labels
     label_R = np.zeros((N_ref,))  # Reference (background)
     label_D = np.ones((N_generated_p,))  # Generated (signal)
@@ -187,7 +192,7 @@ for i in range(Ntoys):
         print(f"Plotting iteration {i}")
         
     # Convert labels to the same dtype as generated_data (in case it's NumPy and generated_data is Tensor)
-    if isinstance(generated_data, np.ndarray):
+    if isinstance(data, np.ndarray):
         labels = np.asarray(labels, dtype=np.float32)  # Ensure labels are also numpy arrays of float32
         
     flk_config = get_logflk_config(M, flk_sigma, [lam], weight=w_ref, iter=[iterations], seed=None, cpu=False)
@@ -199,25 +204,28 @@ for i in range(Ntoys):
     xlabels = xlabels if xlabels is not None else ['Feature {}'.format(i) for i in range(10)]  # Adjust 10 to match your number of features
     
     # Pass generated data tensor to run_toy
-    t, pred = run_toy(manifold, generated_data, labels, weight=w_ref, seed=seed,
-                      flk_config=flk_config, output_path='./', plot=plot_reco, savefig=plot_reco,
+    t, pred = run_toy(manifold, data, labels, weight=w_ref, seed=seed,
+                      flk_config=flk_config, output_path=output_dir, plot=plot_reco, savefig=plot_reco,
                       verbose=verbose, xlabels=xlabels)
     ts = np.append(ts, t)
 
-# collect previous toys if existing
-seeds_past = np.array([])
-ts_past = np.array([])
-if os.path.exists('%s/%s/tvalues_flksigma%s.h5' % (folder_out, NP, flk_sigma)):
-    print('collecting previous tvalues')
-    f = h5py.File('%s/%s/tvalues_flksigma%s.h5' % (folder_out, NP, flk_sigma), 'r')
-    seeds_past = np.array(f.get('seed_toy'))
-    ts_past = np.array(f.get(str(flk_sigma)))
-    f.close()
+# Collect previous toys if they exist
+seeds_past, ts_past = np.array([]), np.array([])
 
+# Update path to use output_dir
+h5_file_path = os.path.join(output_dir, f'tvalues_flksigma{flk_sigma}.h5')  # Cleaner path definition
+
+if os.path.exists(h5_file_path):
+    print('Collecting previous t-values')
+    with h5py.File(h5_file_path, 'r') as f:
+        seeds_past = np.array(f.get('seed_toy'))
+        ts_past = np.array(f.get(str(flk_sigma)))
+
+# Append past values to current results
 ts = np.append(ts_past, ts)
 seeds = np.append(seeds_past, seeds)
 
-f = h5py.File('%s/%s/tvalues_flksigma%s.h5' % (folder_out, NP, flk_sigma), 'w')
-f.create_dataset(str(flk_sigma), data=ts, compression='gzip')
-f.create_dataset('seed_toy', data=seeds, compression='gzip')
-f.close()
+# Save updated results
+with h5py.File(h5_file_path, 'w') as f:
+    f.create_dataset(str(flk_sigma), data=ts, compression='gzip')
+    f.create_dataset('seed_toy', data=seeds, compression='gzip')
