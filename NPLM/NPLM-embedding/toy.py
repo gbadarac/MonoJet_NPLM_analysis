@@ -6,8 +6,6 @@ from sklearn.preprocessing import StandardScaler
 import scipy.stats
 from scipy.stats import rel_breitwigner
 import torch
-import os
-import argparse
 from nflows import distributions, flows, transforms
 from nflows.transforms.autoregressive import MaskedPiecewiseRationalQuadraticAutoregressiveTransform
 from nflows.transforms.permutations import ReversePermutation
@@ -16,9 +14,7 @@ from nflows.flows import Flow
 import matplotlib.pyplot as plt
 import sys
 
-
 # give a name to each model and provide a path to where the model's prediction for bkg and signal classes are stored
-#different normalizing flows, path dei modelli generati 
 folders = {
     'best_model': '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_outputs/job_4_6_50_10_best_model_419803',
 }
@@ -74,7 +70,7 @@ bkg_coord_scaled = bkg_coord_scaled.astype('float32')
 reference = torch.as_tensor(bkg_coord_scaled[:N_ref], dtype=torch.float32)
 
 # hyper parameters of the model
-M=10000
+M=500
 flk_sigma_perc=90 #%
 lam =1e-6
 iterations=1000000
@@ -91,12 +87,15 @@ else:
 
 # Create unique job directory
 job_id = os.getenv('SLURM_JOB_ID', 'local')
-job_dir = f"{args.manifold}_NR{args.reference}_NG{args.generated}_M10000_lam1e-6_iter1000000_job{job_id}/"
+job_dir = f"{args.manifold}_NR{args.reference}_NG{args.generated}_M500_lam1e-6_iter1000000_job{job_id}/"
 output_dir = os.path.join(folder_out, job_dir)
 os.makedirs(output_dir, exist_ok=True)
 
 # Export output directory path for SLURM script to access
 os.environ['SLURM_OUTPUT_DIR'] = output_dir
+
+# Print the directory path for debugging
+print(f"Output directory set to: {output_dir}")
 
 ############ begin load data
 
