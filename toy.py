@@ -90,15 +90,14 @@ else:
     folder_out = '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_outputs/comparison/'
 
 # Create unique job directory
+job_id = os.getenv('SLURM_JOB_ID', 'local')
 job_dir = f"{args.manifold}_NR{args.reference}_NG{args.generated}_M10000_lam1e-6_iter1000000_job{job_id}/"
 output_dir = os.path.join(folder_out, job_dir)
 os.makedirs(output_dir, exist_ok=True)
 
-# Save path for SLURM script to environment
+# Export output directory path for SLURM script to access
 os.environ['SLURM_OUTPUT_DIR'] = output_dir
 
-# Print the directory path for debugging
-print(f"Output directory set to: {output_dir}")
 ############ begin load data
 
 # NORMALIZING FLOW GENERATED DISTRIBUTION
@@ -144,18 +143,9 @@ print("Best model loaded successfully.")
 ############ end load data
     
 ######## standardizes data
-
-print('standardize')
-reference_np=reference.numpy()  # Convert
-features_mean, features_std = np.mean(reference_np, axis=0), np.std(reference_np, axis=0)
-print('Mean:', features_mean)
-print('Std Dev:', features_std)
-
-features=standardize(reference_np, features_mean, features_std)
-
 #### compute sigma hyper parameter from data
-#### (This doesn't need modifications)
-flk_sigma = candidate_sigma(reference[:2000, :], perc=flk_sigma_perc)
+
+flk_sigma = candidate_sigma(bkg_coord_scaled[:2000, :], perc=flk_sigma_perc)
 print('flk_sigma', flk_sigma)
 
 # run toys
@@ -168,13 +158,16 @@ for i in range(Ntoys):
     N_generated_p = rng.poisson(lam=N_generated, size=1)[0]
     
     # Ensure that N_generated_p + N_ref is a valid sample size
+    N_generated_p = int(N_generated_p)
     num_samples = int(N_generated_p + N_ref)
     
     if calibration:
         data = torch.from_numpy(bkg_coord_scaled[:num_samples]) #reference distribution but sample N_generated events and not N_reference
     else:
         # Sample points from the trained flow
-        data = flow.sample(num_samples).detach().numpy()
+        ref = torch.from_numpy(bkg_coord_scaled[:N_ref])
+        data = flow.sample(N_generated_p).detach().numpy()
+        data = np.concatenate((data, ref), axis=0)
         
     data = np.float32(data)  # Ensure generated data is a float32 numpy arra    
 
