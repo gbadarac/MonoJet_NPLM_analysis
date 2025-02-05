@@ -1,0 +1,2 @@
+CUDA version detected: 11.8
+SLURM_OUTPUT_DIR is set to: /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_outputs/comparison/best_model_NR10000_NG2000_M500_lam1e-6_iter1000000_job985794/
