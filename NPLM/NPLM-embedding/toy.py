@@ -70,7 +70,7 @@ bkg_coord_scaled = bkg_coord_scaled.astype('float32')
 reference = torch.as_tensor(bkg_coord_scaled[:N_ref], dtype=torch.float32)
 
 # hyper parameters of the model
-M=500
+M=1400 #to change deoending on the number od samples, could be added in the parser arguments
 flk_sigma_perc=90 #%
 lam =1e-6
 iterations=1000000
@@ -87,7 +87,7 @@ else:
 
 # Create unique job directory
 job_id = os.getenv('SLURM_JOB_ID', 'local')
-job_dir = f"{args.manifold}_NR{args.reference}_NG{args.generated}_M500_lam1e-6_iter1000000_job{job_id}/"
+job_dir = f"{args.manifold}_NR{args.reference}_NG{args.generated}_M1400_lam1e-6_iter1000000_job{job_id}/"
 output_dir = os.path.join(folder_out, job_dir)
 os.makedirs(output_dir, exist_ok=True)
 
@@ -159,6 +159,9 @@ for i in range(Ntoys):
     # Ensure that N_generated_p + N_ref is a valid sample size
     N_generated_p = int(N_generated_p)
     num_samples = int(N_generated_p + N_ref)
+    
+    # Shuffle bkg_coord_scaled at the beginning of each iteration
+    np.random.shuffle(bkg_coord_scaled)
     
     if calibration:
         data = torch.from_numpy(bkg_coord_scaled[:num_samples]) #reference distribution but sample N_generated events and not N_reference
