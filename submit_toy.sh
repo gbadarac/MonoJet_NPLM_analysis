@@ -27,7 +27,7 @@ export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 CALIBRATION=True  # Change this if needed
 
 # Run the Python script and capture its output
-PYTHON_OUTPUT=$(python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM-embedding/toy.py -m best_model -g 2000 -r 10000 -t 100 -c $CALIBRATION)
+PYTHON_OUTPUT=$(python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM-embedding/toy.py -m best_model -g 20000 -r 100000 -t 100 -c $CALIBRATION)
 
 # Extract the SLURM_OUTPUT_DIR from the Python script output
 SLURM_OUTPUT_DIR=$(echo "$PYTHON_OUTPUT" | grep "Output directory set to:" | awk -F': ' '{print $2}')
