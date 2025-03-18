@@ -11,6 +11,8 @@ from nflows.transforms.autoregressive import MaskedPiecewiseRationalQuadraticAut
 from nflows.transforms.permutations import ReversePermutation
 from nflows.transforms.base import CompositeTransform
 from nflows.flows import Flow
+import matplotlib
+matplotlib.use('Agg')  # Set backend before importing pyplot
 import matplotlib.pyplot as plt
 import sys
 
@@ -25,6 +27,7 @@ parser.add_argument('-g', '--generated', type=int, help="generated distribution 
 parser.add_argument('-r', '--reference', type=int, help="reference (number of reference events, must be larger than background)", required=True) #target distribution 
 parser.add_argument('-t', '--toys', type=int, help="toys", required=True)
 parser.add_argument("-c", "--calibration", type=str, default="True", help="Enable calibration mode (True/False)")
+parser.add_argument('-M', '--M', type=int, help="Effective number of samples used for configuring the log-likelihood estimation (should be selected based on the dataset size to optimize performance)", required=True)
 args = parser.parse_args()
 
 #parser arguments 
@@ -32,7 +35,6 @@ manifold = args.manifold
 
 N_ref = args.reference
 N_generated = args.generated
-w_ref = N_generated*1./N_ref
 
 # Convert string to boolean
 calibration = args.calibration.lower() == "true"
@@ -70,7 +72,7 @@ bkg_coord_scaled = bkg_coord_scaled.astype('float32')
 reference = torch.as_tensor(bkg_coord_scaled[:N_ref], dtype=torch.float32)
 
 # hyper parameters of the model
-M=1400 #to change deoending on the number od samples, could be added in the parser arguments
+M=args.M
 flk_sigma_perc=90 #%
 lam =1e-6
 iterations=1000000
@@ -87,7 +89,7 @@ else:
 
 # Create unique job directory
 job_id = os.getenv('SLURM_JOB_ID', 'local')
-job_dir = f"{args.manifold}_NR{args.reference}_NG{args.generated}_M1400_lam1e-6_iter1000000_job{job_id}/"
+job_dir = f"{args.manifold}_NR{args.reference}_NG{args.generated}_M{M}_lam1e-6_iter1000000_job{job_id}/"
 output_dir = os.path.join(folder_out, job_dir)
 os.makedirs(output_dir, exist_ok=True)
 
@@ -149,60 +151,90 @@ print('flk_sigma', flk_sigma)
 
 # run toys
 print('Start running toys')
-ts = np.array([])
-seeds = np.arange(Ntoys) + datetime.datetime.now().microsecond + datetime.datetime.now().second + datetime.datetime.now().minute
+ts_list = []  # Use a list to accumulate t-values
+
+# Pre-calculate seeds (this creates an array of seeds based on the current time)
+seeds = (np.arange(Ntoys) + datetime.datetime.now().microsecond +
+         datetime.datetime.now().second + datetime.datetime.now().minute)
+
 for i in range(Ntoys):
-    seed = seeds[i]
+    seed = int(seeds[i])
     rng = np.random.default_rng(seed=seed)
-    N_generated_p = rng.poisson(lam=N_generated, size=1)[0]
-    
-    # Ensure that N_generated_p + N_ref is a valid sample size
-    N_generated_p = int(N_generated_p)
+    N_generated_p = int(rng.poisson(lam=N_generated, size=1)[0])
     num_samples = int(N_generated_p + N_ref)
-    
-    # Shuffle bkg_coord_scaled at the beginning of each iteration
+
+    # Shuffle background data at the beginning of each iteration (if needed)
     np.random.shuffle(bkg_coord_scaled)
-    
+
     if calibration:
-        data = torch.from_numpy(bkg_coord_scaled[:num_samples]) #reference distribution but sample N_generated events and not N_reference
+        data = torch.from_numpy(bkg_coord_scaled[:num_samples])
+        label_D = np.ones(N_generated_p, dtype=np.float32)
+        label_R = np.zeros(N_ref, dtype=np.float32)
+        w_ref = N_generated_p / N_ref  # Reference weight
     else:
         # Sample points from the trained flow
         ref = torch.from_numpy(bkg_coord_scaled[:N_ref])
-        data = flow.sample(N_generated_p).detach().numpy()
-        data = np.concatenate((data, ref), axis=0)
-        
-    data = np.float32(data)  # Ensure generated data is a float32 numpy arra    
+        data_gen = flow.sample(N_generated_p).detach().numpy()
 
-    # Separate signal and background for labels
-    label_R = np.zeros((N_ref,))  # Reference (background)
-    label_D = np.ones((N_generated_p,))  # Generated (signal)
-    labels = np.concatenate((label_D, label_R), axis=0)
+        # Define a mask for Feature 0 (b-tagging score) to retain only events in the desired range
+        mask_feature_0 = (data_gen[:, 0] >= -1.5) & (data_gen[:, 0] <= 1.5)
 
-    # Optionally plot every 20 toys (can be adjusted)
-    plot_reco = False
-    verbose = False
-    if not i % 20:
-        plot_reco = True
-        verbose = True
+        # Define a mask for Feature 1 (energy) to remove extreme outliers
+        energy_min_scaled = data_gen[:, 1].min()  # Keep all values above the current minimum
+        energy_max_scaled = np.percentile(data_gen[:, 1], 99.9)  # Remove only extreme high-energy outliers
+        mask_feature_1 = (data_gen[:, 1] >= energy_min_scaled) & (data_gen[:, 1] <= energy_max_scaled)
+
+        # Combine both masks (logical AND)
+        combined_mask = mask_feature_0 & mask_feature_1
+
+        # Apply the combined mask to filter the generated sample
+        data_gen_filtered = data_gen[combined_mask]
+        num_gen_filtered = data_gen_filtered.shape[0]
+
+        # Apply the same masking criteria to the reference distribution
+        mask_ref_feature_0 = (ref[:, 0] >= -1.5) & (ref[:, 0] <= 1.5)
+        mask_ref_feature_1 = (ref[:, 1] >= energy_min_scaled) & (ref[:, 1] <= energy_max_scaled)
+        combined_mask_ref = mask_ref_feature_0 & mask_ref_feature_1
+
+        ref_filtered = ref[combined_mask_ref]
+        num_ref_filtered = ref_filtered.shape[0]
+
+        # Combine the filtered generated data with the filtered reference data
+        data = np.concatenate((data_gen_filtered, ref_filtered), axis=0)
+
+        # Create labels corresponding to the filtered generated data and reference data
+        label_D = np.ones(num_gen_filtered, dtype=np.float32)  # "Generated" labels
+        label_R = np.zeros(num_ref_filtered, dtype=np.float32)
+
+        # Recalculate the reference weight based on the filtered reference samples
+        w_ref = num_gen_filtered / num_ref_filtered if num_ref_filtered > 0 else 1.0  # Avoid division by zero
+  
+
+    # Convert to float32
+    labels = np.concatenate((label_D, label_R), axis=0).astype(np.float32)
+    
+    data = np.float32(data)
+
+    # Enable plotting every 20 iterations
+    plot_reco = (i % 20 == 0)
+    verbose = plot_reco
+    if verbose:
         print(f"Plotting iteration {i}")
-        
-    # Convert labels to the same dtype as generated_data (in case it's NumPy and generated_data is Tensor)
-    if isinstance(data, np.ndarray):
-        labels = np.asarray(labels, dtype=np.float32)  # Ensure labels are also numpy arrays of float32
-        
+
+    # Get FLK configuration
     flk_config = get_logflk_config(M, flk_sigma, [lam], weight=w_ref, iter=[iterations], seed=None, cpu=False)
-    
-    # Initialize xlabels if it's not already defined elsewhere
-    xlabels = locals().get('xlabels', None)  # Check if xlabels exists in the local scope, else return None
-    
-    # Ensure xlabels is initialized
-    xlabels = xlabels if xlabels is not None else ['Feature {}'.format(i) for i in range(10)]  # Adjust 10 to match your number of features
-    
-    # Pass generated data tensor to run_toy
+
+    # Set xlabels
+    xlabels = locals().get('xlabels', ['Feature {}'.format(j) for j in range(10)])
+
+    # Run the toy experiment
     t, pred = run_toy(manifold, data, labels, weight=w_ref, seed=seed,
                       flk_config=flk_config, output_path=output_dir, plot=plot_reco, savefig=plot_reco,
                       verbose=verbose, xlabels=xlabels)
-    ts = np.append(ts, t)
+
+    ts_list.append(t)
+
+
 
 # Collect previous toys if they exist
 seeds_past, ts_past = np.array([]), np.array([])
@@ -217,7 +249,7 @@ if os.path.exists(h5_file_path):
         ts_past = np.array(f.get(str(flk_sigma)))
 
 # Append past values to current results
-ts = np.append(ts_past, ts)
+ts = np.append(ts_past, ts_list)
 seeds = np.append(seeds_past, seeds)
 
 # Save updated results

@@ -5,8 +5,8 @@
 #SBATCH -p gpu               # Partition to submit to     
 #SBATCH --account=gpu_gres   # Account to access GPU resources
 #SBATCH --mem=20000          # Memory pool for all cores (see also --mem-per-cpu)
-#SBATCH -o /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_outputs/%x-%j.out  # SLURM output file path
-#SBATCH -e /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_outputs/%x-%j.err  # SLURM error file path
+#SBATCH -o /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_outputs/logs/%x-%j.out  # Keep logs in 'logs'
+#SBATCH -e /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_outputs/logs/%x-%j.err  # Keep error logs in 'logs'
 
 # Set the LD_LIBRARY_PATH to include the directory with libcusolver.so.11
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/t3home/gbadarac/miniforge3/envs/nplm_env/lib/
@@ -27,26 +27,18 @@ export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 CALIBRATION=True  # Change this if needed
 
 # Run the Python script and capture its output
-PYTHON_OUTPUT=$(python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM-embedding/toy.py -m best_model -g 20000 -r 100000 -t 100 -c $CALIBRATION)
+TEMP_LOG=/tmp/py_output_$SLURM_JOB_ID.log
+python -u /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM-embedding/toy.py -m best_model -g 20000 -r 100000 -t 100 -c $CALIBRATION -M 1400 | tee $TEMP_LOG
+PYTHON_OUTPUT=$(cat $TEMP_LOG)
 
 # Extract the SLURM_OUTPUT_DIR from the Python script output
 SLURM_OUTPUT_DIR=$(echo "$PYTHON_OUTPUT" | grep "Output directory set to:" | awk -F': ' '{print $2}')
+echo "Extracted SLURM_OUTPUT_DIR: $SLURM_OUTPUT_DIR"
 
-# Debug statement to check if SLURM_OUTPUT_DIR is set
-echo "SLURM_OUTPUT_DIR is set to: $SLURM_OUTPUT_DIR"
+# Remove temporary log file (not needed anymore)
+rm -f "$TEMP_LOG"
 
-# Capture the job name and job ID
-JOB_NAME=${SLURM_JOB_NAME}
-JOB_ID=${SLURM_JOB_ID}
+# Ensure the output directory exists
+mkdir -p "$SLURM_OUTPUT_DIR"
 
-# Define the SLURM output file paths
-OUT_FILE_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_outputs/${JOB_NAME}-${JOB_ID}.out"
-ERR_FILE_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_outputs/${JOB_NAME}-${JOB_ID}.err"
-
-# Move the .out and .err files to the output directory if SLURM_OUTPUT_DIR is set
-if [ -n "$SLURM_OUTPUT_DIR" ]; then
-    mv "$OUT_FILE_PATH" "$SLURM_OUTPUT_DIR"
-    mv "$ERR_FILE_PATH" "$SLURM_OUTPUT_DIR"
-else
-    echo "SLURM_OUTPUT_DIR is not set. Skipping file move."
-fi
+echo "Job completed. Outputs stored in $SLURM_OUTPUT_DIR"

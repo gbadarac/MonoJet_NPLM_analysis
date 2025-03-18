@@ -164,7 +164,6 @@ def plot_reconstruction(data, weight_data, ref, weight_ref, ref_preds, xlabels=[
             os.makedirs(save_path, exist_ok=True)
             #fig.savefig(save_path+file_name.replace('.pdf', '_%i.pdf'%(i)))
             fig.savefig(save_path+file_name.replace('.pdf', '_%i.png'%(i)))
-        plt.show()
         plt.close()
     return
 
