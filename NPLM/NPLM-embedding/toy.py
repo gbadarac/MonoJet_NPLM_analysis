@@ -235,7 +235,6 @@ for i in range(Ntoys):
     ts_list.append(t)
 
 
-
 # Collect previous toys if they exist
 seeds_past, ts_past = np.array([]), np.array([])
 
