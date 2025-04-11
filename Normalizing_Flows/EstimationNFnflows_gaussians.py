@@ -7,7 +7,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import mplhep as hep
 import scipy.stats
-from scipy.stats import rel_breitwigner
 import torch
 import os
 import argparse
@@ -15,7 +14,6 @@ import sklearn
 #instead of manually defining bijectors and distributions, 
 #import necessary components from nflows
 from sklearn.preprocessing import StandardScaler
-
 from nflows.distributions.normal import StandardNormal
 from nflows import distributions, flows, transforms
 import nflows.transforms as transforms
@@ -23,11 +21,9 @@ from nflows.flows import Flow
 from nflows.transforms.base import CompositeTransform
 from nflows.transforms.autoregressive import MaskedPiecewiseRationalQuadraticAutoregressiveTransform
 from nflows.transforms.permutations import ReversePermutation
-
 from torch.utils.data import DataLoader, TensorDataset
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
-
 # Use CMS style
 hep.style.use("CMS")
 
@@ -45,52 +41,68 @@ args = parser.parse_args()
 
 #Setup: 
 # - bkg: exponential falling distribution
-# - signal: Breit-Wigner at certain mass 
 
 n_bkg = 800000
-n_sig = 40  # keep unchanged for now
 
 # Energy: single Gaussian
-mean_energy = 200  # adjust as needed
-std_energy = 40
-bkg_energy = np.random.normal(loc=mean_energy, scale=std_energy, size=n_bkg)
+mean_feat1 = -0.5  # adjust as needed
+std_feat1 = 0.25
+bkg_feat1 = np.random.normal(loc=mean_feat1, scale=std_feat1, size=n_bkg)
 
 # b-tag score: single Gaussian
-mean_btag = 0.6  # adjust as needed
-std_btag = 0.1
-bkg_btag = np.random.normal(loc=mean_btag, scale=std_btag, size=n_bkg)
+mean_feat2 = 0.6  # adjust as needed
+std_feat2 = 0.4
+bkg_feat2 = np.random.normal(loc=mean_feat2, scale=std_feat2, size=n_bkg)
 
-# Clip b-tag to [0, 1] to mimic a real score
-bkg_btag = np.clip(bkg_btag, 0, 1)
+# 1D Histograms for Features 1 and 2
+plt.figure(figsize=(10, 5))
+
+# Feature 1
+plt.hist(bkg_feat1, bins=50, color='skyblue', density=True, edgecolor='black', alpha=0.7, label='Feature 1')
+# Feature 2
+plt.hist(bkg_feat2, bins=50, color='lightgreen', density=True, edgecolor='black', alpha=0.7, label='Feature 2')
+
+# Add labels
+plt.xlabel("Features 1 and 2", fontsize=14)
+plt.ylabel("Normalized Counts", fontsize=14)
+plt.legend(fontsize=12)
+
+# Compute stats
+mean1 = np.mean(bkg_feat1)
+std1 = np.std(bkg_feat1)
+mean2 = np.mean(bkg_feat2)
+std2 = np.std(bkg_feat2)
+
+# Add LaTeX-style text box with means and stds
+textstr = '\n'.join((
+    rf'Feature 1: $\mu = {mean1:.2f}$, $\sigma = {std1:.2f}$',
+    rf'Feature 2: $\mu = {mean2:.2f}$, $\sigma = {std2:.2f}$'
+))
+props = dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='black')
+plt.text(0.65, 0.95, textstr, transform=plt.gca().transAxes, fontsize=12,
+         verticalalignment='top', bbox=props)
+
+plt.tight_layout()
+target_hist_path = os.path.join(args.outdir, "target_distribution.png")
+plt.savefig(target_hist_path)
+plt.close()
+
 
 num_features=2 #dimensionality of the data being transformed.
 # In this case: b-tagging score and background energy
 
-# Note: the bkg distribution is the posterior/target distribution which the Normalizing Flow should learn to approximate.
-
 ##Combining energy and b-tagging score for both bkg and signal 
-bkg_coord = np.column_stack((bkg_energy, bkg_btag))  # Combine btag and bkg for training
+bkg_coord = np.column_stack((bkg_feat1, bkg_feat2))  # Combine btag and bkg for training
 #Initialize the scaler 
 scaler = StandardScaler()
 #Scale the target distribution to help the model to converge faster 
 bkg_coord_scaled = scaler.fit_transform(bkg_coord)
 
-# Shift the entire dataset to make sure all values are positive
-shift = -bkg_coord_scaled[:, 1].min() + 1e-6  # Get the absolute value of the minimum across all features
-
-bkg_coord_scaled[:, 1] += shift  # Add the shift to the entire dataset
-
 bkg_coord_scaled = bkg_coord_scaled.astype('float32') #bkg coordinates converted to float32 for compatibility with python 
-
 # Define base distribution
 base_distribution = distributions.StandardNormal(shape=(num_features,))
-
 # Sample points from the base distribution
 prior = base_distribution.sample(10000).numpy()  # Sample 10000 points with 2 features each
-
-# Shift the prior distribution to ensure all values are positive
-shift_prior = -prior[:, 1].min() + 1e-6  # Add a small constant to avoid zero values
-prior[:, 1] += shift_prior  # Apply the shift to the energy feature
 
 #Normalizing flow model:
 # Set up simple normalizing flow with arbitrary inputs and outputs just to test 
@@ -108,12 +120,13 @@ def make_flow(num_features,num_context, perm=True):
     if num_context == 0:
         num_context = None
     for i in range(args.num_layers):
+        #rational quadratic splines are flexible non linear transformation 
         transforms.append(MaskedPiecewiseRationalQuadraticAutoregressiveTransform(features=num_features,
                                                                                 context_features=num_context,
                                                                                 hidden_features=args.hidden_features,
                                                                                 num_bins=args.num_bins,
                                                                                 num_blocks=args.num_blocks,
-                                                                                tail_bound=10.0, #range over which the spline trasnformation is defined 
+                                                                                tail_bound=10.0, #range over which the spline trasnformation is defined and lives 
                                                                                 tails='linear',
                                                                                 dropout_probability=0.2,
                                                                                 use_batch_norm=False))
@@ -122,6 +135,12 @@ def make_flow(num_features,num_context, perm=True):
     transform = CompositeTransform(transforms)
     flow = Flow(transform, base_dist)
     return flow
+
+# Note 
+# tail_bound defines the interval [-tail_bound, tail_bound] over which the spline transformation is applied.
+# Outside this range, the transformation becomes linear (to ensure numerical stability and tractability).
+# Choose a value that comfortably covers your normalized data, but avoids wasting bins in the far tails.
+
 
 # The higher the number of hidden_features/num_blocks, the more expressive the transformation will be, 
 # allowing it to capture more complex relationships in the data.
@@ -132,7 +151,7 @@ def make_flow(num_features,num_context, perm=True):
 
 # Setting up the normalizing flow and the training loop
 
-#Sample points from target distribution for training 
+# Sample points from target distribution for training 
 y = torch.from_numpy(bkg_coord_scaled[:100000])  # Take the first 100,000 samples
 
 # Split the data into training and validation sets (e.g., 80% for training, 20% for validation)
@@ -281,15 +300,13 @@ os.makedirs(args.outdir, exist_ok=True)
 plt.scatter(prior[:, 0], prior[:, 1], color='gray', label='Base/Prior distribution')
 plt.scatter(bkg_coord_scaled[:10000, 0], bkg_coord_scaled[:10000, 1], color='blue', label='Background/Target distribution')
 plt.scatter(trained[:, 0], trained[:, 1], color='green', label='Trained distribution')
-plt.xlabel("b-tag score (normalized)")
-plt.ylabel("Energy (normalized)")
+plt.xlabel("Feature 1 (scaled)")
+plt.ylabel("Feature 2 (scaled)")
 plt.legend(loc='upper right',fontsize=16)
-
 # Display hidden_features, num_blocks, and KL divergence in the plot
 text_str = f"learning_rate: {args.learning_rate}\nnum_layers: {args.num_layers}\nnum_blocks: {args.num_blocks}\nhidden_features: {args.hidden_features}\nnum_bins: {args.num_bins}\nn_epochs: {args.n_epochs}"
 plt.text(0.05, 0.95, text_str, transform=plt.gca().transAxes, fontsize=16, verticalalignment='top',
          bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', alpha=0.7))
-
 # Save the plot to the output directory
 scatter_name = f"scatter.png"
 scatter_path = os.path.join(args.outdir, scatter_name)
@@ -331,18 +348,12 @@ def plot_marginals(target, trained, feature_names, outdir, scaler):
         trained_feature = trained_original[:, i]
         feature_label = feature_names[i]
         
-        if i == 1:  # Assuming energy is the second feature (index 1)
-            # Set x-axis limits for energy feature
-            x_limits = (0, 600)
-            bins=50
-        else:
-            # Set x-axis limits for non-energy features (e.g., b-tagging score)
-            x_limits = (-0.5, 1.5)
-            bins=15
-        
         # Combine data for consistent binning
+        bins = 25
         all_data = np.concatenate([target_feature, trained_feature])
-        bin_edges = np.linspace(np.min(all_data), np.max(all_data), bins + 1)
+        # Use central 98% of data for binning
+        low, high = np.percentile(all_data, [1, 99])
+        bin_edges = np.linspace(low, high, bins + 1)
             
         # Recalculate the histograms using the same bin edges
         hist_target_counts, _ = np.histogram(target_feature, bins=bin_edges)
@@ -358,54 +369,45 @@ def plot_marginals(target, trained, feature_names, outdir, scaler):
         
         bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
         
-        # Error estimation for histograms
+        # Error estimation for histograms (Poisson)
         err_target = np.sqrt(hist_target_counts) / N_target_total
         err_trained = np.sqrt(hist_trained_counts) / N_trained_total
         
-        # Main plot (marginal histograms)
-        ax_main.bar(bin_centers, hist_target, width=np.diff(bin_edges), alpha=0.3, label='Target', color='blue', edgecolor='black', align='center')
-        ax_main.bar(bin_centers, hist_trained, width=np.diff(bin_edges), alpha=0.3, label='Trained', color='green', edgecolor='black', align='center')
+        # Main plot
+        ax_main.bar(bin_centers, hist_target, width=np.diff(bin_edges), alpha=0.3, label='Target', color='blue', edgecolor='black')
+        ax_main.bar(bin_centers, hist_trained, width=np.diff(bin_edges), alpha=0.3, label='Trained', color='green', edgecolor='black')
         ax_main.errorbar(bin_centers, hist_target, yerr=err_target, fmt='o', color='blue', label='Target Error', alpha=0.7)
         ax_main.errorbar(bin_centers, hist_trained, yerr=err_trained, fmt='o', color='green', label='Trained Error', alpha=0.7)
         ax_main.set_xlabel(feature_label, fontsize=16)
         ax_main.set_ylabel("Density", fontsize=16)
         ax_main.legend(fontsize=14)
-        if x_limits:
-            ax_main.set_xlim(x_limits)
-            
-        # Calculate bin-by-bin ratio of normalized counts (target/trained)
         
-        # ------------------- FILTERING PART -------------------
-        
-        # Filter bins where both histograms have sufficiently large counts
-        valid_bins = (hist_target_counts > 1e-3) & (hist_trained_counts > 1e-3)  # Avoid empty/low-count bins
-        
-        # Filter histograms and bins for valid data only
-        bin_centers_filtered = bin_centers[valid_bins]
-        target_hist_filtered = hist_target[valid_bins]
-        trained_hist_filtered = hist_trained[valid_bins]
-        
-        # ------------------- Ratio Calculation -------------------
-        
-        # Calculate ratio and its error
-        ratio = trained_hist_filtered / target_hist_filtered
-        
-        err_ratio = ratio * np.sqrt((err_target[valid_bins] / target_hist_filtered) ** 2 +(err_trained[valid_bins] / trained_hist_filtered) ** 2)
+        # Ratio plot — robust to zero bins
+        safe_target = np.where(hist_target > 0, hist_target, np.nan)
+        safe_trained = np.where(hist_trained > 0, hist_trained, np.nan)
+        ratio = safe_trained / safe_target
+        # Mask divisions to avoid division by zero warnings
+        with np.errstate(divide='ignore', invalid='ignore'):
+            term1 = np.where(hist_target > 0, (err_target / hist_target) ** 2, 0)
+            term2 = np.where(hist_trained > 0, (err_trained / hist_trained) ** 2, 0)
+
+        err_ratio = ratio * np.sqrt(term1 + term2)
         
         # Ratio plot (target/trained ratio)
-        ax_ratio.errorbar(bin_centers_filtered, ratio, yerr=err_ratio, fmt='o', label='Trained/Target Ratio', color='red', alpha=0.7)
+        # Plot only valid (non-NaN) points
+        valid = ~np.isnan(ratio)
+        ax_ratio.errorbar(bin_centers[valid], ratio[valid], yerr=err_ratio[valid], fmt='o', label='Trained/Target Ratio', color='red', alpha=0.7)
         ax_ratio.set_ylabel("Ratio (Trained/Target)", fontsize=16)
-        ax_ratio.legend(fontsize=14,loc='upper left')
-        ax_ratio.set_xlim(x_limits)  # Apply feature-specific x-axis limits
-        ax_ratio.set_ylim(0.0, 2.0)  # Zoom in on the ratio plot
-        ax_ratio.axhline(y=1, color='black', linestyle='--', linewidth=2)  # Horizontal line at y=1
-        
-        # Save the plot
+        ax_ratio.legend(fontsize=14, loc='upper left')
+        ax_ratio.set_ylim(0.0, 2.0)
+        ax_ratio.axhline(y=1, color='black', linestyle='--', linewidth=2)
+
+        # Save plot
         plot_path = os.path.join(outdir, f"marginal_feature_{i+1}.png")
         plt.tight_layout()
         plt.savefig(plot_path)
         plt.close()
 
 # Call the function with the necessary arguments
-feature_names = ["b-tag score", "Energy [GeV]"]
+feature_names = ["Feature 1", "Feature 2"]
 plot_marginals(bkg_coord_scaled[:10000], trained, feature_names, args.outdir, scaler)

@@ -1,0 +1,20 @@
+Rank 1: KL Divergence = 0.000917870
+Model Parameters: {'num_layers': 6, 'num_blocks': 10, 'hidden_features': 256, 'num_bins': 18}
+Job Directory: /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_gaussians_outputs/job_6_10_256_18_303185
+----------------------------------------
+Rank 2: KL Divergence = 0.000918499
+Model Parameters: {'num_layers': 4, 'num_blocks': 4, 'hidden_features': 64, 'num_bins': 18}
+Job Directory: /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_gaussians_outputs/job_4_4_64_18_303007
+----------------------------------------
+Rank 3: KL Divergence = 0.000923296
+Model Parameters: {'num_layers': 6, 'num_blocks': 8, 'hidden_features': 64, 'num_bins': 14}
+Job Directory: /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_gaussians_outputs/job_6_8_64_14_303097
+----------------------------------------
+Rank 4: KL Divergence = 0.000923314
+Model Parameters: {'num_layers': 4, 'num_blocks': 6, 'hidden_features': 256, 'num_bins': 16}
+Job Directory: /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_gaussians_outputs/job_4_6_256_16_303083
+----------------------------------------
+Rank 5: KL Divergence = 0.000925099
+Model Parameters: {'num_layers': 4, 'num_blocks': 8, 'hidden_features': 256, 'num_bins': 14}
+Job Directory: /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_gaussians_outputs/job_4_8_256_14_303127
+----------------------------------------

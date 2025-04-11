@@ -18,7 +18,7 @@ import sys
 
 # give a name to each model and provide a path to where the model's prediction for bkg and signal classes are stored
 folders = {
-    'best_model': '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_outputs/job_4_6_50_10_best_model_419803',
+    'best_model': '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_gaussians_outputs/job_6_10_256_18_best_model_303185',
 }
 
 parser = argparse.ArgumentParser()
@@ -40,14 +40,18 @@ N_generated = args.generated
 calibration = args.calibration.lower() == "true"
 
 #GROUND TRUTH DISTRIBTION
-# Generate background and signal data
+# Generate background 
 n_bkg = 800000
-n_sig = 40
-bkg = np.random.exponential(scale=100.0, size=n_bkg)
-sig = rel_breitwigner.rvs(450, size=n_sig)
-# Adding b-tagging information (a form of event classification)
-bkg_btag = np.random.uniform(low=0.0, high=1.0, size=n_bkg)
-sig_btag = np.random.normal(0.85, 0.05, n_sig)
+
+# Energy: single Gaussian
+mean_feat1 = -0.5  # adjust as needed
+std_feat1 = 0.25
+bkg_feat1 = np.random.normal(loc=mean_feat1, scale=std_feat1, size=n_bkg)
+
+# b-tag score: single Gaussian
+mean_feat2 = 0.6  # adjust as needed
+std_feat2 = 0.4
+bkg_feat2 = np.random.normal(loc=mean_feat2, scale=std_feat2, size=n_bkg)
 
 num_features=2 #dimensionality of the data being transformed.
 # In this case: b-tagging score and background energy
@@ -55,16 +59,11 @@ num_features=2 #dimensionality of the data being transformed.
 # Note: the bkg distribution is the posterior/target distribution which the Normalizing Flow should learn to approximate.
 
 # Combining energy and b-tagging score for both bkg and signal 
-bkg_coord = np.column_stack((bkg_btag, bkg))  # Combine btag and bkg for training
+bkg_coord = np.column_stack((bkg_feat1, bkg_feat2))  # Combine btag and bkg for training
 #Initialize the scaler 
 scaler = StandardScaler()
 # Scale the target distribution to help the model to converge faster 
 bkg_coord_scaled = scaler.fit_transform(bkg_coord)
-
-# Shift the entire dataset to make sure all values are positive
-shift = -bkg_coord_scaled[:, 1].min() + 1e-6  # Get the absolute value of the minimum across all features
-
-bkg_coord_scaled[:, 1] += shift  # Add the shift to the entire dataset
 
 # Convert to float32 for compatibility with PyTorch
 bkg_coord_scaled = bkg_coord_scaled.astype('float32')
@@ -83,9 +82,9 @@ job_id = os.getenv('SLURM_JOB_ID', 'local')
 
 # Define output folder based on calibration flag
 if calibration:
-    folder_out = '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_outputs/calibration/'
+    folder_out = '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_gaussians_outputs/calibration/'
 else:
-    folder_out = '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_outputs/comparison/'
+    folder_out = '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_gaussians_outputs/comparison/'
 
 # Create unique job directory
 job_id = os.getenv('SLURM_JOB_ID', 'local')
@@ -108,15 +107,15 @@ def make_flow(num_features,num_context, perm=True):
     base_dist = distributions.StandardNormal(shape=(num_features,))
 
     transforms = []
-    num_layers = 4
+    num_layers = 6
     if num_context == 0:
         num_context = None
     for i in range(num_layers):
         transforms.append(MaskedPiecewiseRationalQuadraticAutoregressiveTransform(features=num_features,
                                                                                 context_features=num_context,
-                                                                                hidden_features=50,
-                                                                                num_bins=10,
-                                                                                num_blocks=6,
+                                                                                hidden_features=256,
+                                                                                num_bins=18,
+                                                                                num_blocks=10,
                                                                                 tail_bound=10.0, #range over which the spline trasnformation is defined 
                                                                                 tails='linear',
                                                                                 dropout_probability=0.2,
@@ -128,7 +127,6 @@ def make_flow(num_features,num_context, perm=True):
     return flow
 
 # Parameters for the flow (ensure they match the ones used during training)
-num_features = 2  # Dimensionality of the data
 num_context = 0
 
 # Recreate the flow model
@@ -153,9 +151,9 @@ print('flk_sigma', flk_sigma)
 print('Start running toys')
 ts_list = []  # Use a list to accumulate t-values
 
-# Pre-calculate seeds (this creates an array of seeds based on the current time)
-seeds = (np.arange(Ntoys) + datetime.datetime.now().microsecond +
-         datetime.datetime.now().second + datetime.datetime.now().minute)
+# Pre-calculate seeds 
+base_seed = int(datetime.datetime.now().timestamp() * 1e6) % (2**32 - 1)
+seeds = base_seed + np.arange(Ntoys)
 
 for i in range(Ntoys):
     seed = int(seeds[i])
@@ -176,38 +174,18 @@ for i in range(Ntoys):
         ref = torch.from_numpy(bkg_coord_scaled[:N_ref])
         data_gen = flow.sample(N_generated_p).detach().numpy()
 
-        # Define a mask for Feature 0 (b-tagging score) to retain only events in the desired range
-        mask_feature_0 = (data_gen[:, 0] >= -1.5) & (data_gen[:, 0] <= 1.5)
-
-        # Define a mask for Feature 1 (energy) to remove extreme outliers
-        energy_min_scaled = data_gen[:, 1].min()  # Keep all values above the current minimum
-        energy_max_scaled = np.percentile(data_gen[:, 1], 99.9)  # Remove only extreme high-energy outliers
-        mask_feature_1 = (data_gen[:, 1] >= energy_min_scaled) & (data_gen[:, 1] <= energy_max_scaled)
-
-        # Combine both masks (logical AND)
-        combined_mask = mask_feature_0 & mask_feature_1
-
-        # Apply the combined mask to filter the generated sample
-        data_gen_filtered = data_gen[combined_mask]
-        num_gen_filtered = data_gen_filtered.shape[0]
-
-        # Apply the same masking criteria to the reference distribution
-        mask_ref_feature_0 = (ref[:, 0] >= -1.5) & (ref[:, 0] <= 1.5)
-        mask_ref_feature_1 = (ref[:, 1] >= energy_min_scaled) & (ref[:, 1] <= energy_max_scaled)
-        combined_mask_ref = mask_ref_feature_0 & mask_ref_feature_1
-
-        ref_filtered = ref[combined_mask_ref]
-        num_ref_filtered = ref_filtered.shape[0]
+        num_gen = data_gen.shape[0]
+        num_ref = ref.shape[0]
 
         # Combine the filtered generated data with the filtered reference data
-        data = np.concatenate((data_gen_filtered, ref_filtered), axis=0)
+        data = np.concatenate((data_gen, ref), axis=0)
 
         # Create labels corresponding to the filtered generated data and reference data
-        label_D = np.ones(num_gen_filtered, dtype=np.float32)  # "Generated" labels
-        label_R = np.zeros(num_ref_filtered, dtype=np.float32)
+        label_D = np.ones(num_gen, dtype=np.float32)  # "Generated" labels
+        label_R = np.zeros(num_ref, dtype=np.float32)
 
         # Recalculate the reference weight based on the filtered reference samples
-        w_ref = num_gen_filtered / num_ref_filtered if num_ref_filtered > 0 else 1.0  # Avoid division by zero
+        w_ref = num_gen / num_ref if num_ref > 0 else 1.0  # Avoid division by zero
   
 
     # Convert to float32
@@ -225,7 +203,7 @@ for i in range(Ntoys):
     flk_config = get_logflk_config(M, flk_sigma, [lam], weight=w_ref, iter=[iterations], seed=None, cpu=False)
 
     # Set xlabels
-    xlabels = locals().get('xlabels', ['Feature {}'.format(j) for j in range(10)])
+    xlabels = ['Feature 1', 'Feature 2']
 
     # Run the toy experiment
     t, pred = run_toy(manifold, data, labels, weight=w_ref, seed=seed,
