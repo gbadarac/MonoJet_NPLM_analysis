@@ -16,7 +16,7 @@ import sklearn
 from sklearn.preprocessing import StandardScaler
 from nflows.distributions.normal import StandardNormal
 from nflows import distributions, flows, transforms
-import nflows.transforms as transforms
+import nflows.transforms as transforms 
 from nflows.flows import Flow
 from nflows.transforms.base import CompositeTransform
 from nflows.transforms.autoregressive import MaskedPiecewiseRationalQuadraticAutoregressiveTransform
@@ -101,21 +101,14 @@ bkg_coord_scaled = scaler.fit_transform(bkg_coord)
 bkg_coord_scaled = bkg_coord_scaled.astype('float32') #bkg coordinates converted to float32 for compatibility with python 
 # Define base distribution
 base_distribution = distributions.StandardNormal(shape=(num_features,))
-# Sample points from the base distribution
-prior = base_distribution.sample(10000).numpy()  # Sample 10000 points with 2 features each
 
 #Normalizing flow model:
 # Set up simple normalizing flow with arbitrary inputs and outputs just to test 
-
-# Define transformations (bijectors)
-#transformations = transforms.MaskedAffineAutoregressiveTransform(features, args.hidden_features, args.num_blocks)
 
 num_context=0
 
 def make_flow(num_features,num_context, perm=True):
     base_dist = distributions.StandardNormal(shape=(num_features,))
-    #base_dist = MultivariateScaledNormal(num_features, scale=3.0)
-
     transforms = []
     if num_context == 0:
         num_context = None
@@ -194,7 +187,7 @@ for idx in range(args.n_epochs):
         opt.zero_grad() #zero the gradients and make predictions for a set of inputs 
         
         # Minimize KL(p || q), i.e. calculate the loss
-        train_loss = -flow.log_prob(batch_data).mean() #calculating the log probability for batch
+        train_loss = - flow.log_prob(batch_data).mean() #calculating the log probability for batch
         train_loss.backward() 
         opt.step() #model updates its parameters (weights) 
         total_train_loss += train_loss.item() * batch_data.size(0) #accumulate batch loss 
@@ -214,7 +207,7 @@ for idx in range(args.n_epochs):
             val_batch_data = val_batch[0]
             
             # Minimize KL(p || q)
-            val_loss = -flow.log_prob(val_batch_data).mean() #calculating the log probability for validation
+            val_loss = - flow.log_prob(val_batch_data).mean() #calculating the log probability for validation
             total_val_loss += val_loss.item() * val_batch_data.size(0) #accumulate batch loss 
     
     #Calculate average validation loss for the current epoch

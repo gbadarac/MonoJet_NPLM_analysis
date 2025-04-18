@@ -49,12 +49,9 @@ args = parser.parse_args()
 
 # Generate background and signal data
 n_bkg = 800000
-n_sig = 40
 bkg = np.random.exponential(scale=100.0, size=n_bkg)
-sig = rel_breitwigner.rvs(450, size=n_sig)
 # Adding b-tagging information (a form of event classification)
 bkg_btag = np.random.uniform(low=0.0, high=1.0, size=n_bkg)
-sig_btag = np.random.normal(0.85, 0.05, n_sig)
 
 num_features=2 #dimensionality of the data being transformed.
 # In this case: b-tagging score and background energy
@@ -78,24 +75,13 @@ bkg_coord_scaled = bkg_coord_scaled.astype('float32') #bkg coordinates converted
 # Define base distribution
 base_distribution = distributions.StandardNormal(shape=(num_features,))
 
-# Sample points from the base distribution
-prior = base_distribution.sample(10000).numpy()  # Sample 10000 points with 2 features each
-
-# Shift the prior distribution to ensure all values are positive
-shift_prior = -prior[:, 1].min() + 1e-6  # Add a small constant to avoid zero values
-prior[:, 1] += shift_prior  # Apply the shift to the energy feature
-
 #Normalizing flow model:
 # Set up simple normalizing flow with arbitrary inputs and outputs just to test 
-
-# Define transformations (bijectors)
-#transformations = transforms.MaskedAffineAutoregressiveTransform(features, args.hidden_features, args.num_blocks)
 
 num_context=0
 
 def make_flow(num_features,num_context, perm=True):
     base_dist = distributions.StandardNormal(shape=(num_features,))
-    #base_dist = MultivariateScaledNormal(num_features, scale=3.0)
 
     transforms = []
     if num_context == 0:

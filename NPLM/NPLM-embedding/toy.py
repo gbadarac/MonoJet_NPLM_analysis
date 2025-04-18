@@ -18,7 +18,7 @@ import sys
 
 # give a name to each model and provide a path to where the model's prediction for bkg and signal classes are stored
 folders = {
-    'best_model': '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_gaussians_outputs/job_6_10_256_18_best_model_303185',
+    'best_model': '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_gaussians_outputs/job_4_4_64_12_best_model_557015',
 }
 
 parser = argparse.ArgumentParser()
@@ -54,6 +54,11 @@ std_feat2 = 0.4
 bkg_feat2 = np.random.normal(loc=mean_feat2, scale=std_feat2, size=n_bkg)
 
 num_features=2 #dimensionality of the data being transformed.
+hidden_features=64
+num_bins=12
+num_blocks=4
+num_layers=4
+
 # In this case: b-tagging score and background energy
 
 # Note: the bkg distribution is the posterior/target distribution which the Normalizing Flow should learn to approximate.
@@ -82,9 +87,9 @@ job_id = os.getenv('SLURM_JOB_ID', 'local')
 
 # Define output folder based on calibration flag
 if calibration:
-    folder_out = '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_gaussians_outputs/calibration/'
+    folder_out = '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_NF_gaussians_outputs/calibration/'
 else:
-    folder_out = '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_gaussians_outputs/comparison/'
+    folder_out = '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_NF_gaussians_outputs/comparison/'
 
 # Create unique job directory
 job_id = os.getenv('SLURM_JOB_ID', 'local')
@@ -103,19 +108,18 @@ print(f"Output directory set to: {output_dir}")
 # NORMALIZING FLOW GENERATED DISTRIBUTION
 # Define the function to recreate the flow
 
-def make_flow(num_features,num_context, perm=True):
+def make_flow(num_features, hidden_features, num_bins, num_blocks, num_layers, num_context, perm=True):
     base_dist = distributions.StandardNormal(shape=(num_features,))
 
     transforms = []
-    num_layers = 6
     if num_context == 0:
         num_context = None
     for i in range(num_layers):
         transforms.append(MaskedPiecewiseRationalQuadraticAutoregressiveTransform(features=num_features,
                                                                                 context_features=num_context,
-                                                                                hidden_features=256,
-                                                                                num_bins=18,
-                                                                                num_blocks=10,
+                                                                                hidden_features=hidden_features,
+                                                                                num_bins=num_bins,
+                                                                                num_blocks=num_blocks,
                                                                                 tail_bound=10.0, #range over which the spline trasnformation is defined 
                                                                                 tails='linear',
                                                                                 dropout_probability=0.2,

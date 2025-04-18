@@ -18,10 +18,10 @@ n_epochs=1001
 learning_rate=5e-6
 batch_size=512 #number of data samples processed before updating the model's parameters
 outdir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_gaussians_outputs
-#hidden_features=64
-#num_blocks=4
-#num_bins=12
-#num_layers=4
+hidden_features=64
+num_blocks=4
+num_bins=12
+num_layers=4
 
 # Create a job-specific output directory
 #job_outdir=${outdir}/job_${num_layers}_layers_${num_blocks}_transformations_${hidden_features}_neurons_${num_bins}_bins_${SLURM_JOB_ID}

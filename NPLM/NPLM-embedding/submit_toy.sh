@@ -24,7 +24,7 @@ export PATH=$CUDA_HOME/bin:$PATH
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 
 # Define the output directory for results
-CALIBRATION=False # Change this if needed
+CALIBRATION=True # Change this if needed
 
 # Run the Python script and capture its output
 TEMP_LOG=/tmp/py_output_$SLURM_JOB_ID.log
