@@ -20,7 +20,7 @@ batch_size=512 #number of data samples processed before updating the model's par
 outdir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_gaussians_outputs
 hidden_features=64
 num_blocks=4
-num_bins=12
+num_bins=8
 num_layers=4
 
 # Create a job-specific output directory

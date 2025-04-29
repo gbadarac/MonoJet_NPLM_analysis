@@ -5,8 +5,8 @@
 #SBATCH -p gpu               # Partition to submit to     
 #SBATCH --account=gpu_gres   # Account to access GPU resources
 #SBATCH --mem=20000          # Memory pool for all cores (see also --mem-per-cpu)
-#SBATCH -o /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_gaussians_outputs/logs/%x-%j.out  # Keep logs in 'logs'
-#SBATCH -e /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_gaussians_outputs/logs/%x-%j.err  # Keep error logs in 'logs'
+#SBATCH -o /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_NF_gaussians_outputs/logs/%x-%j.out  # Keep logs in 'logs'
+#SBATCH -e /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_NF_gaussians_outputs/logs/%x-%j.err  # Keep error logs in 'logs'
 
 # Set the LD_LIBRARY_PATH to include the directory with libcusolver.so.11
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/t3home/gbadarac/miniforge3/envs/nplm_env/lib/
@@ -24,7 +24,7 @@ export PATH=$CUDA_HOME/bin:$PATH
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 
 # Define the output directory for results
-CALIBRATION=True # Change this if needed
+CALIBRATION=False # Change this if needed
 
 # Run the Python script and capture its output
 TEMP_LOG=/tmp/py_output_$SLURM_JOB_ID.log

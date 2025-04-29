@@ -18,7 +18,7 @@ import sys
 
 # give a name to each model and provide a path to where the model's prediction for bkg and signal classes are stored
 folders = {
-    'best_model': '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_gaussians_outputs/job_4_4_64_12_best_model_557015',
+    'best_model': '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_gaussians_outputs/job_4_4_64_8_best_model_580200',
 }
 
 parser = argparse.ArgumentParser()
@@ -41,7 +41,7 @@ calibration = args.calibration.lower() == "true"
 
 #GROUND TRUTH DISTRIBTION
 # Generate background 
-n_bkg = 800000
+n_bkg = 2000000
 
 # Energy: single Gaussian
 mean_feat1 = -0.5  # adjust as needed
@@ -55,7 +55,7 @@ bkg_feat2 = np.random.normal(loc=mean_feat2, scale=std_feat2, size=n_bkg)
 
 num_features=2 #dimensionality of the data being transformed.
 hidden_features=64
-num_bins=12
+num_bins=8
 num_blocks=4
 num_layers=4
 
@@ -134,14 +134,13 @@ def make_flow(num_features, hidden_features, num_bins, num_blocks, num_layers, n
 num_context = 0
 
 # Recreate the flow model
-flow = make_flow(num_features, num_context, perm=True)
+flow = make_flow(num_features, hidden_features, num_bins, num_blocks, num_layers, num_context, perm=True)
 
 print('Load data')
 
 model_path = os.path.join(folders[manifold], "best_model.pth")
 flow.load_state_dict(torch.load(model_path, weights_only=True))
 flow.eval()  # Set the model to evaluation mode
-
 print("Best model loaded successfully.")
 ############ end load data
     

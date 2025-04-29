@@ -1,0 +1,11 @@
+{
+    "bootstrap_seed": 0,
+    "run_id": 0,
+    "n_epochs": 1001,
+    "learning_rate": 5e-06,
+    "batch_size": 512,
+    "hidden_features": 64,
+    "num_blocks": 4,
+    "num_bins": 8,
+    "num_layers": 4
+}

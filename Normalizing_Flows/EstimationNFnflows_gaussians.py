@@ -107,7 +107,7 @@ base_distribution = distributions.StandardNormal(shape=(num_features,))
 
 num_context=0
 
-def make_flow(num_features,num_context, perm=True):
+def make_flow(num_features, num_context, perm=True):
     base_dist = distributions.StandardNormal(shape=(num_features,))
     transforms = []
     if num_context == 0:
@@ -119,6 +119,7 @@ def make_flow(num_features,num_context, perm=True):
                                                                                 hidden_features=args.hidden_features,
                                                                                 num_bins=args.num_bins,
                                                                                 num_blocks=args.num_blocks,
+                                                                                #tailbound=3 matches default range of nflows 
                                                                                 tail_bound=10.0, #range over which the spline trasnformation is defined and lives 
                                                                                 tails='linear',
                                                                                 dropout_probability=0.2,
@@ -168,7 +169,6 @@ val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
 
 # Define scheduler
 scheduler = CosineAnnealingLR(optimizer=opt, T_max=args.n_epochs, eta_min=1e-3)  # eta_min: minimum LR, T_max: total number of epochs for one cosine cycle 
-#scheduler = OneCycleLR(optimizer=opt, max_lr=5e-4, steps_per_epoch=len(train_loader), epochs=args.n_epochs)  
 
 train_losses=[]
 val_losses=[]
@@ -253,10 +253,10 @@ flow.eval()  # Set the model to evaluation mode
 print("Best model loaded successfully.")
     
 # Sample points from the trained flow
-trained = flow.sample(10000).detach().numpy()  # Sample 10000 points with 2 features each
+trained = flow.sample(1000000).detach().numpy()  # Sample 10000 points with 2 features each
 
 # Sample points from the base distribution
-prior = base_distribution.sample(10000).numpy()  # Sample 10000 points with 2 features each
+prior = base_distribution.sample(1000000).numpy()  # Sample 10000 points with 2 features each
 
 # Function to calculate KL divergence between target and trained distribution
 def calculate_kl_divergence(target, trained, eps=1e-8):
@@ -279,7 +279,7 @@ def calculate_kl_divergence(target, trained, eps=1e-8):
     return kl_divergence.item()
 
 # Calculate KL divergence
-kl_div = calculate_kl_divergence(bkg_coord_scaled[:10000], trained)
+kl_div = calculate_kl_divergence(bkg_coord_scaled[:1000000], trained)
 print("KL divergence saved successfully.")
 # Save KL divergence value
 kl_div_path = os.path.join(args.outdir, "kl_divergence.npy")
@@ -291,7 +291,7 @@ os.makedirs(args.outdir, exist_ok=True)
 
 # After creating the scatter plot
 plt.scatter(prior[:, 0], prior[:, 1], color='gray', label='Base/Prior distribution')
-plt.scatter(bkg_coord_scaled[:10000, 0], bkg_coord_scaled[:10000, 1], color='blue', label='Background/Target distribution')
+plt.scatter(bkg_coord_scaled[:1000000, 0], bkg_coord_scaled[:1000000, 1], color='blue', label='Background/Target distribution')
 plt.scatter(trained[:, 0], trained[:, 1], color='green', label='Trained distribution')
 plt.xlabel("Feature 1 (scaled)")
 plt.ylabel("Feature 2 (scaled)")
@@ -403,4 +403,4 @@ def plot_marginals(target, trained, feature_names, outdir, scaler):
 
 # Call the function with the necessary arguments
 feature_names = ["Feature 1", "Feature 2"]
-plot_marginals(bkg_coord_scaled[:10000], trained, feature_names, args.outdir, scaler)
+plot_marginals(bkg_coord_scaled[:1000000], trained, feature_names, args.outdir, scaler)
