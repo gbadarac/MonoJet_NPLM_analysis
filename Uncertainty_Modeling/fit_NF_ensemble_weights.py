@@ -13,6 +13,25 @@ from nflows.transforms.autoregressive import MaskedPiecewiseRationalQuadraticAut
 from nflows.transforms.permutations import ReversePermutation
 from scipy.optimize import minimize
 
+'''
+f_final = make_flow(
+        num_features=2,
+        num_context=None,
+        perm=True,
+        num_layers=config["num_layers"],
+        hidden_features=config["hidden_features"],
+        num_blocks=config["num_blocks"],
+        num_bins=config["num_bins"]
+    ).to(device)
+
+state_dicts_fi = [f.state_dict() for f in f_i_models]
+final_state_dict = average_state_dicts(state_dicts_fi, w_i_values)
+f_final.load_state_dict(final_state_dict)
+torch.save(f_final.state_dict(), os.path.join(ensemble_dir, "final_model.pth"))
+
+print("Final ensemble model saved to 'final_model.pth'")
+'''
+
 # ------------------
 # Helper functions
 # ------------------
@@ -48,7 +67,7 @@ def load_model(model_dir):
     flow.eval()
     return flow
 
-# DEF PROBABILITY (probability deve essere definita in toch per fare back propagation) 
+# DEF PROBABILITY (probability deve essere definita in torch per fare back propagation) 
 # variable function anf and requirees_grad=traine_coeffs (train_coeffs=True)
 
 def negative_log_likelihood(weights, log_probs_matrix):
