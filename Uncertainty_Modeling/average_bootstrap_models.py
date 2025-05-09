@@ -6,14 +6,7 @@ import argparse
 import numpy as np
 import torch
 from nflows.flows import Flow
-from utils import make_flow 
-
-def average_state_dicts(state_dicts, weights):
-    """Weighted average of PyTorch state dicts"""
-    avg_dict = {}
-    for key in state_dicts[0]:
-        avg_dict[key] = sum(w * sd[key] for w, sd in zip(weights, state_dicts)) #computes weighted averga eof each parameter across the models 
-    return avg_dict
+from utils import make_flow, average_state_dicts
 
 def main(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu") #sets device to GPU if available 
@@ -32,25 +25,21 @@ def main(args):
             model_file = os.path.join(model_path, b_dir, "model.pth")
             state_dicts.append(torch.load(model_file, map_location=device)) # Loads all trained bootstrap models under model_i
 
-        # Uniform weights over j
-        weights_j = [1.0 / len(state_dicts)] * len(state_dicts) # uses uniform weights over j 
-        avg_state_dict = average_state_dicts(state_dicts, weights_j) # averages all bootstrap models to get f_i 
+        avg_state_dict = average_state_dicts(state_dicts) # averages all bootstrap models to get f_i 
  
-        # Load model architecture config from first bootstrap
-        with open(os.path.join(model_path, bootstrap_dirs[0], "config.json")) as f:
-            config = json.load(f) # Grabs saved architecture/hyperparameters so we can re-initialize the model with the correct shape
+        # Save architecture once, after first flow is constructed
+        with open(os.path.join(args.trial_dir, "architecture_config.json")) as f:
+            config = json.load(f)
 
         # Create and load flow_i
         flow_i = make_flow(
             num_layers=config["num_layers"],
             hidden_features=config["hidden_features"],
             num_blocks=config["num_blocks"],
-            num_bins=config["num_bins"],
-            num_features=2,
-            num_context=None,
-            perm=True
+            num_bins=config["num_bins"]
         ).to(device) #construct f_i with the correct architecture 
-        flow_i.load_state_dict(avg_state_dict) #loads in the averaged weights 
+        flow_i.load_state_dict(avg_state_dict) #loads in the averaged parameters across bootstrapping 
+        flow_i.eval()
         f_i_models.append(flow_i) #stores models f_i in memory 
 
         # Assign uniform model-level weight
@@ -60,7 +49,7 @@ def main(args):
     if not f_i_models:
         raise RuntimeError("No models were collected. Please check the trial directory and ensure training was successful.")
 
-    # Optionally: print how many and what type
+    # print how many and what type
     print(f"\nCollected {len(f_i_models)} models of type {type(f_i_models[0])}")
 
     # Normalize and save w_i weights

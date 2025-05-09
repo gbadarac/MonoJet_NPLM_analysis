@@ -4,174 +4,159 @@
 import os
 import json
 import torch
+import torch.optim as optim
 import numpy as np
 import argparse
-from nflows.flows import Flow
-from nflows.transforms.base import CompositeTransform
-from nflows.distributions.normal import StandardNormal
-from nflows.transforms.autoregressive import MaskedPiecewiseRationalQuadraticAutoregressiveTransform
-from nflows.transforms.permutations import ReversePermutation
-from scipy.optimize import minimize
+from utils import make_flow, hessian_diag, nll, nll_numpy
+import matplotlib 
+matplotlib.use('Agg')  # ensure it works on clusters without displaying plots
+import matplotlib.pyplot as plt 
 
-'''
-f_final = make_flow(
-        num_features=2,
-        num_context=None,
-        perm=True,
+# ------------------
+# Args
+# ------------------
+parser = argparse.ArgumentParser()
+parser.add_argument("--trial_dir", type=str, required=True)
+parser.add_argument("--data_path", type=str, required=True)
+parser.add_argument("--out_dir", type=str, required=True)
+parser.add_argument("--plot", type=str, required=True)
+args = parser.parse_args()
+
+# ------------------
+# Load models and initial weights 
+# ------------------
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu") #sets device to GPU if available 
+os.makedirs(args.trial_dir, exist_ok=True)
+
+f_i_file = os.path.join(args.trial_dir, "f_i_averaged.pth")
+w_i_file = os.path.join(args.trial_dir, "w_i_initial.npy")
+
+f_i_statedicts = torch.load(f_i_file, map_location=device) #list of state_dicts 
+w_i_initial = np.load(w_i_file)  # Initial weights
+print(f"Initial weights: {w_i_initial}")
+
+# ------------------
+# Load architecture config and data 
+# ------------------
+# Save architecture 
+with open(os.path.join(args.trial_dir, "architecture_config.json")) as f:
+    config = json.load(f) 
+
+x_data = torch.from_numpy(np.load(args.data_path)).float().to(device)
+
+# ------------------
+# Reconstruct flows f_i
+# ------------------
+f_i_models = []
+for state_dict in f_i_statedicts:
+    flow = make_flow(
         num_layers=config["num_layers"],
         hidden_features=config["hidden_features"],
         num_blocks=config["num_blocks"],
         num_bins=config["num_bins"]
-    ).to(device)
+    ).to(device) #recreate the flow architecture for each model f_i 
+    flow.load_state_dict(state_dict) #load the corresponding params into each model 
+    flow.eval() # Set to eval mode to avoid training-time behavior (e.g., dropout)
+    #You want all models to produce consistent, deterministic outputs for likelihood evaluation 
+    f_i_models.append(flow)
 
-state_dicts_fi = [f.state_dict() for f in f_i_models]
-final_state_dict = average_state_dicts(state_dicts_fi, w_i_values)
-f_final.load_state_dict(final_state_dict)
-torch.save(f_final.state_dict(), os.path.join(ensemble_dir, "final_model.pth"))
+# ------------------
+# Diagnostic: Compare f₀(x) vs f₁(x)
+# ------------------
+if len(f_i_models) >= 2:
+    with torch.no_grad():
+        probs0 = torch.exp(f_i_models[0].log_prob(x_data))
+        probs1 = torch.exp(f_i_models[1].log_prob(x_data))
+        diff = (probs0 - probs1).abs()
 
-print("Final ensemble model saved to 'final_model.pth'")
+        print(f"Mean abs(prob_0 - prob_1): {diff.mean().item():.6e}")
+        print(f"Max abs diff: {diff.max().item():.6e}")
+        print(f"Std of diff: {diff.std().item():.6e}")
+
+# ------------------
+# Evaluate f_i(x) -> model_probs
+# ------------------
+with torch.no_grad(): #disables gradient tracking since we are just evaluating the model (to speed things up)
+    model_probs = torch.stack( #torch.stack() to stack all M models along a new dimension dim=1 cretaing a NxM matrix where N are the number of data points 
+        [torch.exp(flow.log_prob(x_data)) for flow in f_i_models], 
+        #for each model f_i compute log(f_i(x)) for all data points, then applies torch.exp() to recover actual probability f_i(x)
+        #this needs to be done because of how NFs are built, i.e. they return log(f_i(x)) but we want to get f_i(x) to get the probability, so we need to take the exponential 
+        dim=1)  # Shape: (N, M)
+
+# Move model_probs to CPU for memory safety
+model_probs = model_probs.to("cpu")
+
+# Initialize weights as a torch tensor with gradient tracking
+w_logits = torch.nn.Parameter(torch.log(torch.tensor(w_i_initial + 1e-8, dtype=torch.float32)))
+
+# Optimizer (Adam is simple and good enough here)
+optimizer = optim.Adam([w_logits], lr=1e-2)
+
+# Function to normalize weights, to ensure weights stay in [0,1] and sum to 1
+def norm_weights(logits):
+    return torch.nn.functional.softmax(logits, dim=0)
+
+# ------------------
+# Optimize weights using MLE
+# ------------------
+
+print("\nStarting PyTorch optimization:")
+for step in range(300):  # number of optimization steps
+    optimizer.zero_grad()
+
+    w_i_norm = norm_weights(w_logits) #this might not work is just a function and not a model their not propagating 
+    loss= nll(w_i_norm, model_probs)
+
+    loss.backward()
+    optimizer.step()
+
+    if step % 25 == 0 or step == 299:
+        print(f"Step {step:03d}: NLL = {loss.item():.6f}, weights = {w_i_norm.detach().numpy()}")
+
+w_i_final = norm_weights(w_logits).detach().cpu().numpy()
+print("Final fitted weights (PyTorch):", w_i_final)
+
+# ------------------
+# Compute uncertainties via Hessian
+# ------------------
+hess_diag = hessian_diag(lambda w: nll_numpy(w, model_probs, device=device), w_i_final)
+print("Hessian diag:", hess_diag)
+w_i_unc = 1.0 / np.sqrt(hess_diag + 1e-8)
+
+# ------------------
+# Save final outputs
+# ------------------
+np.save(os.path.join(args.out_dir, "w_i_fitted.npy"), w_i_final)
+np.save(os.path.join(args.out_dir, "w_i_unc.npy"), w_i_unc)
+
+'''
+# ------------------
+# Plotting 
+# ------------------
+if args.plot.lower() == "true":
+    f_vals = ensemble_pred(w_i_np, model_probs)
+    f_unc = ensemble_unc(w_i_unc, model_probs)
+
+    # Histogram over f(x) values
+    plt.figure(figsize=(8, 6))
+    x_vals = np.linspace(np.min(f_vals - f_unc), np.max(f_vals + f_unc), 100)
+    plt.hist(f_vals, bins=100, density=True, alpha=0.6, label="f(x) = ∑ w_i f_i(x)")
+    plt.fill_between(x_vals,
+                     np.interp(x_vals, np.sort(f_vals), np.sort(f_vals - f_unc)),
+                     np.interp(x_vals, np.sort(f_vals), np.sort(f_vals + f_unc)),
+                     alpha=0.3, label="Uncertainty band")
+
+    plt.xlabel("Ensemble density f(x)")
+    plt.ylabel("Density")
+    plt.title("Ensemble NF prediction with uncertainty")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+
+    plot_path = os.path.join(args.out_dir, "ensemble_density_with_uncertainty.png")
+    plt.savefig(plot_path)
+    print(f"Saved plot to {plot_path}")
+
 '''
 
-# ------------------
-# Helper functions
-# ------------------
 
-def load_model(model_dir):
-    """Load a trained NF model from model.pth and config.json."""
-    # Load config
-    with open(os.path.join(model_dir, "config.json"), "r") as f:  #loads model from a given model_dir 
-        config = json.load(f)
-
-    # Rebuild model from config file 
-    num_features = 2
-    base_dist = StandardNormal(shape=(num_features,))
-    transforms = []
-    for i in range(config["num_layers"]):
-        transforms.append(MaskedPiecewiseRationalQuadraticAutoregressiveTransform(
-            features=num_features,
-            hidden_features=config["hidden_features"],
-            context_features=None,
-            num_bins=config["num_bins"],
-            num_blocks=config["num_blocks"],
-            tail_bound=10.0,
-            dropout_probability=0.2,
-            use_batch_norm=False
-        ))
-        if i < config["num_layers"] - 1:
-            transforms.append(ReversePermutation(features=num_features))
-    transform = CompositeTransform(transforms)
-    flow = Flow(transform, base_dist)
-    
-    # Load weights from model.pth file 
-    flow.load_state_dict(torch.load(os.path.join(model_dir, "model.pth"), map_location="cpu"))
-    flow.eval()
-    return flow
-
-# DEF PROBABILITY (probability deve essere definita in torch per fare back propagation) 
-# variable function anf and requirees_grad=traine_coeffs (train_coeffs=True)
-
-def negative_log_likelihood(weights, log_probs_matrix):
-    """Compute negative log likelihood for the ensemble."""
-    weights = np.clip(weights, 1e-8, 1.0)  # Avoid zeros
-    # np.exp(log_probs_matrix) is the porbability predicted by the models for sample x 
-    weighted_probs = np.exp(log_probs_matrix) @ weights # matrix-vector product between atrix of probabilities and vector of weights  
-    nll = -np.sum(np.log(weighted_probs + 1e-8))
-    return nll
-
-def hessian_diag(func, x0, eps=1e-5):
-    """Numerical diagonal Hessian approximation."""
-    n = len(x0)
-    hess_diag = np.zeros(n)
-    fx = func(x0)
-    for i in range(n):
-        x_eps = np.array(x0)
-        x_eps[i] += eps
-        f_eps = func(x_eps)
-        hess_diag[i] = (f_eps - 2*fx + func(x0 - eps*np.eye(1, n, i)[0])) / (eps**2)
-    return hess_diag
-
-
-# ------------------
-# Main script
-# ------------------
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--trial_dir', type=str, required=True, help='Path to trial folder (e.g., trial_000)')
-    parser.add_argument('--output_dir', type=str, default=None, help='Where to save results')
-    parser.add_argument('--n_seeds', type=int, required=True, help='Number of seeds')
-    parser.add_argument('--n_runs', type=int, required=True, help='Number of runs per seed')
-    parser.add_argument('--n_val_samples', type=int, default=10000, help='Number of validation samples')
-    args = parser.parse_args()
-
-    trial_dir = args.trial_dir
-    output_dir = args.output_dir or os.path.join(trial_dir, "..", "Uncertainty_Modeling", f"results_{os.path.basename(trial_dir)}")
-    os.makedirs(output_dir, exist_ok=True)
-
-    # ------------------
-    # Load all models
-    # ------------------
-    models = []
-    for seed in range(args.n_seeds):
-        for run in range(args.n_runs):
-            model_path = os.path.join(trial_dir, f"seed_{seed:04d}", f"run_{run:02d}")
-            model = load_model(model_path)
-            models.append(model)
-
-    print(f"Loaded {len(models)} models.")
-
-    # ------------------
-    # Load validation data
-    # ------------------
-    # For now: randomly sample from standard normal for testing
-    x_val = torch.randn(args.n_val_samples, 2)
-
-    # ------------------
-    # Compute log_probs for each model
-    # ------------------
-    log_probs_matrix = []
-    with torch.no_grad():
-        for model in models:
-            log_probs = model.log_prob(x_val).numpy()
-            log_probs_matrix.append(log_probs)
-    log_probs_matrix = np.stack(log_probs_matrix, axis=1)  # shape (n_samples, n_models)
-
-    print(f"Computed log_probs_matrix shape: {log_probs_matrix.shape}")
-
-    # ------------------
-    # Optimize weights
-    # ------------------
-    n_models = log_probs_matrix.shape[1]
-    initial_weights = np.ones(n_models) / n_models
-
-    #minimize nll function to get best weights 
-    result = minimize(
-        negative_log_likelihood,
-        initial_weights,
-        args=(log_probs_matrix,),
-        method='L-BFGS-B',
-        bounds=[(0.0, 1.0)] * n_models
-    )
-
-    best_weights = result.x
-    print(f"Optimization success: {result.success}")
-    print(f"Best weights: {best_weights}")
-
-    # ------------------
-    # Estimate uncertainties
-    # ------------------
-    hess_diag = hessian_diag(lambda w: negative_log_likelihood(w, log_probs_matrix), best_weights)
-    weights_uncertainties = np.sqrt(1.0 / (hess_diag + 1e-8))
-
-    # ------------------
-    # Save results
-    # ------------------
-    np.save(os.path.join(output_dir, "weights.npy"), best_weights)
-    np.save(os.path.join(output_dir, "weights_uncertainties.npy"), weights_uncertainties)
-    with open(os.path.join(output_dir, "fit_log.txt"), "w") as f:
-        f.write(f"Optimization success: {result.success}\n")
-        f.write(f"Best loss: {result.fun}\n")
-        f.write(f"Best weights:\n{best_weights}\n")
-        f.write(f"Weights uncertainties:\n{weights_uncertainties}\n")
-
-    print(f"Saved weights and uncertainties to {output_dir}")

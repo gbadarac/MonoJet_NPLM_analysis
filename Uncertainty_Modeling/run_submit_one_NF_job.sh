@@ -10,8 +10,8 @@
 # ======================================
 
 # setup
-model_seeds=2
-bootstrap_runs=2
+model_seeds=6
+bootstrap_runs=4
 
 # Model hyperparameters
 n_epochs=1001
@@ -40,10 +40,10 @@ echo "Saving to trial ${trial_dir}"
 # ======================================
 # Submit jobs
 # ======================================
-
 for seed in $(seq 0 $((model_seeds-1))); do
   for run_id in $(seq 0 $((bootstrap_runs-1))); do
     sbatch --export=ALL,MODEL_SEED=${seed},BOOTSTRAP_ID=${run_id},TRIAL_DIR=${trial_dir},N_EPOCHS=${n_epochs},LR=${learning_rate},BATCH_SIZE=${batch_size},HIDDEN_FEATURES=${hidden_features},NUM_BLOCKS=${num_blocks},NUM_BINS=${num_bins},NUM_LAYERS=${num_layers} submit_one_NF_job.sh
   done
 done
 
+echo "All jobs submitted"

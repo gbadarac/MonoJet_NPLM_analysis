@@ -11,7 +11,7 @@ training_file = os.path.join(output_dir, "target_training_set.npy")
 coverage_file = os.path.join(output_dir, "target_coverage_check_set.npy")
 
 # Parameters
-n_bkg = 800000
+n_bkg = 800000  
 mean_feat1, std_feat1 = -0.5, 0.25
 mean_feat2, std_feat2 = 0.6, 0.4
 

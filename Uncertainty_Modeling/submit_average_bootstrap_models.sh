@@ -15,5 +15,5 @@ source /t3home/gbadarac/miniforge3/bin/activate my_project
 
 # Run the script
 python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/average_bootstrap_models.py \
-  --trial_dir /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/EstimationNF_gaussians_bootstrap_outputs/trial_000
+--trial_dir /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/EstimationNF_gaussians_bootstrap_outputs/trial_002
 

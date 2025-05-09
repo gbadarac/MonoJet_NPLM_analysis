@@ -44,6 +44,14 @@ outdir=${TRIAL_DIR}
 export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling:$PYTHONPATH
 
 # ======================================
+# Dynamically assign GPU
+# ======================================
+gpu_id=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits | awk '{print NR-1 " " $1}' | sort -k2 -nr | head -1 | cut -d ' ' -f1)
+export CUDA_VISIBLE_DEVICES=$gpu_id
+echo "Assigned GPU ID (CUDA_VISIBLE_DEVICES): $CUDA_VISIBLE_DEVICES"
+nvidia-smi
+
+# ======================================
 # Run training script
 # ======================================
 export PYTHONUNBUFFERED=TRUE
@@ -62,3 +70,6 @@ python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Es
     --num_layers ${num_layers}
 
 export PYTHONUNBUFFERED=FALSE
+
+echo "job submitted"
+
