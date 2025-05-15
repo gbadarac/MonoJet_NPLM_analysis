@@ -11,7 +11,8 @@
 #SBATCH --nodes=1
 
 # Activate environment
-source /t3home/gbadarac/miniforge3/bin/activate my_project
+source /work/gbadarac/miniforge3/bin/activate
+conda activate nf_env
 
 # Run the script
 python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/average_bootstrap_models.py \

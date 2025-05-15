@@ -215,7 +215,7 @@ for idx in range(args.n_epochs):
 
 # Load the best model after training
 model_path = os.path.join(args.outdir, "best_model.pth")
-flow.load_state_dict(torch.load(model_path, weights_only=True))
+flow.load_state_dict(torch.load(model_path))
 flow.eval()  # Set the model to evaluation mode
 print("Best model loaded successfully.")
     
@@ -226,24 +226,30 @@ trained = flow.sample(10000).detach().numpy()  # Sample 10000 points with 2 feat
 prior = base_distribution.sample(10000).numpy()  # Sample 10000 points with 2 features each
 
 # Function to calculate KL divergence between target and trained distribution
-def calculate_kl_divergence(target, trained, eps=1e-8):
-    # Ensure target and trained are in probability space and avoid log(0) errors
-    target = np.clip(target, eps, None)  # Clip target values to avoid zero probabilities
-    trained = np.clip(trained, eps, None)  # Same for trained values
-    # This prevents taking the logarithm of zero, which would lead to undefined (NaN) values and numerical instability in the KL divergence calculation. 
-    # By clipping to this small positive value, it ensures no probability is exactly zero.
-    
-    # Normalize to make them proper probability distributions
-    target /= np.sum(target)
-    trained /= np.sum(trained)
+def calculate_kl_divergence(target_samples, trained_samples, bins=100, eps=1e-8):
+    # Histogram density estimation
+    hist_range = [
+        (min(np.min(target_samples[:, i]), np.min(trained_samples[:, i])),
+         max(np.max(target_samples[:, i]), np.max(trained_samples[:, i])))
+        for i in range(target_samples.shape[1])
+    ]
 
-    # Convert numpy arrays to PyTorch tensors
-    p_target = torch.from_numpy(target).float()
-    q_trained = torch.from_numpy(trained).float().log()  # q_trained should be in log space
+    # 2D histogram estimation
+    p_target, _ = np.histogramdd(target_samples, bins=bins, range=hist_range, density=True)
+    q_trained, _ = np.histogramdd(trained_samples, bins=bins, range=hist_range, density=True)
 
-    # Calculate KL divergence
-    kl_divergence = torch.nn.functional.kl_div(q_trained, p_target, reduction='batchmean')
-    return kl_divergence.item()
+    # Avoid zero division and log(0)
+    p_target = np.clip(p_target, eps, None)
+    q_trained = np.clip(q_trained, eps, None)
+
+    # Normalize
+    p_target /= np.sum(p_target)
+    q_trained /= np.sum(q_trained)
+
+    # Compute KL divergence
+    kl = np.sum(p_target * (np.log(p_target) - np.log(q_trained)))
+    return kl
+
 
 # Calculate KL divergence
 kl_div = calculate_kl_divergence(bkg_coord_scaled[:10000], trained)

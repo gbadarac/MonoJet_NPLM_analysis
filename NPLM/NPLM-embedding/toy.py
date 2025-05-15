@@ -139,7 +139,7 @@ flow = make_flow(num_features, hidden_features, num_bins, num_blocks, num_layers
 print('Load data')
 
 model_path = os.path.join(folders[manifold], "best_model.pth")
-flow.load_state_dict(torch.load(model_path, weights_only=True))
+flow.load_state_dict(torch.load(model_path))
 flow.eval()  # Set the model to evaluation mode
 print("Best model loaded successfully.")
 ############ end load data

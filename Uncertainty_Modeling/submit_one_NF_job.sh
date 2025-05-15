@@ -13,7 +13,8 @@
 # ======================================
 # Activate environment
 # ======================================
-source /t3home/gbadarac/miniforge3/bin/activate my_project
+source /work/gbadarac/miniforge3/bin/activate
+conda activate nf_env
 
 # ======================================
 # Set data loading path

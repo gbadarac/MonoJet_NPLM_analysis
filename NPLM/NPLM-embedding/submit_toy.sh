@@ -9,10 +9,10 @@
 #SBATCH -e /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_NF_gaussians_outputs/logs/%x-%j.err  # Keep error logs in 'logs'
 
 # Set the LD_LIBRARY_PATH to include the directory with libcusolver.so.11
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/t3home/gbadarac/miniforge3/envs/nplm_env/lib/
+export LD_LIBRARY_PATH=/work/gbadarac/miniforge3/envs/nplm_env/lib:$LD_LIBRARY_PATH
 
 # Activate the conda environment
-source /t3home/gbadarac/miniforge3/bin/activate nplm_env
+. /work/gbadarac/miniforge3/etc/profile.d/conda.sh && conda activate nplm_env
 
 # Find CUDA home dynamically through torch
 CUDA_PATH=$(python -c "import torch; print(torch.version.cuda)")
@@ -28,7 +28,7 @@ CALIBRATION=False # Change this if needed
 
 # Run the Python script and capture its output
 TEMP_LOG=/tmp/py_output_$SLURM_JOB_ID.log
-python -u /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM-embedding/toy.py -m best_model -g 20000 -r 100000 -t 100 -c $CALIBRATION -M 1400 | tee $TEMP_LOG
+python -u /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM-embedding/toy.py -m best_model -g 2000 -r 10000 -t 100 -c $CALIBRATION -M 500 | tee $TEMP_LOG
 PYTHON_OUTPUT=$(cat $TEMP_LOG)
 
 # Extract the SLURM_OUTPUT_DIR from the Python script output
