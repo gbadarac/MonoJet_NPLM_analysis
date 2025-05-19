@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNFnflows_gaussians.py", line 229, in <module>
+    base_distribution = distributions.StandardNormal(shape=(num_features,))
+NameError: name 'base_distribution' is not defined

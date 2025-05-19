@@ -54,6 +54,5 @@ def find_best_models(base_dir):
 
     return best_5_models
 
-# Example usage
 base_dir = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_gaussians_outputs"
 best_models = find_best_models(base_dir)

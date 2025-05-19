@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Arrays of parameter values
-num_blocks_array=(4 6 8 10)
-hidden_features_array=(64 128 256)
-num_bins_array=(12 14 16 18)
-num_layers_array=(4 5 6 7)
+num_blocks_array=(2 4 6 8)
+hidden_features_array=(32 64 128)
+num_bins_array=(6 8 10 12)
+num_layers_array=(3 4 5 6)
 
 # Loop over each combination of num_blocks, hidden_features, num_bins, and num_layers
 for num_blocks in "${num_blocks_array[@]}"

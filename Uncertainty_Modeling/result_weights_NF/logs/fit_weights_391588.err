@@ -1,0 +1,2 @@
+/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/fit_NF_ensemble_weights.py:182: RuntimeWarning: invalid value encountered in sqrt
+  w_i_unc = 1.0 / np.sqrt(hess_diag + 1e-8)

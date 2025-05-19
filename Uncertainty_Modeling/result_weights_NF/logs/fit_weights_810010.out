@@ -1,0 +1,42 @@
+Initial weights: [0.5 0.5]
+
+Log-prob diagnostics:
+  Good model: mean = -2.8395, std = 0.9805
+  Bad  model: mean = -2.8363, std = 0.9922
+  Diff (mean): 0.0032
+Mean abs(prob_0 - prob_1): 5.186683e-03
+Max abs diff: 2.768017e-02
+Std of diff: 4.571970e-03
+
+NLL sweep over alpha ∈ [0, 1]:
+  alpha = 0.0  -> NLL = 2.844218
+  alpha = 0.1  -> NLL = 2.843198
+  alpha = 0.2  -> NLL = 2.842291
+  alpha = 0.3  -> NLL = 2.841496
+  alpha = 0.4  -> NLL = 2.840812
+  alpha = 0.5  -> NLL = 2.840238
+  alpha = 0.6  -> NLL = 2.839774
+  alpha = 0.7  -> NLL = 2.839420
+  alpha = 0.8  -> NLL = 2.839178
+  alpha = 0.9  -> NLL = 2.839049
+  alpha = 1.0  -> NLL = 2.839039
+
+Starting PyTorch optimization:
+Step 000: NLL = 2.840238, weights = [0.5 0.5]
+Step 025: NLL = 2.839696, weights = [0.38049656 0.61950344]
+Step 050: NLL = 2.839385, weights = [0.28807062 0.7119293 ]
+Step 075: NLL = 2.839232, weights = [0.22704037 0.77295965]
+Step 100: NLL = 2.839156, weights = [0.18752454 0.8124755 ]
+Step 125: NLL = 2.839114, weights = [0.16072905 0.83927095]
+Step 150: NLL = 2.839089, weights = [0.14153655 0.85846347]
+Step 175: NLL = 2.839073, weights = [0.12714317 0.87285686]
+Step 200: NLL = 2.839062, weights = [0.11595234 0.8840477 ]
+Step 225: NLL = 2.839054, weights = [0.10700183 0.8929982 ]
+Step 250: NLL = 2.839049, weights = [0.0996789 0.9003211]
+Step 275: NLL = 2.839045, weights = [0.09357563 0.9064244 ]
+Step 299: NLL = 2.839042, weights = [0.08860242 0.9113976 ]
+Final fitted weights (PyTorch): [0.08841113 0.9115888 ]
+
+Computing Hessian manually (no softmax)...
+Manual Hessian diag (raw weights): [[ 0.00884157 -0.00142449]
+ [-0.00142455  0.00019342]]

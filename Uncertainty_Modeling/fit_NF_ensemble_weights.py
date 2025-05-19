@@ -7,10 +7,10 @@ import torch
 import torch.optim as optim
 import numpy as np
 import argparse
-from utils import make_flow, hessian_diag, nll, nll_numpy
-import matplotlib 
+from utils import make_flow, nll, nll_numpy
+import matplotlib
+import matplotlib.pyplot as plt
 matplotlib.use('Agg')  # ensure it works on clusters without displaying plots
-import matplotlib.pyplot as plt 
 
 # ------------------
 # Args
@@ -28,7 +28,8 @@ args = parser.parse_args()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") #sets device to GPU if available 
 os.makedirs(args.trial_dir, exist_ok=True)
 
-f_i_file = os.path.join(args.trial_dir, "f_i_averaged.pth")
+#f_i_file = os.path.join(args.trial_dir, "f_i_averaged.pth")
+f_i_file = os.path.join(args.trial_dir, "f_i.pth")
 w_i_file = os.path.join(args.trial_dir, "w_i_initial.npy")
 
 f_i_statedicts = torch.load(f_i_file, map_location=device) #list of state_dicts 
@@ -39,8 +40,17 @@ print(f"Initial weights: {w_i_initial}")
 # Load architecture config and data 
 # ------------------
 # Save architecture 
+'''
 with open(os.path.join(args.trial_dir, "architecture_config.json")) as f:
     config = json.load(f) 
+'''
+
+configs = []
+for model_name in ["good_model", "bad_model"]:
+    config_path = os.path.join(args.trial_dir, model_name, "architecture_config.json")
+    with open(config_path) as f:
+        configs.append(json.load(f))
+
 
 x_data = torch.from_numpy(np.load(args.data_path)).float().to(device)
 
@@ -48,7 +58,8 @@ x_data = torch.from_numpy(np.load(args.data_path)).float().to(device)
 # Reconstruct flows f_i
 # ------------------
 f_i_models = []
-for state_dict in f_i_statedicts:
+#for state_dict in f_i_statedicts:
+for state_dict, config in zip(f_i_statedicts, configs):
     flow = make_flow(
         num_layers=config["num_layers"],
         hidden_features=config["hidden_features"],
@@ -60,6 +71,29 @@ for state_dict in f_i_statedicts:
     #You want all models to produce consistent, deterministic outputs for likelihood evaluation 
     f_i_models.append(flow)
 
+# === TEST 1: Log-prob mean comparison ===
+with torch.no_grad():
+    logp_0 = f_i_models[0].log_prob(x_data[:10000]).cpu().numpy()
+    logp_1 = f_i_models[1].log_prob(x_data[:10000]).cpu().numpy()
+
+print("\nLog-prob diagnostics:")
+print(f"  f₀(x) [good model]: mean = {logp_0.mean():.4f}, std = {logp_0.std():.4f}")
+print(f"  f₁(x) [bad  model]: mean = {logp_1.mean():.4f}, std = {logp_1.std():.4f}")
+print(f"  Diff (mean): {abs(logp_0.mean() - logp_1.mean()):.4f}")
+
+# === TEST 2: Visualize model probabilities ==
+with torch.no_grad():
+    probs0 = torch.exp(f_i_models[0].log_prob(x_data)).cpu().numpy()
+    probs1 = torch.exp(f_i_models[1].log_prob(x_data)).cpu().numpy()
+
+plt.figure(figsize=(6,4))
+plt.hist(probs0, bins=100, alpha=0.5, label="f₀(x) [good model]")
+plt.hist(probs1, bins=100, alpha=0.5, label="f₁(x) [bad model]")
+plt.legend()
+plt.title("Model probability distributions")
+plt.tight_layout()
+plt.savefig(os.path.join(args.out_dir, "model_probs_hist.png"))
+
 # ------------------
 # Diagnostic: Compare f₀(x) vs f₁(x)
 # ------------------
@@ -69,9 +103,12 @@ if len(f_i_models) >= 2:
         probs1 = torch.exp(f_i_models[1].log_prob(x_data))
         diff = (probs0 - probs1).abs()
 
-        print(f"Mean abs(prob_0 - prob_1): {diff.mean().item():.6e}")
-        print(f"Max abs diff: {diff.max().item():.6e}")
-        print(f"Std of diff: {diff.std().item():.6e}")
+        print("\nModel probability difference statistics:")
+        print("  prob₀ = f₀(x) [good model]")
+        print("  prob₁ = f₁(x) [bad  model]")
+        print(f"  Mean abs(prob₀ - prob₁): {diff.mean().item():.6e}")
+        print(f"  Max abs diff: {diff.max().item():.6e}")
+        print(f"  Std of diff: {diff.std().item():.6e}")
 
 # ------------------
 # Evaluate f_i(x) -> model_probs
@@ -96,6 +133,14 @@ optimizer = optim.Adam([w_logits], lr=1e-2)
 def norm_weights(logits):
     return torch.nn.functional.softmax(logits, dim=0)
 
+# === TEST 3: Sweep NLL across [w₀, w₁] ∈ [1,0] to [0,1] ===
+print("\nNLL sweep over alpha ∈ [0, 1]:")
+print("  NLL evaluated on: f(x) = (1 - α) * f₀(x) [good] + α * f₁(x) [bad]")
+for alpha in np.linspace(0.0, 1.0, 11):
+    w = np.array([1.0 - alpha, alpha])
+    loss = nll_numpy(w, model_probs, device=device)
+    print(f"  alpha = {alpha:.1f}  -> NLL = {loss:.6f}")
+
 # ------------------
 # Optimize weights using MLE
 # ------------------
@@ -111,16 +156,36 @@ for step in range(300):  # number of optimization steps
     optimizer.step()
 
     if step % 25 == 0 or step == 299:
-        print(f"Step {step:03d}: NLL = {loss.item():.6f}, weights = {w_i_norm.detach().numpy()}")
+        w_np = w_i_norm.detach().cpu().numpy()
+        print(f"Step {step:03d}: NLL = {loss.item():.6f}, weights = {w_np}")
+        print(f"            → f₀(x) [good]: {w_np[0]:.4f}, f₁(x) [bad]: {w_np[1]:.4f}")
+        #print(f"Step {step:03d}: NLL = {loss.item():.6f}, weights = {w_i_norm.detach().numpy()}")
 
+'''
 w_i_final = norm_weights(w_logits).detach().cpu().numpy()
 print("Final fitted weights (PyTorch):", w_i_final)
+'''
+w_i_final = norm_weights(w_logits).detach().cpu().numpy()
+print("\nFinal fitted weights (PyTorch):", w_i_final)
+print(f"  → Weight on f₀(x) [good model]: {w_i_final[0]:.4f}")
+print(f"  → Weight on f₁(x) [bad  model]: {w_i_final[1]:.4f}")
 
 # ------------------
 # Compute uncertainties via Hessian
 # ------------------
-hess_diag = hessian_diag(lambda w: nll_numpy(w, model_probs, device=device), w_i_final)
-print("Hessian diag:", hess_diag)
+# === TEST 4: Compute Hessian w.r.t. raw weights ===
+print("\nComputing Hessian manually (no softmax)...")
+w_raw = torch.tensor(w_i_final, dtype=torch.float32, requires_grad=True)
+
+loss = nll(w_raw / w_raw.sum(), model_probs)
+grad, = torch.autograd.grad(loss, w_raw, create_graph=True)
+hess_diag = []
+for g_i in grad:
+    h_i, = torch.autograd.grad(g_i, w_raw, retain_graph=True)
+    hess_diag.append(h_i)
+hess_diag = torch.stack(hess_diag).detach().cpu().numpy()
+print("Manual Hessian diag (raw weights):", hess_diag)
+
 w_i_unc = 1.0 / np.sqrt(hess_diag + 1e-8)
 
 # ------------------

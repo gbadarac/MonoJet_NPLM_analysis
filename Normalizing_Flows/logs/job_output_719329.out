@@ -1,0 +1,67 @@
+/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_gaussians_outputs/job_6_4_128_10_719329
+Epoch 0, Avg Train Loss: 6.1519, Avg Validation Loss: 4.7688
+Epoch 1, Avg Train Loss: 4.3278, Avg Validation Loss: 3.9394
+Epoch 2, Avg Train Loss: 3.6794, Avg Validation Loss: 3.4983
+Epoch 3, Avg Train Loss: 3.3301, Avg Validation Loss: 3.1600
+Epoch 4, Avg Train Loss: 3.1033, Avg Validation Loss: 3.0439
+Epoch 5, Avg Train Loss: 3.0291, Avg Validation Loss: 2.9949
+Epoch 6, Avg Train Loss: 2.9969, Avg Validation Loss: 2.9756
+Epoch 7, Avg Train Loss: 2.9672, Avg Validation Loss: 2.9396
+Epoch 8, Avg Train Loss: 2.9450, Avg Validation Loss: 2.9325
+Epoch 9, Avg Train Loss: 2.9328, Avg Validation Loss: 2.9159
+Epoch 10, Avg Train Loss: 2.9215, Avg Validation Loss: 2.9076
+Epoch 11, Avg Train Loss: 2.9147, Avg Validation Loss: 2.9061
+Epoch 12, Avg Train Loss: 2.9078, Avg Validation Loss: 2.8991
+Epoch 13, Avg Train Loss: 2.9029, Avg Validation Loss: 2.8924
+Epoch 14, Avg Train Loss: 2.8972, Avg Validation Loss: 2.8901
+Epoch 15, Avg Train Loss: 2.8956, Avg Validation Loss: 2.8899
+Epoch 16, Avg Train Loss: 2.8913, Avg Validation Loss: 2.8808
+Epoch 17, Avg Train Loss: 2.8850, Avg Validation Loss: 2.8767
+Epoch 18, Avg Train Loss: 2.8808, Avg Validation Loss: 2.8727
+Epoch 19, Avg Train Loss: 2.8780, Avg Validation Loss: 2.8705
+Epoch 20, Avg Train Loss: 2.8783, Avg Validation Loss: 2.8817
+Epoch 21, Avg Train Loss: 2.8787, Avg Validation Loss: 2.8714
+Epoch 22, Avg Train Loss: 2.8703, Avg Validation Loss: 2.8638
+Epoch 23, Avg Train Loss: 2.8695, Avg Validation Loss: 2.8630
+Epoch 24, Avg Train Loss: 2.8663, Avg Validation Loss: 2.8602
+Epoch 25, Avg Train Loss: 2.8648, Avg Validation Loss: 2.8586
+Epoch 26, Avg Train Loss: 2.8637, Avg Validation Loss: 2.8580
+Epoch 27, Avg Train Loss: 2.8607, Avg Validation Loss: 2.8563
+Epoch 28, Avg Train Loss: 2.8596, Avg Validation Loss: 2.8534
+Epoch 29, Avg Train Loss: 2.8583, Avg Validation Loss: 2.8538
+Epoch 30, Avg Train Loss: 2.8572, Avg Validation Loss: 2.8522
+Epoch 31, Avg Train Loss: 2.8561, Avg Validation Loss: 2.8517
+Epoch 32, Avg Train Loss: 2.8553, Avg Validation Loss: 2.8501
+Epoch 33, Avg Train Loss: 2.8552, Avg Validation Loss: 2.8507
+Epoch 34, Avg Train Loss: 2.8539, Avg Validation Loss: 2.8484
+Epoch 35, Avg Train Loss: 2.8535, Avg Validation Loss: 2.8483
+Epoch 36, Avg Train Loss: 2.8520, Avg Validation Loss: 2.8494
+Epoch 37, Avg Train Loss: 2.8528, Avg Validation Loss: 2.8486
+Epoch 38, Avg Train Loss: 2.8524, Avg Validation Loss: 2.8486
+Epoch 39, Avg Train Loss: 2.8518, Avg Validation Loss: 2.8472
+Epoch 40, Avg Train Loss: 2.8516, Avg Validation Loss: 2.8467
+Epoch 41, Avg Train Loss: 2.8509, Avg Validation Loss: 2.8495
+Epoch 42, Avg Train Loss: 2.8501, Avg Validation Loss: 2.8470
+Epoch 43, Avg Train Loss: 2.8502, Avg Validation Loss: 2.8453
+Epoch 44, Avg Train Loss: 2.8495, Avg Validation Loss: 2.8456
+Epoch 45, Avg Train Loss: 2.8492, Avg Validation Loss: 2.8448
+Epoch 46, Avg Train Loss: 2.8490, Avg Validation Loss: 2.8464
+Epoch 47, Avg Train Loss: 2.8493, Avg Validation Loss: 2.8455
+Epoch 48, Avg Train Loss: 2.8499, Avg Validation Loss: 2.8467
+Epoch 49, Avg Train Loss: 2.8488, Avg Validation Loss: 2.8463
+Epoch 50, Avg Train Loss: 2.8488, Avg Validation Loss: 2.8443
+Epoch 51, Avg Train Loss: 2.8479, Avg Validation Loss: 2.8452
+Epoch 52, Avg Train Loss: 2.8475, Avg Validation Loss: 2.8419
+Epoch 53, Avg Train Loss: 2.8478, Avg Validation Loss: 2.8437
+Epoch 54, Avg Train Loss: 2.8470, Avg Validation Loss: 2.8458
+Epoch 55, Avg Train Loss: 2.8506, Avg Validation Loss: 2.8462
+Epoch 56, Avg Train Loss: 2.8727, Avg Validation Loss: 2.8621
+Epoch 57, Avg Train Loss: 2.8544, Avg Validation Loss: 2.8443
+Epoch 58, Avg Train Loss: 2.8492, Avg Validation Loss: 2.8498
+Epoch 59, Avg Train Loss: 2.8489, Avg Validation Loss: 2.8432
+Epoch 60, Avg Train Loss: 2.8464, Avg Validation Loss: 2.8435
+Epoch 61, Avg Train Loss: 2.8463, Avg Validation Loss: 2.8427
+Early stopping triggered
+Best model loaded successfully.
+KL divergence saved successfully.
+KL divergence saved successfully.

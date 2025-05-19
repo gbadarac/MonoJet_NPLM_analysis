@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/fit_NF_ensemble_weights.py", line 186, in <module>
+    hess_diag = torch.stack(hess_diag).detach().cpu.numpy()
+AttributeError: 'builtin_function_or_method' object has no attribute 'numpy'

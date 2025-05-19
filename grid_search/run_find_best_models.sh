@@ -15,7 +15,8 @@
 
 
 # Load required modules or activate conda environment if necessary
-source /work/gbadarac/miniforge3/bin/activate nf_env  # Modify this line to match your setup
+source /work/gbadarac/miniforge3/bin/activate
+conda activate nf_env
 
 # Run the Python script
 python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/grid_search/find_best_models.py

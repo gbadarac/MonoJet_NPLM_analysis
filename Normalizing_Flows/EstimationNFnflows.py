@@ -4,18 +4,12 @@
 # Normalizing flow using nflows package and toy data 
 
 import numpy as np
-import matplotlib.pyplot as plt
-import mplhep as hep
-import scipy.stats
-from scipy.stats import rel_breitwigner
 import torch
 import os
 import argparse
-import sklearn
 #instead of manually defining bijectors and distributions, 
 #import necessary components from nflows
 from sklearn.preprocessing import StandardScaler
-
 from nflows.distributions.normal import StandardNormal
 from nflows import distributions, flows, transforms
 import nflows.transforms as transforms
@@ -23,13 +17,10 @@ from nflows.flows import Flow
 from nflows.transforms.base import CompositeTransform
 from nflows.transforms.autoregressive import MaskedPiecewiseRationalQuadraticAutoregressiveTransform
 from nflows.transforms.permutations import ReversePermutation
-
 from torch.utils.data import DataLoader, TensorDataset
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
-
-# Use CMS style
-hep.style.use("CMS")
+import json 
 
 # Add argument parsing for command line arguments
 parser = argparse.ArgumentParser(description='Normalizing Flow Training Script')
@@ -43,6 +34,20 @@ parser.add_argument('--hidden_features', type=int, required=True, help='Number o
 parser.add_argument('--num_bins', type=int, required=True, help='Number of network parameters for each layer of spline transformations')
 args = parser.parse_args()
 
+# Save model configuration
+config = {
+    "num_features": 2,
+    "num_layers": args.num_layers,
+    "num_blocks": args.num_blocks,
+    "hidden_features": args.hidden_features,
+    "num_bins": args.num_bins,
+    "learning_rate": args.learning_rate,
+    "n_epochs": args.n_epochs,
+    "batch_size": args.batch_size
+}
+with open(os.path.join(args.outdir, "config.json"), "w") as f:
+    json.dump(config, f, indent=4)
+
 #Setup: 
 # - bkg: exponential falling distribution
 # - signal: Breit-Wigner at certain mass 
@@ -52,14 +57,11 @@ n_bkg = 800000
 bkg = np.random.exponential(scale=100.0, size=n_bkg)
 # Adding b-tagging information (a form of event classification)
 bkg_btag = np.random.uniform(low=0.0, high=1.0, size=n_bkg)
-
-num_features=2 #dimensionality of the data being transformed.
-# In this case: b-tagging score and background energy
-
-# Note: the bkg distribution is the posterior/target distribution which the Normalizing Flow should learn to approximate.
-
-##Combining energy and b-tagging score for both bkg and signal 
+#Combining energy and b-tagging score 
 bkg_coord = np.column_stack((bkg_btag, bkg))  # Combine btag and bkg for training
+
+np.save(os.path.join(args.outdir, "target_samples.npy"), bkg_coord)  # unscaled
+
 #Initialize the scaler 
 scaler = StandardScaler()
 #Scale the target distribution to help the model to converge faster 
@@ -72,8 +74,10 @@ bkg_coord_scaled[:, 1] += shift  # Add the shift to the entire dataset
 
 bkg_coord_scaled = bkg_coord_scaled.astype('float32') #bkg coordinates converted to float32 for compatibility with python 
 
-# Define base distribution
-base_distribution = distributions.StandardNormal(shape=(num_features,))
+num_features=2 #dimensionality of the data being transformed.
+# In this case: b-tagging score and background energy
+
+# Note: the bkg distribution is the posterior/target distribution which the Normalizing Flow should learn to approximate.
 
 #Normalizing flow model:
 # Set up simple normalizing flow with arbitrary inputs and outputs just to test 
@@ -81,7 +85,7 @@ base_distribution = distributions.StandardNormal(shape=(num_features,))
 num_context=0
 
 def make_flow(num_features,num_context, perm=True):
-    base_dist = distributions.StandardNormal(shape=(num_features,))
+    base_dist = distributions.StandardNormal(shape=(num_features,)) #base distrbution for the flow to be initialized 
 
     transforms = []
     if num_context == 0:
@@ -101,6 +105,11 @@ def make_flow(num_features,num_context, perm=True):
     transform = CompositeTransform(transforms)
     flow = Flow(transform, base_dist)
     return flow
+
+# Note 
+# tail_bound defines the interval [-tail_bound, tail_bound] over which the spline transformation is applied.
+# Outside this range, the transformation becomes linear (to ensure numerical stability and tractability).
+# Choose a value that comfortably covers your normalized data, but avoids wasting bins in the far tails.
 
 # The higher the number of hidden_features/num_blocks, the more expressive the transformation will be, 
 # allowing it to capture more complex relationships in the data.
@@ -218,38 +227,44 @@ model_path = os.path.join(args.outdir, "best_model.pth")
 flow.load_state_dict(torch.load(model_path))
 flow.eval()  # Set the model to evaluation mode
 print("Best model loaded successfully.")
+
+# Save min loss and epoch info
+with open(os.path.join(args.outdir, "loss_summary.json"), "w") as f:
+    json.dump({"min_loss": min_loss, "min_loss_epoch": min_loss_epoch}, f, indent=4)
+
+n_plot=10000
     
 # Sample points from the trained flow
-trained = flow.sample(10000).detach().numpy()  # Sample 10000 points with 2 features each
+trained = flow.sample(n_plot).detach().numpy()  # Sample 10000 points with 2 features each
+
+# Define base distribution
+base_distribution = distributions.StandardNormal(shape=(num_features,))
 
 # Sample points from the base distribution
-prior = base_distribution.sample(10000).numpy()  # Sample 10000 points with 2 features each
+prior = base_distribution.sample(n_plot).numpy()  # Sample 10000 points with 2 features each
+
+# Save generated samples for plotting
+np.save(os.path.join(args.outdir, "trained_samples.npy"), trained)
 
 # Function to calculate KL divergence between target and trained distribution
-def calculate_kl_divergence(target_samples, trained_samples, bins=100, eps=1e-8):
-    # Histogram density estimation
-    hist_range = [
-        (min(np.min(target_samples[:, i]), np.min(trained_samples[:, i])),
-         max(np.max(target_samples[:, i]), np.max(trained_samples[:, i])))
-        for i in range(target_samples.shape[1])
-    ]
+def calculate_kl_divergence(target, trained, eps=1e-8):
+    # Ensure target and trained are in probability space and avoid log(0) errors
+    target = np.clip(target, eps, None)  # Clip target values to avoid zero probabilities
+    trained = np.clip(trained, eps, None)  # Same for trained values
+    # This prevents taking the logarithm of zero, which would lead to undefined (NaN) values and numerical instability in the KL divergence calculation. 
+    # By clipping to this small positive value, it ensures no probability is exactly zero.
+    
+    # Normalize to make them proper probability distributions
+    target /= np.sum(target)
+    trained /= np.sum(trained)
 
-    # 2D histogram estimation
-    p_target, _ = np.histogramdd(target_samples, bins=bins, range=hist_range, density=True)
-    q_trained, _ = np.histogramdd(trained_samples, bins=bins, range=hist_range, density=True)
+    # Convert numpy arrays to PyTorch tensors
+    p_target = torch.from_numpy(target).float()
+    q_trained = torch.from_numpy(trained).float().log()  # q_trained should be in log space
 
-    # Avoid zero division and log(0)
-    p_target = np.clip(p_target, eps, None)
-    q_trained = np.clip(q_trained, eps, None)
-
-    # Normalize
-    p_target /= np.sum(p_target)
-    q_trained /= np.sum(q_trained)
-
-    # Compute KL divergence
-    kl = np.sum(p_target * (np.log(p_target) - np.log(q_trained)))
-    return kl
-
+    # Calculate KL divergence
+    kl_divergence = torch.nn.functional.kl_div(q_trained, p_target, reduction='batchmean')
+    return kl_divergence.item()
 
 # Calculate KL divergence
 kl_div = calculate_kl_divergence(bkg_coord_scaled[:10000], trained)
@@ -262,135 +277,6 @@ print("KL divergence saved successfully.")
 # Create output directory if it doesn't exist
 os.makedirs(args.outdir, exist_ok=True)
 
-# After creating the scatter plot
-plt.scatter(prior[:, 0], prior[:, 1], color='gray', label='Base/Prior distribution')
-plt.scatter(bkg_coord_scaled[:10000, 0], bkg_coord_scaled[:10000, 1], color='blue', label='Background/Target distribution')
-plt.scatter(trained[:, 0], trained[:, 1], color='green', label='Trained distribution')
-plt.xlabel("b-tag score (normalized)")
-plt.ylabel("Energy (normalized)")
-plt.legend(loc='upper right',fontsize=16)
-
-# Display hidden_features, num_blocks, and KL divergence in the plot
-text_str = f"learning_rate: {args.learning_rate}\nnum_layers: {args.num_layers}\nnum_blocks: {args.num_blocks}\nhidden_features: {args.hidden_features}\nnum_bins: {args.num_bins}\nn_epochs: {args.n_epochs}"
-plt.text(0.05, 0.95, text_str, transform=plt.gca().transAxes, fontsize=16, verticalalignment='top',
-         bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', alpha=0.7))
-
-# Save the plot to the output directory
-scatter_name = f"scatter.png"
-scatter_path = os.path.join(args.outdir, scatter_name)
-plt.savefig(scatter_path)
-
-# Plot training and validation loss per epoch
-# Training loss: measures how well your model is fitting the target distribution
-# Validation loss: measures how well your model generalizes to unseen data fro the same target disribution
-
-plt.figure()
-plt.plot(train_losses, label="Training Loss", color='blue') #training loss 
-plt.plot(val_losses, label="Validation Loss", color='red', linestyle='--') #validation loss 
-plt.xlabel("Epochs")
-plt.ylabel("Loss")
-plt.legend(fontsize=20)
-
-# Display the minimum loss and the corresponding epoch in the plot
-text_str = f"Min Loss: {min_loss:.4f} at Epoch {min_loss_epoch}\nKL Divergence: {kl_div:.9f}"
-plt.text(0.6, 0.95, text_str, transform=plt.gca().transAxes, fontsize=16, verticalalignment='top',
-         bbox=dict(boxstyle="round,pad=0.3", edgecolor='black', facecolor='white', alpha=0.7))
-
-# Save the training loss plot
-loss_name = f"loss.png"
-loss_plot_path = os.path.join(args.outdir, loss_name)
-plt.savefig(loss_plot_path)
-
-# Function to plot marginal distributions
-def plot_marginals(target, trained, feature_names, outdir, scaler):
-    num_features = target.shape[1]
-    
-    # Inverse transform to get original features
-    target_original = scaler.inverse_transform(target)
-    trained_original = scaler.inverse_transform(trained)
-    
-    for i in range(num_features):
-        fig, (ax_main, ax_ratio) = plt.subplots(2, 1, figsize=(8, 10), gridspec_kw={'height_ratios': [3, 1]})
-        
-        target_feature = target_original[:, i]
-        trained_feature = trained_original[:, i]
-        feature_label = feature_names[i]
-        
-        if i == 1:  # Assuming energy is the second feature (index 1)
-            # Set x-axis limits for energy feature
-            x_limits = (0, 600)
-            bins=50
-        else:
-            # Set x-axis limits for non-energy features (e.g., b-tagging score)
-            x_limits = (-0.5, 1.5)
-            bins=15
-        
-        # Combine data for consistent binning
-        all_data = np.concatenate([target_feature, trained_feature])
-        bin_edges = np.linspace(np.min(all_data), np.max(all_data), bins + 1)
-            
-        # Recalculate the histograms using the same bin edges
-        hist_target_counts, _ = np.histogram(target_feature, bins=bin_edges)
-        hist_trained_counts, _ = np.histogram(trained_feature, bins=bin_edges)
-        
-        # Total counts for normalization
-        N_target_total = np.sum(hist_target_counts)
-        N_trained_total = np.sum(hist_trained_counts)
-        
-        # Normalize histograms (including empty bins)
-        hist_target = hist_target_counts / N_target_total
-        hist_trained = hist_trained_counts / N_trained_total
-        
-        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-        
-        # Error estimation for histograms
-        err_target = np.sqrt(hist_target_counts) / N_target_total
-        err_trained = np.sqrt(hist_trained_counts) / N_trained_total
-        
-        # Main plot (marginal histograms)
-        ax_main.bar(bin_centers, hist_target, width=np.diff(bin_edges), alpha=0.3, label='Target', color='blue', edgecolor='black', align='center')
-        ax_main.bar(bin_centers, hist_trained, width=np.diff(bin_edges), alpha=0.3, label='Trained', color='green', edgecolor='black', align='center')
-        ax_main.errorbar(bin_centers, hist_target, yerr=err_target, fmt='o', color='blue', label='Target Error', alpha=0.7)
-        ax_main.errorbar(bin_centers, hist_trained, yerr=err_trained, fmt='o', color='green', label='Trained Error', alpha=0.7)
-        ax_main.set_xlabel(feature_label, fontsize=16)
-        ax_main.set_ylabel("Density", fontsize=16)
-        ax_main.legend(fontsize=14)
-        if x_limits:
-            ax_main.set_xlim(x_limits)
-            
-        # Calculate bin-by-bin ratio of normalized counts (target/trained)
-        
-        # ------------------- FILTERING PART -------------------
-        
-        # Filter bins where both histograms have sufficiently large counts
-        valid_bins = (hist_target_counts > 1e-3) & (hist_trained_counts > 1e-3)  # Avoid empty/low-count bins
-        
-        # Filter histograms and bins for valid data only
-        bin_centers_filtered = bin_centers[valid_bins]
-        target_hist_filtered = hist_target[valid_bins]
-        trained_hist_filtered = hist_trained[valid_bins]
-        
-        # ------------------- Ratio Calculation -------------------
-        
-        # Calculate ratio and its error
-        ratio = trained_hist_filtered / target_hist_filtered
-        
-        err_ratio = ratio * np.sqrt((err_target[valid_bins] / target_hist_filtered) ** 2 +(err_trained[valid_bins] / trained_hist_filtered) ** 2)
-        
-        # Ratio plot (target/trained ratio)
-        ax_ratio.errorbar(bin_centers_filtered, ratio, yerr=err_ratio, fmt='o', label='Trained/Target Ratio', color='red', alpha=0.7)
-        ax_ratio.set_ylabel("Ratio (Trained/Target)", fontsize=16)
-        ax_ratio.legend(fontsize=14,loc='upper left')
-        ax_ratio.set_xlim(x_limits)  # Apply feature-specific x-axis limits
-        ax_ratio.set_ylim(0.0, 2.0)  # Zoom in on the ratio plot
-        ax_ratio.axhline(y=1, color='black', linestyle='--', linewidth=2)  # Horizontal line at y=1
-        
-        # Save the plot
-        plot_path = os.path.join(outdir, f"marginal_feature_{i+1}.png")
-        plt.tight_layout()
-        plt.savefig(plot_path)
-        plt.close()
-
-# Call the function with the necessary arguments
-feature_names = ["b-tag score", "Energy [GeV]"]
-plot_marginals(bkg_coord_scaled[:10000], trained, feature_names, args.outdir, scaler)
+#save training curves and scaler for inverse transform in plotting
+np.save(os.path.join(args.outdir, "train_losses.npy"), np.array(train_losses))
+np.save(os.path.join(args.outdir, "val_losses.npy"), np.array(val_losses))

@@ -62,36 +62,11 @@ def nll(weights, model_probs):
 
 def nll_numpy(weights_np, model_probs, device="cpu"):
     """
-    NumPy-compatible wrapper around the PyTorch nll().
-    Args:
-        weights_np: NumPy array of shape (M,)
-        model_probs: torch.tensor of shape (N, M)
-        device: torch device
-    Returns:
-        Scalar negative log-likelihood
+    NumPy-compatible wrapper around the PyTorch nll(), preserving gradient info for Hessian estimation.
     """
-    weights_tensor = torch.tensor(weights_np, dtype=torch.float32, device=device)
-    model_probs = model_probs.to(device)
+    weights_tensor = torch.tensor(weights_np, dtype=torch.float32, requires_grad=True, device=device)
     return nll(weights_tensor, model_probs).item()
 
-def hessian_diag(func, x0, eps=1e-5):
-    """Numerical diagonal Hessian approximation."""
-    n = len(x0)
-    hess_diag = np.zeros(n)
-    fx = func(x0)
-
-    for i in range(n):
-        x_forward = np.array(x0, copy=True)
-        x_backward = np.array(x0, copy=True)
-
-        x_forward[i] += eps
-        x_backward[i] -= eps
-
-        f_forward = func(x_forward)
-        f_backward = func(x_backward)
-
-        hess_diag[i] = (f_forward - 2 * fx + f_backward) / (eps ** 2)
-    return hess_diag
 
 def ensemble_pred(weights, model_probs):
     """

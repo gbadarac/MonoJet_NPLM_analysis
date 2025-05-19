@@ -1,0 +1,59 @@
+/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_gaussians_outputs/job_3_8_128_10_720172
+Epoch 0, Avg Train Loss: 3.4792, Avg Validation Loss: 3.1359
+Epoch 1, Avg Train Loss: 3.0418, Avg Validation Loss: 2.9964
+Epoch 2, Avg Train Loss: 2.9523, Avg Validation Loss: 2.9442
+Epoch 3, Avg Train Loss: 2.9190, Avg Validation Loss: 2.9213
+Epoch 4, Avg Train Loss: 2.9022, Avg Validation Loss: 2.9075
+Epoch 5, Avg Train Loss: 2.8909, Avg Validation Loss: 2.8974
+Epoch 6, Avg Train Loss: 2.8828, Avg Validation Loss: 2.8901
+Epoch 7, Avg Train Loss: 2.8768, Avg Validation Loss: 2.8848
+Epoch 8, Avg Train Loss: 2.8724, Avg Validation Loss: 2.8815
+Epoch 9, Avg Train Loss: 2.8684, Avg Validation Loss: 2.8780
+Epoch 10, Avg Train Loss: 2.8659, Avg Validation Loss: 2.8743
+Epoch 11, Avg Train Loss: 2.8635, Avg Validation Loss: 2.8718
+Epoch 12, Avg Train Loss: 2.8617, Avg Validation Loss: 2.8716
+Epoch 13, Avg Train Loss: 2.8602, Avg Validation Loss: 2.8682
+Epoch 14, Avg Train Loss: 2.8588, Avg Validation Loss: 2.8667
+Epoch 15, Avg Train Loss: 2.8574, Avg Validation Loss: 2.8658
+Epoch 16, Avg Train Loss: 2.8568, Avg Validation Loss: 2.8644
+Epoch 17, Avg Train Loss: 2.8557, Avg Validation Loss: 2.8636
+Epoch 18, Avg Train Loss: 2.8548, Avg Validation Loss: 2.8630
+Epoch 19, Avg Train Loss: 2.8539, Avg Validation Loss: 2.8622
+Epoch 20, Avg Train Loss: 2.8532, Avg Validation Loss: 2.8612
+Epoch 21, Avg Train Loss: 2.8527, Avg Validation Loss: 2.8618
+Epoch 22, Avg Train Loss: 2.8526, Avg Validation Loss: 2.8600
+Epoch 23, Avg Train Loss: 2.8523, Avg Validation Loss: 2.8607
+Epoch 24, Avg Train Loss: 2.8513, Avg Validation Loss: 2.8592
+Epoch 25, Avg Train Loss: 2.8508, Avg Validation Loss: 2.8596
+Epoch 26, Avg Train Loss: 2.8503, Avg Validation Loss: 2.8597
+Epoch 27, Avg Train Loss: 2.8505, Avg Validation Loss: 2.8573
+Epoch 28, Avg Train Loss: 2.8500, Avg Validation Loss: 2.8590
+Epoch 29, Avg Train Loss: 2.8506, Avg Validation Loss: 2.8585
+Epoch 30, Avg Train Loss: 2.8494, Avg Validation Loss: 2.8567
+Epoch 31, Avg Train Loss: 2.8497, Avg Validation Loss: 2.8563
+Epoch 32, Avg Train Loss: 2.8498, Avg Validation Loss: 2.8564
+Epoch 33, Avg Train Loss: 2.8488, Avg Validation Loss: 2.8562
+Epoch 34, Avg Train Loss: 2.8494, Avg Validation Loss: 2.8566
+Epoch 35, Avg Train Loss: 2.8491, Avg Validation Loss: 2.8557
+Epoch 36, Avg Train Loss: 2.8486, Avg Validation Loss: 2.8549
+Epoch 37, Avg Train Loss: 2.8480, Avg Validation Loss: 2.8553
+Epoch 38, Avg Train Loss: 2.8480, Avg Validation Loss: 2.8546
+Epoch 39, Avg Train Loss: 2.8480, Avg Validation Loss: 2.8568
+Epoch 40, Avg Train Loss: 2.8478, Avg Validation Loss: 2.8564
+Epoch 41, Avg Train Loss: 2.8476, Avg Validation Loss: 2.8550
+Epoch 42, Avg Train Loss: 2.8472, Avg Validation Loss: 2.8550
+Epoch 43, Avg Train Loss: 2.8484, Avg Validation Loss: 2.8578
+Epoch 44, Avg Train Loss: 2.8477, Avg Validation Loss: 2.8537
+Epoch 45, Avg Train Loss: 2.8478, Avg Validation Loss: 2.8562
+Epoch 46, Avg Train Loss: 2.8477, Avg Validation Loss: 2.8550
+Epoch 47, Avg Train Loss: 2.8476, Avg Validation Loss: 2.8551
+Epoch 48, Avg Train Loss: 2.8475, Avg Validation Loss: 2.8541
+Epoch 49, Avg Train Loss: 2.8480, Avg Validation Loss: 2.8571
+Epoch 50, Avg Train Loss: 2.8472, Avg Validation Loss: 2.8548
+Epoch 51, Avg Train Loss: 2.8471, Avg Validation Loss: 2.8549
+Epoch 52, Avg Train Loss: 2.8462, Avg Validation Loss: 2.8554
+Epoch 53, Avg Train Loss: 2.8463, Avg Validation Loss: 2.8551
+Early stopping triggered
+Best model loaded successfully.
+KL divergence saved successfully.
+KL divergence saved successfully.
