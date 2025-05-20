@@ -96,8 +96,8 @@ def train_flow(data, num_layers, hidden_features, num_bins, num_blocks, learning
     arch_config = {
         "num_layers": num_layers,
         "hidden_features": hidden_features,
-        "num_blocks": num_blocks,
-        "num_bins": num_bins
+        "num_bins": num_bins,
+        "num_blocks": num_blocks
     }
     with open(os.path.join(model_dir, "architecture_config.json"), "w") as f:
         json.dump(arch_config, f, indent=4)
@@ -107,13 +107,29 @@ lr=5e-6
 epochs=1001
 batch=512
 
-good_model=train_flow(target_tensor, 4, 64, 8, 4, lr, epochs, batch, model_flag='good')
-bad_model=train_flow(target_tensor, 1, 8, 2, 2, lr, epochs, batch, model_flag='bad')
+good_model=train_flow(target_tensor, 2, 64, 6, 2, lr, epochs, batch, model_flag='good')
 
+bad_model = make_flow(1, 4, 2, 1)
+bad_model.to(device)
+bad_model_dir = os.path.join(args.outdir, "bad_model")
+os.makedirs(bad_model_dir, exist_ok=True)
+torch.save(bad_model.state_dict(), os.path.join(bad_model_dir, "model.pth"))
+
+# Save matching architecture config
+bad_arch_config = {
+    "num_layers": 1,
+    "hidden_features": 4,
+    "num_bins": 2,
+    "num_blocks": 1
+}
+with open(os.path.join(bad_model_dir, "architecture_config.json"), "w") as f:
+    json.dump(bad_arch_config, f, indent=4)
+
+# ------------------
+# Save State Dicts + Initial Weights
+# ------------------
 f_i_models = [good_model.state_dict(), bad_model.state_dict()]
-
 torch.save(f_i_models, os.path.join(args.outdir, "f_i.pth"))
 
-# Assign uniform model-level weight
 w_i_initial = np.array([0.5, 0.5])
 np.save(os.path.join(args.outdir, "w_i_initial.npy"), w_i_initial)

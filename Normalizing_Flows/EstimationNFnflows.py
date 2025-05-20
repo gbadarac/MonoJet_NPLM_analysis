@@ -246,6 +246,7 @@ prior = base_distribution.sample(n_plot).numpy()  # Sample 10000 points with 2 f
 # Save generated samples for plotting
 np.save(os.path.join(args.outdir, "trained_samples.npy"), trained)
 
+'''
 # Function to calculate KL divergence between target and trained distribution
 def calculate_kl_divergence(target, trained, eps=1e-8):
     # Ensure target and trained are in probability space and avoid log(0) errors
@@ -268,7 +269,22 @@ def calculate_kl_divergence(target, trained, eps=1e-8):
 
 # Calculate KL divergence
 kl_div = calculate_kl_divergence(bkg_coord_scaled[:10000], trained)
+'''
+
+# Function to calculate KL divergence between target and trained distribution
+def estimate_kl_pq_from_flow(x_target, flow):
+    # x_target is from p(x), flow is q(x)
+    with torch.no_grad():
+        log_q = flow.log_prob(x_target).cpu().numpy()  # log q(x)
+    # log p(x) is unknown, so ignore or compare relatively
+    kl = -np.mean(log_q)
+    return kl
+
+# Calculate KL divergence
+x_target_tensor = torch.from_numpy(bkg_coord_scaled[:n_plot]).float()
+kl_div = estimate_kl_pq_from_flow(x_target_tensor, flow)
 print("KL divergence saved successfully.")
+
 # Save KL divergence value
 kl_div_path = os.path.join(args.outdir, "kl_divergence.npy")
 np.save(kl_div_path, kl_div)

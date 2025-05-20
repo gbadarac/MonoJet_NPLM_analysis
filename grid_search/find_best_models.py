@@ -43,16 +43,16 @@ def find_best_models(base_dir):
     sorted_kl_results = sorted(kl_results, key=lambda x: x[0])
 
     # Get the top 5 models
-    best_5_models = sorted_kl_results[:5]
+    best_16_models = sorted_kl_results[:16]
 
     # Print out the results
-    for idx, (kl_div, params, job_path) in enumerate(best_5_models):
+    for idx, (kl_div, params, job_path) in enumerate(best_16_models):
         print(f"Rank {idx+1}: KL Divergence = {kl_div:.9f}")
         print(f"Model Parameters: {params}")
         print(f"Job Directory: {job_path}")
         print("-" * 40)
 
-    return best_5_models
+    return best_16_models
 
 base_dir = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_gaussians_outputs"
 best_models = find_best_models(base_dir)

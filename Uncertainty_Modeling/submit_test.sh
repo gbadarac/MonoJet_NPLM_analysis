@@ -17,8 +17,8 @@ conda activate nf_env
 # -----------------------
 # Parameters
 # -----------------------
-data_path=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/saved_generated_target_data/reduced_target_training_set.npy
-outdir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/EstimationNF_gaussians_bootstrap_outputs/test_0_1_reduced
+data_path=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/saved_generated_target_data/unscaled_reduced_target_training_set.npy
+outdir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/EstimationNF_gaussians_bootstrap_outputs/test_0_1_unscaled
 
 # -----------------------
 # Run script

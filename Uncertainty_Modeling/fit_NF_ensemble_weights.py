@@ -7,10 +7,15 @@ import torch
 import torch.optim as optim
 import numpy as np
 import argparse
-from utils import make_flow, nll, nll_numpy
+from utils import make_flow, nll, nll_numpy, ensemble_pred, ensemble_unc
 import matplotlib
 import matplotlib.pyplot as plt
 matplotlib.use('Agg')  # ensure it works on clusters without displaying plots
+from torch.autograd.functional import hessian
+import mplhep as hep
+
+# Use CMS style for plots
+hep.style.use("CMS")
 
 # ------------------
 # Args
@@ -71,45 +76,6 @@ for state_dict, config in zip(f_i_statedicts, configs):
     #You want all models to produce consistent, deterministic outputs for likelihood evaluation 
     f_i_models.append(flow)
 
-# === TEST 1: Log-prob mean comparison ===
-with torch.no_grad():
-    logp_0 = f_i_models[0].log_prob(x_data[:10000]).cpu().numpy()
-    logp_1 = f_i_models[1].log_prob(x_data[:10000]).cpu().numpy()
-
-print("\nLog-prob diagnostics:")
-print(f"  f₀(x) [good model]: mean = {logp_0.mean():.4f}, std = {logp_0.std():.4f}")
-print(f"  f₁(x) [bad  model]: mean = {logp_1.mean():.4f}, std = {logp_1.std():.4f}")
-print(f"  Diff (mean): {abs(logp_0.mean() - logp_1.mean()):.4f}")
-
-# === TEST 2: Visualize model probabilities ==
-with torch.no_grad():
-    probs0 = torch.exp(f_i_models[0].log_prob(x_data)).cpu().numpy()
-    probs1 = torch.exp(f_i_models[1].log_prob(x_data)).cpu().numpy()
-
-plt.figure(figsize=(6,4))
-plt.hist(probs0, bins=100, alpha=0.5, label="f₀(x) [good model]")
-plt.hist(probs1, bins=100, alpha=0.5, label="f₁(x) [bad model]")
-plt.legend()
-plt.title("Model probability distributions")
-plt.tight_layout()
-plt.savefig(os.path.join(args.out_dir, "model_probs_hist.png"))
-
-# ------------------
-# Diagnostic: Compare f₀(x) vs f₁(x)
-# ------------------
-if len(f_i_models) >= 2:
-    with torch.no_grad():
-        probs0 = torch.exp(f_i_models[0].log_prob(x_data))
-        probs1 = torch.exp(f_i_models[1].log_prob(x_data))
-        diff = (probs0 - probs1).abs()
-
-        print("\nModel probability difference statistics:")
-        print("  prob₀ = f₀(x) [good model]")
-        print("  prob₁ = f₁(x) [bad  model]")
-        print(f"  Mean abs(prob₀ - prob₁): {diff.mean().item():.6e}")
-        print(f"  Max abs diff: {diff.max().item():.6e}")
-        print(f"  Std of diff: {diff.std().item():.6e}")
-
 # ------------------
 # Evaluate f_i(x) -> model_probs
 # ------------------
@@ -123,49 +89,39 @@ with torch.no_grad(): #disables gradient tracking since we are just evaluating t
 # Move model_probs to CPU for memory safety
 model_probs = model_probs.to("cpu")
 
-# Initialize weights as a torch tensor with gradient tracking
-w_logits = torch.nn.Parameter(torch.log(torch.tensor(w_i_initial + 1e-8, dtype=torch.float32)))
+# ------------------
+# Optimize weights using MLE
+# ------------------
 
-# Optimizer (Adam is simple and good enough here)
-optimizer = optim.Adam([w_logits], lr=1e-2)
+# Initialize weights as a torch tensor with gradient tracking
+w_i_logits = torch.nn.Parameter(torch.log(torch.tensor(w_i_initial + 1e-8, dtype=torch.float32)))
+
+optimizer = optim.Adam([w_i_logits], lr=1e-2)
 
 # Function to normalize weights, to ensure weights stay in [0,1] and sum to 1
 def norm_weights(logits):
     return torch.nn.functional.softmax(logits, dim=0)
 
-# === TEST 3: Sweep NLL across [w₀, w₁] ∈ [1,0] to [0,1] ===
-print("\nNLL sweep over alpha ∈ [0, 1]:")
-print("  NLL evaluated on: f(x) = (1 - α) * f₀(x) [good] + α * f₁(x) [bad]")
-for alpha in np.linspace(0.0, 1.0, 11):
-    w = np.array([1.0 - alpha, alpha])
-    loss = nll_numpy(w, model_probs, device=device)
-    print(f"  alpha = {alpha:.1f}  -> NLL = {loss:.6f}")
-
-# ------------------
-# Optimize weights using MLE
-# ------------------
-
-print("\nStarting PyTorch optimization:")
 for step in range(300):  # number of optimization steps
     optimizer.zero_grad()
 
-    w_i_norm = norm_weights(w_logits) #this might not work is just a function and not a model their not propagating 
+    w_i_norm = norm_weights(w_i_logits) 
     loss= nll(w_i_norm, model_probs)
 
     loss.backward()
     optimizer.step()
 
     if step % 25 == 0 or step == 299:
-        w_np = w_i_norm.detach().cpu().numpy()
-        print(f"Step {step:03d}: NLL = {loss.item():.6f}, weights = {w_np}")
-        print(f"            → f₀(x) [good]: {w_np[0]:.4f}, f₁(x) [bad]: {w_np[1]:.4f}")
+        w = w_i_norm.detach().cpu().numpy()
+        print(f"Step {step:03d}: NLL = {loss.item():.6f}, weights = {w}")
+        print(f"            → f₀(x) [good]: {w[0]:.4f}, f₁(x) [bad]: {w[1]:.4f}")
         #print(f"Step {step:03d}: NLL = {loss.item():.6f}, weights = {w_i_norm.detach().numpy()}")
 
 '''
 w_i_final = norm_weights(w_logits).detach().cpu().numpy()
 print("Final fitted weights (PyTorch):", w_i_final)
 '''
-w_i_final = norm_weights(w_logits).detach().cpu().numpy()
+w_i_final = norm_weights(w_i_logits).detach().cpu().numpy()
 print("\nFinal fitted weights (PyTorch):", w_i_final)
 print(f"  → Weight on f₀(x) [good model]: {w_i_final[0]:.4f}")
 print(f"  → Weight on f₁(x) [bad  model]: {w_i_final[1]:.4f}")
@@ -173,20 +129,25 @@ print(f"  → Weight on f₁(x) [bad  model]: {w_i_final[1]:.4f}")
 # ------------------
 # Compute uncertainties via Hessian
 # ------------------
-# === TEST 4: Compute Hessian w.r.t. raw weights ===
-print("\nComputing Hessian manually (no softmax)...")
-w_raw = torch.tensor(w_i_final, dtype=torch.float32, requires_grad=True)
+#define negative log likelihood as a function of the logits (trainable param)
+def loss_fn(logits):
+    weights = torch.nn.functional.softmax(logits, dim=0)
+    return nll(weights, model_probs)
 
-loss = nll(w_raw / w_raw.sum(), model_probs)
-grad, = torch.autograd.grad(loss, w_raw, create_graph=True)
-hess_diag = []
-for g_i in grad:
-    h_i, = torch.autograd.grad(g_i, w_raw, retain_graph=True)
-    hess_diag.append(h_i)
-hess_diag = torch.stack(hess_diag).detach().cpu().numpy()
-print("Manual Hessian diag (raw weights):", hess_diag)
+#compute hessian wrt logits (trainable param)
+H_z = hessian(loss_fn, w_i_logits.detach().requires_grad_()).detach().cpu().numpy()
 
-w_i_unc = 1.0 / np.sqrt(hess_diag + 1e-8)
+# compute normalized Jacobian: J_ij = w_i * (δ_ij - w_j)
+J = np.diag(w_i_final) - np.outer(w_i_final, w_i_final)
+
+# Covariance propagation: Cov_w = J H^{-1} J^T
+H_z_inv = np.linalg.pinv(H_z)  # robust inversion
+cov_w = J @ H_z_inv @ J.T # to get covariance in the weights space 
+w_i_unc = np.sqrt(np.diag(cov_w))
+
+print("Weight covariance matrix:\n", cov_w)
+
+print("Uncertainty on weights:", w_i_unc)
 
 # ------------------
 # Save final outputs
@@ -194,12 +155,11 @@ w_i_unc = 1.0 / np.sqrt(hess_diag + 1e-8)
 np.save(os.path.join(args.out_dir, "w_i_fitted.npy"), w_i_final)
 np.save(os.path.join(args.out_dir, "w_i_unc.npy"), w_i_unc)
 
-'''
 # ------------------
 # Plotting 
 # ------------------
 if args.plot.lower() == "true":
-    f_vals = ensemble_pred(w_i_np, model_probs)
+    f_vals = ensemble_pred(w_i_final, model_probs)
     f_unc = ensemble_unc(w_i_unc, model_probs)
 
     # Histogram over f(x) values
@@ -222,6 +182,6 @@ if args.plot.lower() == "true":
     plt.savefig(plot_path)
     print(f"Saved plot to {plot_path}")
 
-'''
+
 
 

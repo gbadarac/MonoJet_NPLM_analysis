@@ -247,6 +247,7 @@ def estimate_kl_pq_from_flow(x_target, flow):
 x_target_tensor = torch.from_numpy(bkg_coord_scaled[:n_plot]).float()
 kl_div = estimate_kl_pq_from_flow(x_target_tensor, flow)
 print("KL divergence saved successfully.")
+
 # Save KL divergence value
 kl_div_path = os.path.join(args.outdir, "kl_divergence.npy")
 np.save(kl_div_path, kl_div)

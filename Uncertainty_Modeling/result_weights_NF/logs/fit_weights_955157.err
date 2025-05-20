@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/fit_NF_ensemble_weights.py", line 69, in <module>
+    flow.load_state_dict(state_dict) #load the corresponding params into each model 
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/nn/modules/module.py", line 2581, in load_state_dict
+    raise RuntimeError(
+RuntimeError: Error(s) in loading state_dict for Flow:
+	Missing key(s) in state_dict: "_transform._transforms.0.autoregressive_net.blocks.1.linear_layers.0.weight", "_transform._transforms.0.autoregressive_net.blocks.1.linear_layers.0.bias", "_transform._transforms.0.autoregressive_net.blocks.1.linear_layers.0.mask", "_transform._transforms.0.autoregressive_net.blocks.1.linear_layers.0.degrees", "_transform._transforms.0.autoregressive_net.blocks.1.linear_layers.1.weight", "_transform._transforms.0.autoregressive_net.blocks.1.linear_layers.1.bias", "_transform._transforms.0.autoregressive_net.blocks.1.linear_layers.1.mask", "_transform._transforms.0.autoregressive_net.blocks.1.linear_layers.1.degrees". 
+	size mismatch for _transform._transforms.0.autoregressive_net.final_layer.weight: copying a param with shape torch.Size([10, 4]) from checkpoint, the shape in current model is torch.Size([4, 4]).
+	size mismatch for _transform._transforms.0.autoregressive_net.final_layer.bias: copying a param with shape torch.Size([10]) from checkpoint, the shape in current model is torch.Size([4]).
+	size mismatch for _transform._transforms.0.autoregressive_net.final_layer.mask: copying a param with shape torch.Size([10, 4]) from checkpoint, the shape in current model is torch.Size([4, 4]).
+	size mismatch for _transform._transforms.0.autoregressive_net.final_layer.degrees: copying a param with shape torch.Size([10]) from checkpoint, the shape in current model is torch.Size([4]).

@@ -1,0 +1,6 @@
+{
+    "num_layers": 1,
+    "hidden_features": 4,
+    "num_bins": 2,
+    "num_blocks": 1
+}
