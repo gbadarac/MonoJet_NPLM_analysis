@@ -36,7 +36,8 @@ def main(args):
             num_layers=config["num_layers"],
             hidden_features=config["hidden_features"],
             num_blocks=config["num_blocks"],
-            num_bins=config["num_bins"]
+            num_bins=config["num_bins"],
+            tail_bound=config["tail_bound"]
         ).to(device) #construct f_i with the correct architecture 
         flow_i.load_state_dict(avg_state_dict) #loads in the averaged parameters across bootstrapping 
         flow_i.eval()

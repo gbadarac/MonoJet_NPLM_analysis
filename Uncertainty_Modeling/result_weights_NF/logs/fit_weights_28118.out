@@ -1,0 +1,35 @@
+Initial weights: [0.5 0.5]
+Step 000: NLL = 1.244992, weights = [0.5 0.5]
+            → f₀(x) [good]: 0.5000, f₁(x) [bad]: 0.5000
+Step 025: NLL = 1.029777, weights = [0.62008244 0.37991756]
+            → f₀(x) [good]: 0.6201, f₁(x) [bad]: 0.3799
+Step 050: NLL = 0.884432, weights = [0.71709865 0.28290132]
+            → f₀(x) [good]: 0.7171, f₁(x) [bad]: 0.2829
+Step 075: NLL = 0.791924, weights = [0.78660876 0.21339129]
+            → f₀(x) [good]: 0.7866, f₁(x) [bad]: 0.2134
+Step 100: NLL = 0.732381, weights = [0.83487254 0.16512744]
+            → f₀(x) [good]: 0.8349, f₁(x) [bad]: 0.1651
+Step 125: NLL = 0.692600, weights = [0.8687572  0.13124286]
+            → f₀(x) [good]: 0.8688, f₁(x) [bad]: 0.1312
+Step 150: NLL = 0.664911, weights = [0.8931505  0.10684948]
+            → f₀(x) [good]: 0.8932, f₁(x) [bad]: 0.1068
+Step 175: NLL = 0.644905, weights = [0.91120034 0.08879965]
+            → f₀(x) [good]: 0.9112, f₁(x) [bad]: 0.0888
+Step 200: NLL = 0.629977, weights = [0.9249057  0.07509426]
+            → f₀(x) [good]: 0.9249, f₁(x) [bad]: 0.0751
+Step 225: NLL = 0.618530, weights = [0.9355552  0.06444481]
+            → f₀(x) [good]: 0.9356, f₁(x) [bad]: 0.0644
+Step 250: NLL = 0.609545, weights = [0.9439992  0.05600087]
+            → f₀(x) [good]: 0.9440, f₁(x) [bad]: 0.0560
+Step 275: NLL = 0.602353, weights = [0.9508135  0.04918647]
+            → f₀(x) [good]: 0.9508, f₁(x) [bad]: 0.0492
+Step 299: NLL = 0.596710, weights = [0.9561946  0.04380541]
+            → f₀(x) [good]: 0.9562, f₁(x) [bad]: 0.0438
+
+Final fitted weights (PyTorch): [0.95639825 0.04360177]
+  → Weight on f₀(x) [good model]: 0.9564
+  → Weight on f₁(x) [bad  model]: 0.0436
+Weight covariance matrix:
+ [[ 0.04346938 -0.04346937]
+ [-0.04346937  0.04346937]]
+Uncertainty on weights: [0.20849311 0.2084931 ]

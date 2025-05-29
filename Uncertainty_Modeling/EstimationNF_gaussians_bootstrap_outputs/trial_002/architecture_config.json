@@ -1,6 +1,0 @@
-{
-    "num_layers": 4,
-    "hidden_features": 64,
-    "num_blocks": 4,
-    "num_bins": 8
-}

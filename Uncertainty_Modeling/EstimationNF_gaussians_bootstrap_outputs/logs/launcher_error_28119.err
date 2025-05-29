@@ -1,0 +1,2 @@
+slurmstepd: error: execve(): /var/spool/slurmd/job28119/slurm_script: No such file or directory
+slurmstepd: error: close(cfd): Bad file descriptor

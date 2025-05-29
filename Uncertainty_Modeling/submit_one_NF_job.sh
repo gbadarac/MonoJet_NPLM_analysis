@@ -19,7 +19,7 @@ conda activate nf_env
 # ======================================
 # Set data loading path
 # ======================================
-data_path=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/saved_generated_target_data/target_training_set.npy
+data_path=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/saved_generated_target_data/unscaled_reduced_target_training_set.npy
 
 # ======================================
 # Parameters 

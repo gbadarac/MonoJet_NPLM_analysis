@@ -34,3 +34,6 @@ coverage_check_set = bkg_coord[100000:]
 np.save(training_file, train_set)
 np.save(coverage_file, coverage_check_set)
 
+print("Feature-wise min:", np.min(bkg_coord, axis=0))
+print("Feature-wise max:", np.max(bkg_coord, axis=0))
+

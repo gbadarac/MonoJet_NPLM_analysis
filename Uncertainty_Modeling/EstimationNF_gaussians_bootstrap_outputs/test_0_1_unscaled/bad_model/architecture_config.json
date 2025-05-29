@@ -2,5 +2,6 @@
     "num_layers": 1,
     "hidden_features": 4,
     "num_bins": 2,
-    "num_blocks": 1
+    "num_blocks": 1,
+    "tail_bound": 10
 }

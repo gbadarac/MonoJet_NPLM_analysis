@@ -13,8 +13,6 @@ from nflows.transforms.autoregressive import MaskedPiecewiseRationalQuadraticAut
 from nflows.transforms.permutations import ReversePermutation
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import torch.optim as optim
-import mplhep as hep
-hep.style.use("CMS")
 from utils import make_flow
 
 # ------------------
@@ -46,13 +44,10 @@ target_tensor = torch.from_numpy(target_data)
 # ------------------
 # Training function
 # ------------------
-def train_flow(data, seed_i, run_j, indices):
+def train_flow(data, seed_i, run_j, indices, tail_bound):
     torch.manual_seed(seed_i) #ensure same initialization for all j for a fixed i 
 
-    torch.cuda.empty_cache() # Frees up unused memory from the CUDA memory pool (helpful before allocating a big model)
-    gc.collect() # Suggests Python's garbage collector to release unreferenced memory (especially useful after large array manipulations)
-
-    flow = make_flow(args.num_layers, args.hidden_features, args.num_bins, args.num_blocks)
+    flow = make_flow(args.num_layers, args.hidden_features, args.num_bins, args.num_blocks, tail_bound)
     opt=optim.Adam(flow.parameters(), lr=args.learning_rate)
     scheduler = CosineAnnealingLR(opt, T_max=args.n_epochs, eta_min=1e-3)
     
@@ -120,15 +115,20 @@ print(f"Training model f_{i:03d}_{j:03d}...")
 np.random.seed(j)  # Fix bootstrap randomness
 boot_indices = np.random.choice(len(target_tensor), size=len(target_tensor), replace=True) #the size of bootstrap dataset is the same as the loaded training set, i.e. 400k 
 boot_data = target_tensor[boot_indices]
-train_flow(boot_data, i, j, boot_indices) #consequently the statististical power of the normalizing flow correpsonds to the size of the bnootstrapped dataset, i.e. 400k
+
+max_abs = torch.abs(target_tensor).max().item()
+tail_bound = 1.2 * max_abs
+
+train_flow(boot_data, i, j, boot_indices, tail_bound) #consequently the statististical power of the normalizing flow correpsonds to the size of the bnootstrapped dataset, i.e. 400k
 
 # Save architecture config once for the whole trial
 if j == 0:  # Only write once per model_i
     trial_config = {
         "num_layers": args.num_layers,
         "hidden_features": args.hidden_features,
+        "num_bins": args.num_bins,
         "num_blocks": args.num_blocks,
-        "num_bins": args.num_bins
+        "tail_bound": tail_bound
     }
     config_path = os.path.join(args.outdir, "architecture_config.json")
     with open(config_path, "w") as f:

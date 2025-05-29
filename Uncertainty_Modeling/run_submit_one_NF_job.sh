@@ -4,23 +4,31 @@
 #SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/EstimationNF_gaussians_bootstrap_outputs/logs/launcher_error_%j.err
 #SBATCH --time=00:10:00
 #SBATCH --mem=2G
+#SBATCH --partition=gpu
+#SBATCH --account=gpu_gres
 
 # ======================================
 # USER PARAMETERS
 # ======================================
 
+mkdir -p /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/EstimationNF_gaussians_bootstrap_outputs/logs
+
+# Optional for safety:
+set -e  # exit on error
+set -x  # echo commands
+
 # setup
-model_seeds=6
-bootstrap_runs=4
+model_seeds=2
+bootstrap_runs=2
 
 # Model hyperparameters
 n_epochs=1001
 learning_rate=5e-6
 batch_size=512
 hidden_features=64
-num_blocks=4
-num_bins=8
-num_layers=4
+num_blocks=2
+num_bins=6
+num_layers=2
 
 # Base directory
 base_dir="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/EstimationNF_gaussians_bootstrap_outputs"

@@ -17,7 +17,7 @@ conda activate nf_env
 # -----------------------
 # Parameters
 # -----------------------
-trial_dir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/EstimationNF_gaussians_bootstrap_outputs/test_0_1_unscaled
+trial_dir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/EstimationNF_gaussians_bootstrap_outputs/trial_001
 data_path=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/saved_generated_target_data/unscaled_reduced_target_training_set.npy
 plot=True
 
@@ -29,7 +29,7 @@ out_dir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/r
 mkdir -p "$out_dir" #creates a new directory with the correspondent trial name
 
 # Copy trial files to output dir so script runs in isolation
-cp "$trial_dir"/f_i.pth "$out_dir"/
+cp "$trial_dir"/f_i_averaged.pth "$out_dir"/
 
 # -----------------------
 # Run the Python script
