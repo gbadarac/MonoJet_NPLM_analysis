@@ -1,6 +1,0 @@
-Traceback (most recent call last):
-  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/fit_NF_ensemble_weights.py", line 170, in <module>
-    plot_ensemble_marginals(model_probs, x_data, w_i_final, cov_w, feature_names, args.out_dir)
-  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/utils.py", line 157, in plot_ensemble_marginals
-    print(f"Model {i} std along feature 1: {np.std(model_probs[:, i].numpy()[x_data[:,0].numpy().argsort()])}")
-TypeError: can't convert cuda:0 device type tensor to numpy. Use Tensor.cpu() to copy the tensor to host memory first.

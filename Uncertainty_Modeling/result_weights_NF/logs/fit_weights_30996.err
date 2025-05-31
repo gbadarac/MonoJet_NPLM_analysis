@@ -1,4 +1,0 @@
-Traceback (most recent call last):
-  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/fit_NF_ensemble_weights.py", line 158, in <module>
-    np.save(os.path.join(args.out_dir, "w_i_unc.npy"), w_i_unc)
-NameError: name 'w_i_unc' is not defined

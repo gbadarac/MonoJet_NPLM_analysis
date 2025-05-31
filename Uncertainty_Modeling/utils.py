@@ -136,25 +136,15 @@ def ensemble_unc(cov_w, model_probs):
 def plot_ensemble_marginals(model_probs, x_data, weights, cov_w, feature_names, outdir):
     #convet pytorch input tensor x_data to a NumPy array for easier processing 
     x = x_data.cpu().numpy() 
-    model_probs_np = model_probs.numpy()
-
-    for i in range(model_probs_np.shape[1]):
-        std_feat1 = np.std(model_probs_np[:, i][x[:, 0].argsort()])
-        std_feat2 = np.std(model_probs_np[:, i][x[:, 1].argsort()])
-        print(f"Model {i} std along feature 1: {std_feat1:.4e}")
-        print(f"Model {i} std along feature 2: {std_feat2:.4e}")
 
     # Compute ensemble prediction and uncertainty at each point
     f_vals = ensemble_pred(weights, model_probs)
     f_unc = ensemble_unc(cov_w, model_probs)
-       
-    print(f"[Feature {i+1}] Uncertainty stats:")
-    print(f"  f_unc min: {f_unc.min():.4e}, max: {f_unc.max():.4e}, mean: {f_unc.mean():.4e}, std: {f_unc.std():.4e}")
 
     # Loop over each marginal feature
     num_features = x.shape[1]
     for i in range(num_features):
-        fig, ax_main = plt.subplots(figsize=(8, 6))
+        fig, (ax_main, ax_ratio) = plt.subplots(2,1,figsize=(8, 10), gridspec_kw={'height_ratios': [3,1]})
         feature_label = feature_names[i]
         input_feature = x[:,i]
 
@@ -191,11 +181,9 @@ def plot_ensemble_marginals(model_probs, x_data, weights, cov_w, feature_names, 
                 f_err.append(0)
 
         N = np.sum(f_binned) * bin_widths
+        print('N =', N)
         f_binned = np.array(f_binned)/N
         f_err = np.array(f_err)/N
-
-        print(f"f_binned Feature {i+1}: {f_binned}")
-        print(f"f_err Feature {i+1}: {f_err}")
 
         # ------------------
         # 1 and 2 sigma bands calculation 
@@ -231,22 +219,90 @@ def plot_ensemble_marginals(model_probs, x_data, weights, cov_w, feature_names, 
         band_2s_l = np.array(band_2s_l) / N
         band_2s_h = np.array(band_2s_h) / N
 
-        # Mask to keep only bins with target data
+        #Mask to keep only bins with target data
         valid_bins = hist_target > 0
 
-        # Plot main distribution
+        #Plot main distribution
         ax_main.bar(bin_centers, hist_target, width=np.diff(bin_edges), alpha=0.2, label="Target", color='green', edgecolor='black')
         ax_main.errorbar(bin_centers, hist_target, yerr=err_target, fmt='None', color='green', alpha=0.7)
         ax_main.errorbar(bin_centers[valid_bins], f_binned[valid_bins], yerr=f_err[valid_bins], fmt='-', color='red', linewidth=1.2, capsize=0, marker=None, label=r"$f(x) = \sum w_i f_i(x)$")
-        ax_main.fill_between(bin_centers, band_1s_l, band_1s_h, alpha=0.12, label=r"$\pm 1\sigma$", color='purple')
+        ax_main.fill_between(bin_centers, band_1s_l, band_1s_h, alpha=0.12, label=r"$\pm 1\sigma$", color='blue')
         ax_main.fill_between(bin_centers, band_2s_l, band_2s_h, alpha=0.07, label=r"$\pm 2\sigma$", color='purple')
 
         ax_main.set_xlabel(feature_label, fontsize=16)
         ax_main.set_ylabel("Density", fontsize=16)
         ax_main.legend(fontsize=14)
 
-        # Save plot
+        #Plot ratios 
+        #Avoid division by zero
+        f_binned_safe = np.where(f_binned > 0, f_binned, np.nan)
+
+        #Compute lower band ratios
+        ratio_1s = np.array(band_1s_h) / f_binned_safe #relative size of the lower band 
+        ratio_2s = np.array(band_2s_h) / f_binned_safe
+
+        #Only plot valid (non-NaN) ratios
+        valid = ~np.isnan(ratio_1s)
+
+        # Calculate y-axis upper limit from max ratio across valid bins
+        ymax = max(np.max(ratio_1s[valid]), np.max(ratio_2s[valid]))
+
+        ax_ratio.plot(bin_centers[valid], ratio_1s[valid], 'o-', color='blue', alpha=0.4, label=r"$+1\sigma$ / mean")
+        ax_ratio.plot(bin_centers[valid], ratio_2s[valid], 'o-', color='purple', alpha=0.2, label=r"$+2\sigma$ / mean")
+        ax_ratio.axhline(1.0, color='black', linestyle='--', linewidth=1)  # <-- Add horizontal line at y=1
+        ax_ratio.set_ylim(0.0, 4.0) 
+        ax_ratio.set_ylabel("Upper band / Mean", fontsize=14)
+        ax_ratio.set_xlabel(feature_label, fontsize=14)
+        ax_ratio.legend(fontsize=12)
+        ax_ratio.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)  # <-- Enable grid
+
+        #Save plot
         plt.tight_layout()
         outpath = os.path.join(outdir, f"ensemble_marginal_feature_{i+1}.png")
         plt.savefig(outpath)
         plt.close()
+
+
+def likelihood_profile_scan(model_probs, w_best, outdir):
+    #model_probs: tensor with f_0(x_j), f_1(x_j), ...
+    #w_best: optimal weights from optimization 
+    
+    #define a grid of w_0 € [0,1]
+    w0_grid = np.linspace(0,1,200)
+    ll_vals = []
+
+    #compute the nll for each weight in the configuration (w_0, 1-w_0)
+    for w0 in w0_grid:
+        #for each value of w0 for the full weight tensor (w0, 1-w0)
+        w = torch.tensor([w0, 1-w0], dtype=torch.float32)
+        #evaluate the negative log likelihood 
+        ll = log_likelihood(w, model_probs).item()
+        ll_vals.append(ll)
+
+    ll_vals = np.array(ll_vals)
+    #convert ll values to -2∆ll
+    delta_ll = - 2 * (ll_vals - np.max(ll_vals))
+
+    #scan plot 
+    plt.figure(figsize=(6, 4))
+    plt.plot(w0_grid, delta_ll, label=r"$-2\Delta\log\mathcal{L}$", color='black')
+
+    # Force y-axis zoom to show structure
+    plt.ylim(np.min(delta_ll) - 1e-4, np.max(delta_ll) + 1e-4)
+
+    plt.axvline(w_best[0], color='red', linestyle=':', label="Best fit")
+    plt.xlabel(r"$w_0$", fontsize=12)
+    plt.ylabel(r"$-2\Delta \log\mathcal{L}$", fontsize=12)
+    plt.title("Likelihood profile scan over $w_0$", fontsize=14)
+    plt.legend(fontsize=10)
+    plt.grid()
+    # Set tick label font size
+    plt.tick_params(labelsize=10)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(outdir, "likelihood_profile_scan.png"))
+    plt.close()
+
+
+
+    
