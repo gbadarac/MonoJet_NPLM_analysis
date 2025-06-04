@@ -7,12 +7,14 @@ import torch
 import torch.optim as optim
 import numpy as np
 import argparse
-from utils import make_flow, log_likelihood, plot_marginals, plot_ensemble_marginals, likelihood_profile_scan
+from utils import make_flow, log_likelihood
 import matplotlib
 import matplotlib.pyplot as plt
 matplotlib.use('Agg')  # ensure it works on clusters without displaying plots
 from torch.autograd.functional import hessian
 import mplhep as hep
+from torchmin import minimize
+import torch.nn.functional as F
 
 # Use CMS style for plots
 hep.style.use("CMS")
@@ -21,11 +23,11 @@ hep.style.use("CMS")
 # Args
 # ------------------
 parser = argparse.ArgumentParser()
+parser.add_argument("--mu_target_path", type=str, required=True)
 parser.add_argument("--toy_seed", type=int, required=True)
 parser.add_argument("--trial_dir", type=str, required=True)
 parser.add_argument("--data_path", type=str, required=True)
 parser.add_argument("--out_dir", type=str, required=True)
-parser.add_argument("--plot", type=str, required=True)
 args = parser.parse_args()
 
 # ------------------
@@ -114,22 +116,61 @@ optimizer = optim.Adam([w_i_logits], lr=1e-2)
 def norm_weights(logits):
     return torch.nn.functional.softmax(logits, dim=0)
 
-for step in range(300):  # number of optimization steps
+max_steps = 3000
+patience = 100
+min_delta_window = 5e-7
+min_delta_global = 1e-5  # Minimum global improvement over best_loss
+
+best_loss = float("inf")
+nll_window = []
+no_improve_counter = 0
+
+nll_vals = []
+weight_vals = []
+
+for step in range(max_steps):
     optimizer.zero_grad()
-
-    w_i_norm = norm_weights(w_i_logits) 
-    loss= -log_likelihood(w_i_norm, model_probs)
-
+    w_i_norm = norm_weights(w_i_logits)
+    l=1e-3
+    entropy = -torch.sum(w_i_norm * torch.log(w_i_norm + 1e-8))
+    loss = -log_likelihood(w_i_norm, model_probs) + l * entropy
+    #loss = -log_likelihood(w_i_norm, model_probs)
     loss.backward()
     optimizer.step()
 
-    if step % 25 == 0 or step == 299:
+    loss_val = loss.item()
+    if step % 25 == 0 or step == max_steps - 1:
         w = w_i_norm.detach().cpu().numpy()
-        print(f"Step {step:03d}: NLL = {loss.item():.6f}, weights = {w}")
-        print(f"            → f₀(x): {w[0]:.4f}, f₁(x): {w[1]:.4f}")
+        nll_vals.append(loss_val)
+        weight_vals.append(w.copy())
 
+    # Update global best
+    if loss_val + min_delta_global < best_loss:
+        best_loss = loss_val
+        no_improve_counter = 0
+    else:
+        no_improve_counter += 1
+
+    # Update window
+    nll_window.append(loss_val)
+    if len(nll_window) > patience:
+        nll_window.pop(0)
+
+    # Check window-based plateau
+    if len(nll_window) == patience:
+        if max(nll_window) - min(nll_window) < min_delta_window:
+            print(f"\nEarly stopping at step {step} (NLL plateaued: Δ_window < {min_delta_window})")
+            break
+
+    # Optional safety: stop if no global improvement for a while
+    if no_improve_counter > patience * 2:
+        print(f"\nEarly stopping at step {step} (No global NLL improvement in {no_improve_counter} steps)")
+        break
 w_i_final = norm_weights(w_i_logits).detach().cpu().numpy()
 print("\nFinal fitted weights (PyTorch):", w_i_final)
+
+effective_models = 1.0 / np.sum(w_i_final**2)
+print("Effective number of models:", effective_models)
 
 # ------------------
 # Compute uncertainties via Hessian
@@ -146,30 +187,95 @@ J = np.diag(w_i_final) - np.outer(w_i_final, w_i_final)
 # Covariance propagation: Cov_w = J H^{-1} J^T
 H_z = -H_z
 
-#Hessian regularization
-#add a small value to the diagonal to ensure positive definiteness and numerical stability 
-epsilon = 1e-5  # small positive value
+# Regularize Hessian
+epsilon = 1e-2
 H_z_reg = H_z + epsilon * np.eye(H_z.shape[0])
 
-H_z_inv = np.linalg.pinv(H_z_reg)  # robust inversion
-cov_w = J @ H_z_inv @ J.T # to get covariance in the weights space 
-
+# Invert and propagate
+H_z_inv = np.linalg.pinv(H_z_reg)
+cov_w = J @ H_z_inv @ J.T
 print("Weight covariance matrix:\n", cov_w)
 
+# Upload target's first moment:
+# Load target first moment
+mu_target = np.load(args.mu_target_path)  # shape: (D,)
 
-# 5. Compute model's first moment:
-#     μ_model = ∫ dx x * f(x) = sum_j w_j ∫ dx x * f_j(x)
-#     estimate via: (x_data_toy * model_probs @ w).mean(axis=0)
+# ------------------
+# Compute model's first moment μ_model
+# ------------------
+#Goal: compute mu_i = ∫dx*x*f_i(x) ~ sum(x_k * f_i(x_k) * ∆x)
+#Define bin grid over the 2D domanin of data 
+x_np = x_data.cpu().numpy()                     # shape: (N, D
+x_min= x_np.min(axis=0)
+x_max= x_np.max(axis=0)
+n_bins=40
 
-# 6. Compute uncertainty using:
+#Create edges and centers for both fetaures 
+edges_1 = np.linspace(x_min[0], x_max[0], n_bins+1) #bin edges for feature 1 
+edges_2 = np.linspace(x_min[1], x_max[1], n_bins+1) #bin edges for feature 2 
+dx1 = np.diff(edges_1)[0] #width of bins along feature 1 axis 
+dx2 = np.diff(edges_2)[0] #width bin along fetaure 2 axis 
+bin_area = dx1 * dx2 #area of each rectangular bin 
+
+centers_1 = 0.5 * (edges_1[:-1] + edges_1[1:]) #bin centers for feature 1 
+centers_2 = 0.5 * (edges_2[:-1] + edges_2[1:]) #bin centers for fetaure 2 
+
+# Build 2D meshgrid of bin centers
+X1, X2 = np.meshgrid(centers_1, centers_2) 
+#flatten the grid to get a list of all 2D bin centers 
+X_centers_grid = np.stack([X1.ravel(), X2.ravel()], axis=1)  # shape: (B², 2)=(40x40, 2)
+
+# Convert the X_grid (B², 2)=(40x40, 2) vector to PyTorch tensor and move to device
+x_bin_centers_tensor = torch.from_numpy(X_centers_grid).float().to(device)
+
+# Evaluate all f_i(x_bin_center)
+with torch.no_grad():
+    model_probs_grid = torch.stack([
+        torch.exp(flow.log_prob(x_bin_centers_tensor)) for flow in f_i_models
+    ], dim=1).cpu().numpy()  # shape: (B², M)
+
+# Compute moment for each model:
+#     μ_i = ∑_k x_k ⋅ f_i(x_k) ⋅ Δx
+mu_i = (X_centers_grid[:, None, :] * model_probs_grid[:, :, None]).sum(axis=0) * bin_area  # shape: (M, D)'
+print("mu_i[:, 0]=", mu_i[:,0])
+
+# Compute μ_model = ∑_i w_i ⋅ μ_i
+# This is the ensemble-averaged moment: weighted sum of the μ_i using the optimized weights w_i
+mu_model = np.sum(w_i_final[:, None] * mu_i, axis=0)  # shape: (D,)
+
+# ------------------
+# Compute uncertainty σ_I (propagation of weight covariance)
+# ------------------
+# We propagate the uncertainty on the weights through the functional:
 #     σ²_I = ∇I(w)^T ⋅ Cov(w) ⋅ ∇I(w)
-#     where ∇I(w) = ∫ dx x * f_i(x) — compute per model
+# where ∇I(w) ≡ [∂I/∂w_i] = μ_i (since I(w) = ∑ w_i μ_i)
 
-# 7. Save:
-#   - fitted weights
-#   - μ_model
-#   - σ_I (sqrt of variance above)
+# Perform the matrix contraction:
+#   σ²_I[d] = ∑_i ∑_j μ_i[d] ⋅ Cov_w[i, j] ⋅ μ_j[d]
+# for each feature dimension d
+sigma_sq = np.einsum("id,ij,jd->d", mu_i, cov_w, mu_i)  # shape: (D,)
 
-# 8. Check if |μ_model - μ_target| < σ_I (per feature) and count
+# Take square root to get standard deviation (1σ uncertainty band)
+sigma_I = np.sqrt(sigma_sq)
 
-    
+# Check if |μ_model - μ_target| < σ_I (per feature) and save boolean 
+diff = np.abs(mu_model - mu_target)
+within_band = diff < sigma_I  # boolean vector
+
+# ------------------
+# Save results for post-processing
+# ------------------
+# Convert NumPy arrays to lists for JSON serialization
+results = {
+    "mu_target": mu_target.tolist(),
+    "mu_model": mu_model.tolist(),
+    "diff": diff.tolist(),
+    "sigma_integral": sigma_I.tolist(),
+    "within_band": within_band.tolist(),
+    "toy_seed": int(args.toy_seed),
+    "weights": w_i_final.tolist()
+}
+
+out_file = os.path.join(args.out_dir, f"toy_{args.toy_seed:03d}.json")
+with open(out_file, "w") as f:
+    json.dump(results, f, indent=2)

@@ -7,12 +7,14 @@ import torch
 import torch.optim as optim
 import numpy as np
 import argparse
-from utils import make_flow, log_likelihood, plot_marginals, plot_ensemble_marginals, likelihood_profile_scan
+from utils import make_flow, log_likelihood, plot_marginals, plot_ensemble_marginals, profile_likelihood_scan
 import matplotlib
 import matplotlib.pyplot as plt
 matplotlib.use('Agg')  # ensure it works on clusters without displaying plots
 from torch.autograd.functional import hessian
 import mplhep as hep
+from torchmin import minimize 
+import torch.nn.functional as F
 
 # Use CMS style for plots
 hep.style.use("CMS")
@@ -87,9 +89,10 @@ with torch.no_grad(): #disables gradient tracking since we are just evaluating t
         #this is standard in NFs because calculating log(f_i(x)) is numerically stable and avoids underflow 
         dim=1)  # Shape: (N, M)
 
-# Move model_probs to CPU for memory safety
-# model robsa is a (N,M) matrix of type (f_0, ... f_(M-1)) where N is the number of data points 
+# Move model_probs and f_I_models to CPU for memory safety
+# model_probs is a (N,M) matrix of type (f_0, ... f_(M-1)) where N is the number of data points 
 model_probs = model_probs.to("cpu")
+M = len(model_probs[0])
 
 # ------------------
 # Optimize weights using MLE
@@ -98,89 +101,104 @@ model_probs = model_probs.to("cpu")
 # we optimize over unconstrained logits z_i ∈ ℝ, and then map them to the simplex using softmax.
 # This allows unconstrained optimization in logit space while ensuring the weights always stay valid.
 
-# Initialize logits such that softmax(logits) ≈ initial weights w_i_initial
-w_i_logits = torch.nn.Parameter(torch.log(torch.tensor(w_i_initial + 1e-8, dtype=torch.float32)))
+# ------------------
+# Optimize weights via logits using MLE
+# ------------------
+def nll_logits(logits):
+    weights = F.softmax(logits, dim=0)
+    return -log_likelihood(weights, model_probs)
 
-# Optimizer acts on the logits z_i. After each update, we’ll map z_i to valid weights via softmax.
-optimizer = optim.Adam([w_i_logits], lr=1e-2)
+# Convert initial weights to logits
+logits_init = torch.log(torch.tensor(w_i_initial + 1e-8, dtype=torch.float32))
+logits_init = logits_init.detach().clone().requires_grad_()
 
-# Map logits to normalized weights using the softmax function:
-#     w_i = exp(z_i) / ∑_j exp(z_j)
-# This ensures the weights remain in [0,1] and sum to 1 at every step
-def norm_weights(logits):
-    return torch.nn.functional.softmax(logits, dim=0)
+res = minimize(
+    nll_logits,
+    logits_init,
+    method='newton-exact',
+    options={'disp': True, 'max_iter': 300}
+)
 
-for step in range(300):  # number of optimization steps
-    optimizer.zero_grad()
+logits_opt = res.x.detach()
+w_i_final = F.softmax(logits_opt, dim=0).cpu().numpy()
 
-    w_i_norm = norm_weights(w_i_logits) 
-    loss= -log_likelihood(w_i_norm, model_probs)
-
-    loss.backward()
-    optimizer.step()
-
-    if step % 25 == 0 or step == 299:
-        w = w_i_norm.detach().cpu().numpy()
-        print(f"Step {step:03d}: NLL = {loss.item():.6f}, weights = {w}")
-        print(f"            → f₀(x): {w[0]:.4f}, f₁(x): {w[1]:.4f}")
-
-w_i_final = norm_weights(w_i_logits).detach().cpu().numpy()
-print("\nFinal fitted weights (PyTorch):", w_i_final)
+print("Final weights (softmax):", w_i_final)
+print("Sum of weights:", np.sum(w_i_final))
 
 # ------------------
 # Compute uncertainties via Hessian
-# ------------------
-#define negative log likelihood as a function of the logits (trainable param)
-def loss_function(logits):
-    weights = torch.nn.functional.softmax(logits, dim=0)
-    return log_likelihood(weights, model_probs) #return log-likelihood
+# -----------------
+logits_opt = logits_opt.clone().requires_grad_()
+H_logits = hessian(nll_logits, logits_opt).detach().cpu().numpy()  # shape (M, M)
 
-#compute hessian wrt logits (trainable param)
-H_z = hessian(loss_function, w_i_logits.detach().requires_grad_()).detach().cpu().numpy()
-# compute normalized Jacobian: J_ij = dw_i/dz_j = w_i * (δ_ij - w_j)
-J = np.diag(w_i_final) - np.outer(w_i_final, w_i_final)
-# Covariance propagation: Cov_w = J H^{-1} J^T
-H_z = -H_z
+asymmetry = np.max(np.abs(H_logits - H_logits.T))
+print("Max asymmetry of Hessian:", asymmetry)
 
-#Hessian regularization
-#add a small value to the diagonal to ensure positive definiteness and numerical stability 
-epsilon = 1e-5  # small positive value
-H_z_reg = H_z + epsilon * np.eye(H_z.shape[0])
+eps = 1e-6
+logits_eps = logits_opt + eps * torch.randn_like(logits_opt)
+H_eps = hessian(nll_logits, logits_eps).detach().cpu().numpy()
+delta = np.max(np.abs(H_logits - H_eps))
+print("Max delta from small input perturbation:", delta)
 
-H_z_inv = np.linalg.pinv(H_z_reg)  # robust inversion
-cov_w = J @ H_z_inv @ J.T # to get covariance in the weights space 
+eigvals = np.linalg.eigvalsh(H_logits)
+print("Hessian eigenvalues:", eigvals)
+print("Min eigenvalue:", eigvals.min(), "Max eigenvalue:", eigvals.max(), "Condition number:", eigvals.max() / eigvals.min())
+
+# Jacobian ∂w/∂z of softmax
+J = np.diag(w_i_final) - np.outer(w_i_final, w_i_final)  # shape (M, M)
+
+eigvals_J = np.linalg.eigvalsh(J)
+print("Jacobian eigenvalues:", eigvals_J)
+
+H = torch.tensor(H_logits, dtype=torch.float32)
+J = torch.tensor(J, dtype=torch.float32)
+
+print("Jacobian:\n", J)
+print("Jacobian shape:", J.shape)
+print("Jacobian condition number:", np.linalg.cond(J))
+
+A = np.linalg.solve(H_logits, J.T)
+cov_test = J @ A
+print("Covariance norm:", np.linalg.norm(cov_test))
+
+cov_test_pinv = J @ np.linalg.pinv(H_logits) @ J.T
+print("Covariance (pseudo-inv) norm:", np.linalg.norm(cov_test_pinv))
+
+cov_w = J @ torch.linalg.solve(H, torch.linalg.solve(H, J.T).T).T
+cov_w = cov_w.numpy()
 
 print("Weight covariance matrix:\n", cov_w)
 
 # ------------------
 # Save final outputs
 # ------------------
-np.save(os.path.join(args.out_dir, "w_i_fitted.npy"), w_i_final)
-np.save(os.path.join(args.out_dir, "cov_w.npy"), cov_w)
-
+np.save("w_i_fitted.npy", w_i_final)
+np.save("cov_w.npy", cov_w)
+'''
 # ------------------
 # Plotting 
 # ------------------
 if args.plot.lower() == "true":
+    feature_names = ["Feature 1", "Feature 2"]
     
-    # ------------------
+    # -----------------
     # Marginal plots
     # ------------------
     with torch.no_grad():
         samples_0 = f_i_models[0].sample(10000).cpu().numpy()
         samples_1 = f_i_models[1].sample(10000).cpu().numpy()
 
-    feature_names = ["Feature 1", "Feature 2"]
     labels = ('Model 1', 'Model 2')
     plot_marginals(samples_0, samples_1, x_data, feature_names, args.out_dir, labels)
     
     # ------------------
     # Likelihood profile scan
     # ------------------
-    likelihood_profile_scan(model_probs, w_i_final, args.out_dir)
+    #likelihood_scan(model_probs, w_i_final, args.out_dir)
+    profile_likelihood_scan(model_probs, w_i_final, args.out_dir)
     
     # ------------------
     # Uncertainties on the model
     # ------------------
-    plot_ensemble_marginals(model_probs, x_data, w_i_final, cov_w, feature_names, args.out_dir)
-    
+    plot_ensemble_marginals(f_i_models, x_data, w_i_final, cov_w, feature_names, args.out_dir)
+'''

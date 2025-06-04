@@ -1,0 +1,101 @@
+Initial weights: [0.5 0.5]
+
+Early stopping at step 152 (NLL plateaued: Δ_window < 5e-07)
+
+Final fitted weights (PyTorch): [0.6175564  0.38244358]
+Effective number of models: 1.8952350763879364
+Weight covariance matrix:
+ [[ 9.69875359 -9.69875359]
+ [-9.69875359  9.69875359]]
+mu_i[:, 0]= [-0.49546333 -0.49470507]
+Initial weights: [0.5 0.5]
+
+Early stopping at step 137 (NLL plateaued: Δ_window < 5e-07)
+
+Final fitted weights (PyTorch): [0.65151566 0.3484844 ]
+Effective number of models: 1.8317901743415543
+Weight covariance matrix:
+ [[ 9.08252983 -9.08253043]
+ [-9.08253043  9.08253102]]
+mu_i[:, 0]= [-0.49552384 -0.49537238]
+Initial weights: [0.5 0.5]
+
+Early stopping at step 141 (NLL plateaued: Δ_window < 5e-07)
+
+Final fitted weights (PyTorch): [0.5846414 0.4153586]
+Effective number of models: 1.9442832180515048
+Weight covariance matrix:
+ [[ 10.21776453 -10.21776484]
+ [-10.21776484  10.21776515]]
+mu_i[:, 0]= [-0.49546676 -0.49470779]
+Initial weights: [0.5 0.5]
+
+Early stopping at step 144 (NLL plateaued: Δ_window < 5e-07)
+
+Final fitted weights (PyTorch): [0.66829866 0.33170134]
+Effective number of models: 1.7964646818327152
+Weight covariance matrix:
+ [[ 8.73750919 -8.73750889]
+ [-8.73750889  8.7375086 ]]
+mu_i[:, 0]= [-0.49554445 -0.49541358]
+Initial weights: [0.5 0.5]
+
+Early stopping at step 139 (NLL plateaued: Δ_window < 5e-07)
+
+Final fitted weights (PyTorch): [0.6561478  0.34385222]
+Effective number of models: 1.8222762116780584
+Weight covariance matrix:
+ [[ 8.9901464  -8.9901461 ]
+ [-8.9901461   8.99014581]]
+mu_i[:, 0]= [-0.49557775 -0.49539459]
+Initial weights: [0.5 0.5]
+
+Early stopping at step 155 (NLL plateaued: Δ_window < 5e-07)
+
+Final fitted weights (PyTorch): [0.62916946 0.37083054]
+Effective number of models: 1.8748729249909621
+Weight covariance matrix:
+ [[ 9.54166745 -9.54166714]
+ [-9.54166714  9.54166684]]
+mu_i[:, 0]= [-0.49561896 -0.49544812]
+Initial weights: [0.5 0.5]
+
+Early stopping at step 152 (NLL plateaued: Δ_window < 5e-07)
+
+Final fitted weights (PyTorch): [0.61674994 0.38325012]
+Effective number of models: 1.8965934107425593
+Weight covariance matrix:
+ [[ 9.77777954 -9.77777954]
+ [-9.77777954  9.77777954]]
+mu_i[:, 0]= [-0.49568108 -0.49503101]
+Initial weights: [0.5 0.5]
+
+Early stopping at step 151 (NLL plateaued: Δ_window < 5e-07)
+
+Final fitted weights (PyTorch): [0.63333756 0.36666247]
+Effective number of models: 1.8672118613226016
+Weight covariance matrix:
+ [[ 9.43202908 -9.43202908]
+ [-9.43202908  9.43202908]]
+mu_i[:, 0]= [-0.49557775 -0.49539459]
+Initial weights: [0.5 0.5]
+
+Early stopping at step 140 (NLL plateaued: Δ_window < 5e-07)
+
+Final fitted weights (PyTorch): [0.65829796 0.34170204]
+Effective number of models: 1.8177968438547025
+Weight covariance matrix:
+ [[ 8.92459802 -8.92459802]
+ [-8.92459802  8.92459802]]
+mu_i[:, 0]= [-0.49544485 -0.49530445]
+Initial weights: [0.5 0.5]
+
+Early stopping at step 136 (NLL plateaued: Δ_window < 5e-07)
+
+Final fitted weights (PyTorch): [0.6463715 0.3536285]
+Effective number of models: 1.842132273869289
+Weight covariance matrix:
+ [[ 9.19904238 -9.19904238]
+ [-9.19904238  9.19904238]]
+mu_i[:, 0]= [-0.49534749 -0.49543913]
+Submitted coverage jobs for trial: N_100000_seeds_2_bootstraps_2

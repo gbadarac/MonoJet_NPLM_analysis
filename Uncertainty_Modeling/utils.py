@@ -6,6 +6,7 @@ from nflows.distributions.normal import StandardNormal
 from nflows.transforms.base import CompositeTransform
 from nflows.transforms.autoregressive import MaskedPiecewiseRationalQuadraticAutoregressiveTransform
 from nflows.transforms.permutations import ReversePermutation
+import torch.nn.functional as F
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -15,7 +16,6 @@ import mplhep as hep
 
 # Use CMS style for plots
 hep.style.use("CMS")
-
 
 def make_flow(num_layers, hidden_features, num_bins, num_blocks, tail_bound, num_features=2, num_context=None, perm=True):
     base_dist = StandardNormal(shape=(num_features,))
@@ -31,8 +31,8 @@ def make_flow(num_layers, hidden_features, num_bins, num_blocks, tail_bound, num
             num_blocks=num_blocks,
             tail_bound=tail_bound,
             tails='linear',
-            dropout_probability=0.2,
-            use_batch_norm=False
+            dropout_probability=0.2, 
+            use_batch_norm=False 
         ))
         if i < num_layers - 1 and perm:
             transforms.append(ReversePermutation(features=num_features))
@@ -110,57 +110,41 @@ def plot_marginals(dist1, dist2, target, feature_names, outdir, labels):
         plt.close()
 
 def log_likelihood(weights, model_probs):
-    """
-    Args:
-        weights: torch tensor with requires_grad=True
-        model_probs: torch.tensor of shape (N, M) with f_i(x)
-    Returns:
-        Scalar negative log-likelihood
-    """
     p_x = probs(weights, model_probs) + 1e-8  # prevent log(0)
     ll = torch.log(p_x).mean() #averaging the loss over all datapoints 
     return ll # scalar
 
+
 def ensemble_pred(weights, model_probs):
-    """
-    Compute ensemble prediction f(x) = sum_i w_i f_i(x)
-    """
-    model_vals=(model_probs * torch.tensor(weights, device=model_probs.device)).sum(dim=1)
+    model_vals = (model_probs * torch.tensor(weights, device=model_probs.device)).sum(dim=1)
     return model_vals.cpu().numpy()
 
 def ensemble_unc(cov_w, model_probs):
-    model_probs_np = model_probs.numpy()  # shape: (N, M)
+    model_probs_np = model_probs.cpu().numpy()  # shape: (N, M)
     sigma_sq = np.einsum('ni,ij,nj->n', model_probs_np, cov_w, model_probs_np)
     return np.sqrt(sigma_sq)
 
-def plot_ensemble_marginals(model_probs, x_data, weights, cov_w, feature_names, outdir):
+def plot_ensemble_marginals(f_i_models, x_data, weights, cov_w, feature_names, outdir):
     #convet pytorch input tensor x_data to a NumPy array for easier processing 
     x = x_data.cpu().numpy() 
-
-    # Compute ensemble prediction and uncertainty at each point
-    f_vals = ensemble_pred(weights, model_probs)
-    f_unc = ensemble_unc(cov_w, model_probs)
 
     # Loop over each marginal feature
     num_features = x.shape[1]
     for i in range(num_features):
         fig, (ax_main, ax_ratio) = plt.subplots(2,1,figsize=(8, 10), gridspec_kw={'height_ratios': [3,1]})
         feature_label = feature_names[i]
-        input_feature = x[:,i]
+        input_feature = x[:,i] #select input data for feature 1 and 2 separately 
 
         bins = 40
 
         # Bin over full data range with margin
         margin = 0.05 * (np.max(input_feature) - np.min(input_feature))
-        low = np.min(input_feature) - margin
-        high = np.max(input_feature) + margin
-        bin_edges = np.linspace(low, high, bins + 1)
+        low, high = np.min(input_feature) - margin, np.max(input_feature) + margin
 
         #define bin edges, centers an assign each point to a bin 
         bin_edges = np.linspace(low, high, bins + 1)
         bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
         bin_widths = np.diff(bin_edges)
-        bin_indices = np.digitize(input_feature, bin_edges)
 
         # Histogram of the target data
         hist_target_counts, _ = np.histogram(input_feature, bins=bin_edges)
@@ -168,56 +152,40 @@ def plot_ensemble_marginals(model_probs, x_data, weights, cov_w, feature_names, 
         hist_target = hist_target_counts / (N_target * bin_widths)
         err_target = np.sqrt(hist_target_counts) / (N_target * bin_widths)
 
-        # Average ensemble values per bin
-        f_binned, f_err = [], []
-        for b in range(1, len(bin_edges)):
-            idx = (bin_indices == b)
-            if np.sum(idx) > 0:
-                f_binned.append(np.mean(f_vals[idx]))
-                bin_unc = f_unc[idx]
-                f_err.append(np.sqrt(np.sum(bin_unc ** 2))/ len(bin_unc))
-            else:
-                f_binned.append(0)
-                f_err.append(0)
+        # ------------------------------------------
+        # Evaluate ensemble model at bin_centers
+        # ------------------------------------------
+        # Build 2D input with current feature varying and the other fixed (e.g., at mean)
+        # Compute mean of the other feature
+        x_mean = np.mean(x, axis=0)  # shape (2,)
+        x_pad = np.tile(x_mean, (len(bin_centers), 1))  # initialize with mean
+        x_pad[:, i] = bin_centers  # vary only the i-th feature
+        x_centers_tensor = torch.from_numpy(x_pad).float().to(next(f_i_models[0].parameters()).device)
 
-        N = np.sum(f_binned) * bin_widths
-        print('N =', N)
-        f_binned = np.array(f_binned)/N
-        f_err = np.array(f_err)/N
+        # Evaluate all f_i(x_bin_center)
+        with torch.no_grad():
+            probs_centers = torch.stack(
+                [torch.exp(flow.log_prob(x_centers_tensor)) for flow in f_i_models],
+                dim=1  # shape: (B, M)
+            )
+
+        # Use helper functions
+        f_binned = ensemble_pred(weights, probs_centers)       # shape (B,)
+        f_err = ensemble_unc(cov_w, probs_centers)              # shape (B,)
+
+        N = np.sum(f_binned * bin_widths)
+        f_binned /= N
+        f_err /= N
 
         # ------------------
         # 1 and 2 sigma bands calculation 
         # ------------------
 
-        # Ensemble marginal: mean and uncertainty bands per bin
-        band_mean, band_1s_l, band_1s_h = [], [], []
-        band_2s_l, band_2s_h = [], []
-
-        # for each bin: compute average model prediction and uncertainty band percentiles.
-        for b in range(1, len(bin_edges)):
-            idx = (bin_indices == b)
-            if np.sum(idx) == 0:
-                band_mean.append(0)
-                band_1s_l.append(0)
-                band_1s_h.append(0)
-                band_2s_l.append(0)
-                band_2s_h.append(0)
-                continue
-            f_bin = f_vals[idx]
-            s_bin = f_unc[idx]
-           
-            mu = np.mean(f_bin)
-            sigma = np.sqrt(np.mean(s_bin**2))  # RMS average uncertainty
-            band_1s_l.append(mu - sigma)
-            band_1s_h.append(mu + sigma)
-            band_2s_l.append(mu - 2*sigma)
-            band_2s_h.append(mu + 2*sigma)
-
-        # Normalize the bands the same way as f_binned
-        band_1s_l = np.array(band_1s_l) / N
-        band_1s_h = np.array(band_1s_h) / N
-        band_2s_l = np.array(band_2s_l) / N
-        band_2s_h = np.array(band_2s_h) / N
+        # Compute 1σ and 2σ bands directly from f_binned and f_err
+        band_1s_l = f_binned - f_err
+        band_1s_h = f_binned + f_err
+        band_2s_l = f_binned - 2 * f_err
+        band_2s_h = f_binned + 2 * f_err
 
         #Mask to keep only bins with target data
         valid_bins = hist_target > 0
@@ -225,9 +193,9 @@ def plot_ensemble_marginals(model_probs, x_data, weights, cov_w, feature_names, 
         #Plot main distribution
         ax_main.bar(bin_centers, hist_target, width=np.diff(bin_edges), alpha=0.2, label="Target", color='green', edgecolor='black')
         ax_main.errorbar(bin_centers, hist_target, yerr=err_target, fmt='None', color='green', alpha=0.7)
-        ax_main.errorbar(bin_centers[valid_bins], f_binned[valid_bins], yerr=f_err[valid_bins], fmt='-', color='red', linewidth=1.2, capsize=0, marker=None, label=r"$f(x) = \sum w_i f_i(x)$")
-        ax_main.fill_between(bin_centers, band_1s_l, band_1s_h, alpha=0.12, label=r"$\pm 1\sigma$", color='blue')
-        ax_main.fill_between(bin_centers, band_2s_l, band_2s_h, alpha=0.07, label=r"$\pm 2\sigma$", color='purple')
+        ax_main.plot(bin_centers[valid_bins], f_binned[valid_bins],'-', color='red', linewidth=1.2, label=r"$f(x) = \sum w_i f_i(x)$")
+        ax_main.fill_between(bin_centers, band_1s_l, band_1s_h, alpha=0.15, label=r"$\pm 1\sigma$", color='blue')
+        ax_main.fill_between(bin_centers, band_2s_l, band_2s_h, alpha=0.08, label=r"$\pm 2\sigma$", color='purple')
 
         ax_main.set_xlabel(feature_label, fontsize=16)
         ax_main.set_ylabel("Density", fontsize=16)
@@ -247,10 +215,10 @@ def plot_ensemble_marginals(model_probs, x_data, weights, cov_w, feature_names, 
         # Calculate y-axis upper limit from max ratio across valid bins
         ymax = max(np.max(ratio_1s[valid]), np.max(ratio_2s[valid]))
 
-        ax_ratio.plot(bin_centers[valid], ratio_1s[valid], 'o-', color='blue', alpha=0.4, label=r"$+1\sigma$ / mean")
-        ax_ratio.plot(bin_centers[valid], ratio_2s[valid], 'o-', color='purple', alpha=0.2, label=r"$+2\sigma$ / mean")
+        ax_ratio.plot(bin_centers[valid], ratio_1s[valid], 'o-', color='blue', alpha=0.3, label=r"$+1\sigma$ / mean")
+        ax_ratio.plot(bin_centers[valid], ratio_2s[valid], 'o-', color='purple', alpha=0.3, label=r"$+2\sigma$ / mean")
         ax_ratio.axhline(1.0, color='black', linestyle='--', linewidth=1)  # <-- Add horizontal line at y=1
-        ax_ratio.set_ylim(0.0, 4.0) 
+        ax_ratio.set_ylim(0.8, 2.0) 
         ax_ratio.set_ylabel("Upper band / Mean", fontsize=14)
         ax_ratio.set_xlabel(feature_label, fontsize=14)
         ax_ratio.legend(fontsize=12)
@@ -262,47 +230,50 @@ def plot_ensemble_marginals(model_probs, x_data, weights, cov_w, feature_names, 
         plt.savefig(outpath)
         plt.close()
 
+def profile_likelihood_scan(model_probs, w_best, out_dir):
+    """
+    For each weight w_i, scan NLL as a function of w_i while rescaling all others to sum to (1 - w_i).
+    """
+    os.makedirs(os.path.join(out_dir, "likelihood_profiles"), exist_ok=True)
 
-def likelihood_profile_scan(model_probs, w_best, outdir):
-    #model_probs: tensor with f_0(x_j), f_1(x_j), ...
-    #w_best: optimal weights from optimization 
-    
-    #define a grid of w_0 € [0,1]
-    w0_grid = np.linspace(0,1,200)
-    ll_vals = []
+    n_models = len(w_best)
+    w_best = np.array(w_best)
 
-    #compute the nll for each weight in the configuration (w_0, 1-w_0)
-    for w0 in w0_grid:
-        #for each value of w0 for the full weight tensor (w0, 1-w0)
-        w = torch.tensor([w0, 1-w0], dtype=torch.float32)
-        #evaluate the negative log likelihood 
-        ll = log_likelihood(w, model_probs).item()
-        ll_vals.append(ll)
+    for i in range(n_models):
+        n_points=200
+        w_scan = np.linspace(0, 1, n_points)
+        nll_vals = []
 
-    ll_vals = np.array(ll_vals)
-    #convert ll values to -2∆ll
-    delta_ll = - 2 * (ll_vals - np.max(ll_vals))
+        # The other weights (not i) from best-fit, normalized to sum to 1 - w_i
+        w_rest = np.delete(w_best, i)
+        w_rest /= np.sum(w_rest)  # renormalize
 
-    #scan plot 
-    plt.figure(figsize=(6, 4))
-    plt.plot(w0_grid, delta_ll, label=r"$-2\Delta\log\mathcal{L}$", color='black')
+        for w_i_val in w_scan:
+            if w_i_val > 1.0:
+                continue
+            w_other = (1.0 - w_i_val) * w_rest
+            w_full = np.insert(w_other, i, w_i_val)
+            w_tensor = torch.tensor(w_full, dtype=torch.float32)
+            nll = -log_likelihood(w_tensor, model_probs).item()
+            nll_vals.append(nll)
 
-    # Force y-axis zoom to show structure
-    plt.ylim(np.min(delta_ll) - 1e-4, np.max(delta_ll) + 1e-4)
+        # Plot
+        plt.figure(figsize=(6, 4))
+        plt.plot(w_scan[:len(nll_vals)], nll_vals, label="NLL", color="black")
+        plt.axvline(w_best[i], color='red', linestyle=':', label="Best fit")
 
-    plt.axvline(w_best[0], color='red', linestyle=':', label="Best fit")
-    plt.xlabel(r"$w_0$", fontsize=12)
-    plt.ylabel(r"$-2\Delta \log\mathcal{L}$", fontsize=12)
-    plt.title("Likelihood profile scan over $w_0$", fontsize=14)
-    plt.legend(fontsize=10)
-    plt.grid()
-    # Set tick label font size
-    plt.tick_params(labelsize=10)
+        plt.xlabel(fr"$w_{i}$", fontsize=12)
+        plt.ylabel("NLL", fontsize=12)
+        plt.title(fr"NLL profile scan for $w_{i}$", fontsize=14)
+        plt.ylim(np.min(nll_vals) - 1e-4, np.max(nll_vals) + 1e-4)
+        plt.legend(fontsize=10)
+        plt.grid()
+        plt.tick_params(labelsize=10)
+        plt.tight_layout()
 
-    plt.tight_layout()
-    plt.savefig(os.path.join(outdir, "likelihood_profile_scan.png"))
-    plt.close()
-
+        outname = os.path.join(out_dir, "likelihood_profiles", f"profile_scan_w{i}.png")
+        plt.savefig(outname)
+        plt.close()
 
 
     

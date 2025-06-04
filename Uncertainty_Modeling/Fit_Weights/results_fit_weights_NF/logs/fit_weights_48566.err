@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Fit_Weights/fit_NF_ensemble_weights.py", line 146, in <module>
+    np.save("w_i_fitted.npy", w_opt.cpu().numpy())
+NameError: name 'w_opt' is not defined

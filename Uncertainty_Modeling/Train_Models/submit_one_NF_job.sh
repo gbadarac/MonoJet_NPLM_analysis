@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=NF_job
-#SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/EstimationNF_gaussians_bootstrap_outputs/logs/job_output_%j.out
-#SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/EstimationNF_gaussians_bootstrap_outputs/logs/job_error_%j.err
+#SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/EstimationNF_gaussians_bootstrap_outputs/logs/job_output_%j.out
+#SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/EstimationNF_gaussians_bootstrap_outputs/logs/job_error_%j.err
 #SBATCH --time=1-00:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --account=gpu_gres
@@ -44,13 +44,7 @@ outdir=${TRIAL_DIR}
 # ======================================
 export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling:$PYTHONPATH
 
-# ======================================
-# Dynamically assign GPU
-# ======================================
-gpu_id=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits | awk '{print NR-1 " " $1}' | sort -k2 -nr | head -1 | cut -d ' ' -f1)
-export CUDA_VISIBLE_DEVICES=$gpu_id
-echo "Assigned GPU ID (CUDA_VISIBLE_DEVICES): $CUDA_VISIBLE_DEVICES"
-nvidia-smi
+echo "Using GPU ID (as set by SLURM): $CUDA_VISIBLE_DEVICES"
 
 # ======================================
 # Run training script
