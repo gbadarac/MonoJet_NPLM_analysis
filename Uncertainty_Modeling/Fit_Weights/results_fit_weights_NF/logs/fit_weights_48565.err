@@ -1,4 +1,0 @@
-Traceback (most recent call last):
-  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Fit_Weights/fit_NF_ensemble_weights.py", line 131, in <module>
-    f_w = torch.dot(w_opt, f_i)
-RuntimeError: dot : expected both vectors to have same dtype, but found Double and Float

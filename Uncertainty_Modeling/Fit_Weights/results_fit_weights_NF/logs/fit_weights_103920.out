@@ -1,0 +1,35 @@
+Initial weights: [0.5 0.5]
+model_probs stats: min = 1.5636542229913175e-05 max = 1.6565717458724976
+Optimization terminated successfully.
+         Current function value: 0.552176
+         Iterations: 18
+         Function evaluations: 90
+w_i_opt: tensor([0.5637, 0.4283])
+Final weights: tensor([0.6339, 0.3661])
+Sum of weights: 1.0
+Symmetry error: tensor(0., dtype=torch.float64)
+Hessian eigenvalues: [9.99999524e-05 1.00233196e-04]
+Condition number: 1.002332439544384
+cov_w_simple:
+ tensor([[5.7934e+12, 4.4024e+12],
+        [4.4024e+12, 3.3455e+12]], dtype=torch.float64, grad_fn=<DivBackward0>)
+cov_w_sandwich:
+ tensor([[  8.4270, -11.0902],
+        [-11.0902,  14.5952]], dtype=torch.float64, grad_fn=<DivBackward0>)
+J= tensor([[ 0.8234, -1.0835],
+        [-0.8234,  1.0835]], dtype=torch.float64)
+Weight covariance matrix:
+ tensor([[ 42.6371, -42.6371],
+        [-42.6371,  42.6371]], dtype=torch.float64, grad_fn=<MmBackward0>)
+  Computed sigma_sq, min: 9.329501546390877e-08, max: 1.11315921655941, mean: 0.1072958282697416
+  Final sigma stats: min=0.00030544232755777117, max=1.0550636078262816, mean=0.20228619227626918
+[DEBUG] Feature 1
+  f_binned stats: min=7.1829e-05, max=1.5534e+00, mean=4.4574e-01
+  f_err stats   : min=3.0902e-04, max=1.0674e+00, mean=2.0466e-01
+  Relative error: min=1.8045e-02, max=1.6236e+01
+  Computed sigma_sq, min: 1.596502646111829e-08, max: 1.2051055275784819, mean: 0.12011065920896886
+  Final sigma stats: min=0.00012635278572757424, max=1.097772985447575, mean=0.18992317075989013
+[DEBUG] Feature 2
+  f_binned stats: min=1.4642e-04, max=1.0213e+00, mean=2.6774e-01
+  f_err stats   : min=8.0374e-05, max=6.9830e-01, mean=1.2081e-01
+  Relative error: min=2.6405e-02, max=1.4464e+01

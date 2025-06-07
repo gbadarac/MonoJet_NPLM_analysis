@@ -58,71 +58,21 @@ def probs(weights, model_probs):
     """
     return (model_probs * weights).sum(dim=1)  # shape: (N,)
 
-def plot_marginals(dist1, dist2, target, feature_names, outdir, labels):
-    target = target.cpu().numpy()
-    num_features = target.shape[1]
-    
-    for i in range(num_features):
-        fig, ax_main = plt.subplots(1, 1, figsize=(8, 6))           
-        dist1_feature = dist1[:, i]
-        dist2_feature = dist2[:, i]
-        target_feature=target[:,i]
-        feature_label = feature_names[i]
-        
-        # Combine data for consistent binning
-        bins = 40
-        all_data = np.concatenate([dist1_feature, dist2_feature, target_feature])
-        # Use full support for binning to avoid normalization loss
-        low, high = np.min(all_data), np.max(all_data)
-        bin_edges = np.linspace(low, high, bins + 1)
-        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-        bin_widths = np.diff(bin_edges)
-    
-        # Histograms (shared binning)
-        def hist_with_err(data):
-            counts, _ = np.histogram(data, bins=bin_edges)
-            N_total = np.sum(counts)
-            hist = counts / (N_total * bin_widths)
-            err = np.sqrt(counts) / (N_total * bin_widths)      
-            return hist, err
-        
-        hist_dist1, err_dist1 = hist_with_err(dist1_feature)
-        hist_dist2, err_dist2 = hist_with_err(dist2_feature)
-        hist_target, err_target = hist_with_err(target_feature)
-        
-        # Main plot
-        ax_main.bar(bin_centers, hist_dist1, width=np.diff(bin_edges), alpha=0.3, label=labels[0], color='blue', edgecolor='black')
-        ax_main.bar(bin_centers, hist_dist2, width=np.diff(bin_edges), alpha=0.3, label=labels[1], color='green', edgecolor='black')
-        ax_main.bar(bin_centers, hist_target, width=np.diff(bin_edges), alpha=0.15, label='Target', color='red', edgecolor='black')
-        ax_main.errorbar(bin_centers, hist_dist1, yerr=err_dist1, fmt='None', color='blue', alpha=0.7)
-        ax_main.errorbar(bin_centers, hist_dist2, yerr=err_dist2, fmt='None', color='green', alpha=0.7)
-        ax_main.errorbar(bin_centers, hist_target, yerr=err_target, fmt='None', color='red', alpha=0.7)
-
-        ax_main.set_xlabel(feature_label, fontsize=16)
-        ax_main.set_ylabel("Density", fontsize=16)
-        ax_main.legend(fontsize=14)
-
-        # Save plot
-        plot_path = os.path.join(outdir, f"marginal_feature_{i+1}.png")
-        plt.tight_layout()
-        plt.savefig(plot_path)
-        plt.show()
-        plt.close()
-
 def log_likelihood(weights, model_probs):
     p_x = probs(weights, model_probs) + 1e-8  # prevent log(0)
     ll = torch.log(p_x).mean() #averaging the loss over all datapoints 
-    return ll # scalar
-
+    return ll 
 
 def ensemble_pred(weights, model_probs):
-    model_vals = (model_probs * torch.tensor(weights, device=model_probs.device)).sum(dim=1)
+    weights = weights.to(model_probs.device)
+    model_vals = (model_probs * weights).sum(dim=1)
     return model_vals.cpu().numpy()
 
 def ensemble_unc(cov_w, model_probs):
-    model_probs_np = model_probs.cpu().numpy()  # shape: (N, M)
+    model_probs_np = model_probs.cpu().clone().numpy()
     sigma_sq = np.einsum('ni,ij,nj->n', model_probs_np, cov_w, model_probs_np)
-    return np.sqrt(sigma_sq)
+    sigma = np.sqrt(sigma_sq)
+    return sigma
 
 def plot_ensemble_marginals(f_i_models, x_data, weights, cov_w, feature_names, outdir):
     #convet pytorch input tensor x_data to a NumPy array for easier processing 
@@ -177,6 +127,11 @@ def plot_ensemble_marginals(f_i_models, x_data, weights, cov_w, feature_names, o
         f_binned /= N
         f_err /= N
 
+        print(f"[DEBUG] Feature {i+1}")
+        print(f"  f_binned stats: min={np.min(f_binned):.4e}, max={np.max(f_binned):.4e}, mean={np.mean(f_binned):.4e}")
+        print(f"  f_err stats   : min={np.min(f_err):.4e}, max={np.max(f_err):.4e}, mean={np.mean(f_err):.4e}")
+        print(f"  Relative error f_err/f_binned: min={np.min(f_err/f_binned):.4e}, max={np.max(f_err/f_binned):.4e}")
+
         # ------------------
         # 1 and 2 sigma bands calculation 
         # ------------------
@@ -206,19 +161,21 @@ def plot_ensemble_marginals(f_i_models, x_data, weights, cov_w, feature_names, o
         f_binned_safe = np.where(f_binned > 0, f_binned, np.nan)
 
         #Compute lower band ratios
-        ratio_1s = np.array(band_1s_h) / f_binned_safe #relative size of the lower band 
-        ratio_2s = np.array(band_2s_h) / f_binned_safe
+        ratio_1s_h = np.array(band_1s_h) / f_binned_safe #relative size of the lower band 
+        ratio_2s_h = np.array(band_2s_h) / f_binned_safe
+
+        ratio_1s_l = np.array(band_1s_l) / f_binned_safe #relative size of the lower band 
+        ratio_2s_l = np.array(band_2s_l) / f_binned_safe
 
         #Only plot valid (non-NaN) ratios
-        valid = ~np.isnan(ratio_1s)
+        valid_h = ~np.isnan(ratio_1s_h)
 
-        # Calculate y-axis upper limit from max ratio across valid bins
-        ymax = max(np.max(ratio_1s[valid]), np.max(ratio_2s[valid]))
-
-        ax_ratio.plot(bin_centers[valid], ratio_1s[valid], 'o-', color='blue', alpha=0.3, label=r"$+1\sigma$ / mean")
-        ax_ratio.plot(bin_centers[valid], ratio_2s[valid], 'o-', color='purple', alpha=0.3, label=r"$+2\sigma$ / mean")
+        ax_ratio.plot(bin_centers[valid_h], ratio_1s_h[valid_h], 'o-', color='blue', alpha=0.3, label=r"$+1\sigma$ / mean")
+        ax_ratio.plot(bin_centers[valid_h], ratio_2s_h[valid_h], 'o-', color='purple', alpha=0.3, label=r"$+2\sigma$ / mean")
+        ax_ratio.plot(bin_centers[valid_h], ratio_1s_l[valid_h], 'o-', color='blue', alpha=0.3, label=r"$-1\sigma$ / mean")
+        ax_ratio.plot(bin_centers[valid_h], ratio_2s_l[valid_h], 'o-', color='purple', alpha=0.3, label=r"$-2\sigma$ / mean")
         ax_ratio.axhline(1.0, color='black', linestyle='--', linewidth=1)  # <-- Add horizontal line at y=1
-        ax_ratio.set_ylim(0.8, 2.0) 
+        ax_ratio.set_ylim(0.9, 1.1) 
         ax_ratio.set_ylabel("Upper band / Mean", fontsize=14)
         ax_ratio.set_xlabel(feature_label, fontsize=14)
         ax_ratio.legend(fontsize=12)
@@ -249,8 +206,6 @@ def profile_likelihood_scan(model_probs, w_best, out_dir):
         w_rest /= np.sum(w_rest)  # renormalize
 
         for w_i_val in w_scan:
-            if w_i_val > 1.0:
-                continue
             w_other = (1.0 - w_i_val) * w_rest
             w_full = np.insert(w_other, i, w_i_val)
             w_tensor = torch.tensor(w_full, dtype=torch.float32)
@@ -275,5 +230,55 @@ def profile_likelihood_scan(model_probs, w_best, out_dir):
         plt.savefig(outname)
         plt.close()
 
+def plot_marginals(dist1, dist2, target, feature_names, outdir, labels):
+    target = target.cpu().numpy()
+    num_features = target.shape[1]
+    
+    for i in range(num_features):
+        fig, ax_main = plt.subplots(1, 1, figsize=(8, 6))           
+        dist1_feature = dist1[:, i]
+        dist2_feature = dist2[:, i]
+        target_feature=target[:,i]
+        feature_label = feature_names[i]
+        
+        # Combine data for consistent binning
+        bins = 40
+        all_data = np.concatenate([dist1_feature, dist2_feature, target_feature])
+        # Use full support for binning to avoid normalization loss
+        low, high = np.min(all_data), np.max(all_data)
+        bin_edges = np.linspace(low, high, bins + 1)
+        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+        bin_widths = np.diff(bin_edges)
+    
+        # Histograms (shared binning)
+        def hist_with_err(data):
+            counts, _ = np.histogram(data, bins=bin_edges)
+            N_total = np.sum(counts)
+            hist = counts / (N_total * bin_widths)
+            err = np.sqrt(counts) / (N_total * bin_widths)      
+            return hist, err
+        
+        hist_dist1, err_dist1 = hist_with_err(dist1_feature)
+        hist_dist2, err_dist2 = hist_with_err(dist2_feature)
+        hist_target, err_target = hist_with_err(target_feature)
+        
+        # Main plot
+        ax_main.bar(bin_centers, hist_dist1, width=np.diff(bin_edges), alpha=0.3, label=labels[0], color='blue', edgecolor='black')
+        ax_main.bar(bin_centers, hist_dist2, width=np.diff(bin_edges), alpha=0.3, label=labels[1], color='green', edgecolor='black')
+        ax_main.bar(bin_centers, hist_target, width=np.diff(bin_edges), alpha=0.15, label='Target', color='red', edgecolor='black')
+        ax_main.errorbar(bin_centers, hist_dist1, yerr=err_dist1, fmt='None', color='blue', alpha=0.7)
+        ax_main.errorbar(bin_centers, hist_dist2, yerr=err_dist2, fmt='None', color='green', alpha=0.7)
+        ax_main.errorbar(bin_centers, hist_target, yerr=err_target, fmt='None', color='red', alpha=0.7)
+
+        ax_main.set_xlabel(feature_label, fontsize=16)
+        ax_main.set_ylabel("Density", fontsize=16)
+        ax_main.legend(fontsize=14)
+
+        # Save plot
+        plot_path = os.path.join(outdir, f"marginal_feature_{i+1}.png")
+        plt.tight_layout()
+        plt.savefig(plot_path)
+        plt.show()
+        plt.close()
 
     

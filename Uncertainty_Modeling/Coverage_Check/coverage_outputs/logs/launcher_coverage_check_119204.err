@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 244, in <module>
+    sigma_sq = torch.einsum("di,ij,dj->dd", mu_i, cov_w_final, mu_i)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/functional.py", line 330, in einsum
+    return _VF.einsum(equation, operands)  # type: ignore[attr-defined]
+RuntimeError: einsum(): output subscript d appears more than once in the output

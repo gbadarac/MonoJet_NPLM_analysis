@@ -7,7 +7,7 @@ import torch
 import torch.optim as optim
 import numpy as np
 import argparse
-from utils import make_flow, log_likelihood, plot_marginals, plot_ensemble_marginals, profile_likelihood_scan
+from utils import make_flow, probs, log_likelihood, plot_marginals, plot_ensemble_marginals, profile_likelihood_scan
 import matplotlib
 import matplotlib.pyplot as plt
 matplotlib.use('Agg')  # ensure it works on clusters without displaying plots
@@ -35,7 +35,6 @@ args = parser.parse_args()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") #sets device to GPU if available 
 os.makedirs(args.trial_dir, exist_ok=True)
 
-#f_i_file = os.path.join(args.trial_dir, "f_i_averaged.pth")
 f_i_file = os.path.join(args.trial_dir, "f_i_averaged.pth")
 w_i_file = os.path.join(args.trial_dir, "w_i_initial.npy")
 
@@ -50,6 +49,7 @@ print(f"Initial weights: {w_i_initial}")
 #'''
 with open(os.path.join(args.trial_dir, "architecture_config.json")) as f:
     config = json.load(f) 
+
 '''
 configs = []
 for model_name in ["good_model", "bad_model"]:
@@ -92,89 +92,189 @@ with torch.no_grad(): #disables gradient tracking since we are just evaluating t
 # Move model_probs and f_I_models to CPU for memory safety
 # model_probs is a (N,M) matrix of type (f_0, ... f_(M-1)) where N is the number of data points 
 model_probs = model_probs.to("cpu")
-M = len(model_probs[0])
-
-# ------------------
-# Optimize weights using MLE
-# ------------------
-# Instead of optimizing directly over the weights w_i (which must satisfy w_i ≥ 0 and ∑w_i = 1),
-# we optimize over unconstrained logits z_i ∈ ℝ, and then map them to the simplex using softmax.
-# This allows unconstrained optimization in logit space while ensuring the weights always stay valid.
 
 # ------------------
 # Optimize weights via logits using MLE
 # ------------------
-def nll_logits(logits):
-    weights = F.softmax(logits, dim=0)
-    return -log_likelihood(weights, model_probs)
+# Convert initial weights to torch tensor
+w_i_init_torch = torch.tensor(w_i_initial, dtype=torch.float32, requires_grad=True)
 
-# Convert initial weights to logits
-logits_init = torch.log(torch.tensor(w_i_initial + 1e-8, dtype=torch.float32))
-logits_init = logits_init.detach().clone().requires_grad_()
+def normalize_weights(weights):
+    eps = 1e-8
+    weights_sq = weights ** 2
+    return weights_sq / (torch.sum(weights_sq) + eps)
+
+def ensemble_model(weights, model_probs):
+    norm_weights = normalize_weights(weights)
+    return probs(norm_weights, model_probs)
+
+def nll(weights):
+    return -torch.log(ensemble_model(weights, model_probs) + 1e-8).mean()
 
 res = minimize(
-    nll_logits,
-    logits_init,
+    nll,
+    w_i_init_torch,
     method='newton-exact',
     options={'disp': True, 'max_iter': 300}
 )
 
-logits_opt = res.x.detach()
-w_i_final = F.softmax(logits_opt, dim=0).cpu().numpy()
+w_i_opt = res.x.detach()               # ← what the optimizer produced
+w_i_final = normalize_weights(w_i_opt) # ← the true weights you use
 
-print("Final weights (softmax):", w_i_final)
-print("Sum of weights:", np.sum(w_i_final))
+print('w_i_opt:', w_i_opt)
+print("Final weights:", w_i_final)
+print("Sum of weights:", w_i_final.detach().cpu().numpy().sum())
 
 # ------------------
 # Compute uncertainties via Hessian
 # -----------------
-logits_opt = logits_opt.clone().requires_grad_()
-H_logits = hessian(nll_logits, logits_opt).detach().cpu().numpy()  # shape (M, M)
+#define manual hessian 
 
-asymmetry = np.max(np.abs(H_logits - H_logits.T))
-print("Max asymmetry of Hessian:", asymmetry)
+def compute_manual_hessian(w, model_probs):
+    """
+    Compute the full analytic Hessian of the negative log-likelihood L
+    with square-normalized weights:
+    
+    ∂²L/∂w_j∂w_i =
+        (2 / (f(x) * Z)) [
+            -δ_ij (f_i(x) - f(x))
+            + (2 w_i w_j / Z) * (f_i(x) - f(x) + f_j(x) - f(x) + (1 / f(x)) * (f_i(x) - f(x))(f_j(x) - f(x)))
+        ]
+    """
+    N, M = model_probs.shape
+    w = w.detach().clone().double()
+    model_probs = model_probs.double()
 
-eps = 1e-6
-logits_eps = logits_opt + eps * torch.randn_like(logits_opt)
-H_eps = hessian(nll_logits, logits_eps).detach().cpu().numpy()
-delta = np.max(np.abs(H_logits - H_eps))
-print("Max delta from small input perturbation:", delta)
+    f_i = model_probs  # (N, M)
+    w_sq = w ** 2
+    Z = torch.sum(w_sq)  # scalar
 
-eigvals = np.linalg.eigvalsh(H_logits)
+    # Compute ensemble prediction f(x): shape (N,)
+    weights_sq_norm = (w ** 2) / Z
+    f = (f_i * weights_sq_norm).sum(dim=1)  # (N,)
+
+    coeff = 2.0 / (f[:, None, None] * Z + 1e-12)  # (N, 1, 1)
+
+    f_diff = f_i - f[:, None]  # (N, M)
+    f_diff_i = f_diff[:, :, None]  # (N, M, 1)
+    f_diff_j = f_diff[:, None, :]  # (N, 1, M)
+    delta_ij = torch.eye(M, dtype=torch.float64).unsqueeze(0)  # (1, M, M)
+
+    # Build full Hessian for each sample: shape (N, M, M)
+    term_diag = -delta_ij * f_diff[:, None, :]  # (N, M, M)
+
+    term_1 = f_diff_i + f_diff_j  # (N, M, M)
+    term_2 = (f_diff_i * f_diff_j) / (f[:, None, None] + 1e-12)  # (N, M, M)
+
+    w_iw_j=  w[:, None] * w[None, :]
+    weight_factor = (2*w_iw_j / Z).unsqueeze(0)  # (1, M, M)
+
+    total = term_diag + weight_factor * (term_1 + term_2)  # (N, M, M)
+    hessian = (coeff*total).mean(dim=0) # (M, M)
+
+    return hessian
+
+H_manual = compute_manual_hessian(w_i_opt, model_probs)
+
+# Convert H_manual to torch tensor
+H_torch = H_manual.clone().detach()
+print("H_manual:", torch.norm(H_torch).item())
+
+#debug 
+eigvals = np.linalg.eigvalsh(H_torch)
 print("Hessian eigenvalues:", eigvals)
-print("Min eigenvalue:", eigvals.min(), "Max eigenvalue:", eigvals.max(), "Condition number:", eigvals.max() / eigvals.min())
+print("Condition number:", eigvals.max() / eigvals.min())
 
-# Jacobian ∂w/∂z of softmax
-J = np.diag(w_i_final) - np.outer(w_i_final, w_i_final)  # shape (M, M)
+# Autograd Hessian for cross-check
+H_autograd = hessian(nll, w_i_opt.double()).detach()
+print("H_autograd:", torch.norm(H_autograd).item())
 
-eigvals_J = np.linalg.eigvalsh(J)
-print("Jacobian eigenvalues:", eigvals_J)
+# Direct comparison
+print("‖H_manual - H_autograd‖ =", torch.norm(H_manual - H_autograd).item())
 
-H = torch.tensor(H_logits, dtype=torch.float32)
-J = torch.tensor(J, dtype=torch.float32)
+M = len(w_i_opt)
+H_reg = H_manual + 1e-4 * torch.eye(M, dtype=torch.float64)
+print("H_reg:", torch.norm(H_reg).item())
+eigvals_reg = np.linalg.eigvalsh(H_reg)
+print("H_reg eigenvalues:", eigvals_reg)
 
-print("Jacobian:\n", J)
-print("Jacobian shape:", J.shape)
-print("Jacobian condition number:", np.linalg.cond(J))
+def compute_sandwich_covariance(H, w, model_probs):
+    M = len(w)
+    N = model_probs.shape[0]
 
-A = np.linalg.solve(H_logits, J.T)
-cov_test = J @ A
-print("Covariance norm:", np.linalg.norm(cov_test))
+    w = w.detach().clone().double().requires_grad_()
+    model_probs = model_probs.double()
 
-cov_test_pinv = J @ np.linalg.pinv(H_logits) @ J.T
-print("Covariance (pseudo-inv) norm:", np.linalg.norm(cov_test_pinv))
+    V = torch.linalg.solve(H, torch.eye(M, dtype=torch.float64))
+    #print('eigvalues of V', torch.linalg.eigvalsh(V))
+    #print('V', V)
+    
+    # Compute Z and f(x)
+    w_sq = w ** 2
+    Z = torch.sum(w_sq)
+    f = ((model_probs * w_sq)/Z).sum(dim=1)  # shape: (N,)
 
-cov_w = J @ torch.linalg.solve(H, torch.linalg.solve(H, J.T).T).T
-cov_w = cov_w.numpy()
+    grads = torch.zeros((N, M), dtype=torch.float64)  # ∂L/∂w_i(x)
+    for i in range(M):
+        f_i = model_probs[:, i]
+        grads[:, i] = - (2 * w[i] / Z) * (f_i - f) / (f + 1e-12)
 
-print("Weight covariance matrix:\n", cov_w)
+    #Compute U
+    mean_grad = grads.mean(dim=0, keepdim=True)
+    U = ((grads - mean_grad).T @ (grads - mean_grad)) / N
+    #print('eigvalues of U', torch.linalg.eigvalsh(U))
+    #print('U', U)
+
+    try:
+        L = torch.linalg.cholesky(H)
+        V_chol = torch.cholesky_solve(torch.eye(M, dtype=torch.float64), L)
+        print("‖V_cholesky - V_direct‖ =", torch.norm(V_chol - V).item())
+    except RuntimeError as e:
+        print("Cholesky failed:", str(e))
+
+    cov_w = V @ U @ V.T 
+    cov_w = cov_w / N
+    print("‖V @ U - I‖ =", torch.norm(V @ U - torch.eye(M, dtype=torch.float64)).item())
+    print("‖V @ U @ V - V‖ =", torch.norm(V @ U @ V - V).item())
+    return cov_w
+
+cov_w_sandwich = compute_sandwich_covariance(H_reg, w_i_opt, model_probs)
+print("cov_w_sandwich:\n", cov_w_sandwich)
+
+
+def jacobian_normalize_weights_sq(w):
+    """
+    Jacobian of w_final = w^2 / sum(w^2) with respect to raw w
+    """
+    w = w.detach().clone().double()
+    w_sq = w ** 2
+    Z = torch.sum(w_sq)
+    M = len(w)
+
+    J = torch.zeros(M, M, dtype=torch.float64)
+    for i in range(M):
+        for j in range(M):
+            delta = 1.0 if i == j else 0.0
+            J[i, j] = (2 * w[i] * delta * Z - 2 * w[j] * w[i]**2) / (Z ** 2)
+    return J
+
+# Jacobian transform of cov_w
+J = jacobian_normalize_weights_sq(w_i_opt)
+print('J=', J)
+
+cov_w_final = J @ cov_w_sandwich @ J.T
+print("Weight covariance matrix:\n", cov_w_final)
 
 # ------------------
 # Save final outputs
 # ------------------
-np.save("w_i_fitted.npy", w_i_final)
-np.save("cov_w.npy", cov_w)
-'''
+cov_w_final = cov_w_final.detach().cpu().numpy()
+
+
+# Save final weights and covariance matrix to correct location
+np.save(os.path.join(args.out_dir, "w_i_fitted.npy"), w_i_final.detach().cpu().numpy())
+np.save(os.path.join(args.out_dir, "cov_w.npy"), cov_w_final)
+
 # ------------------
 # Plotting 
 # ------------------
@@ -197,8 +297,8 @@ if args.plot.lower() == "true":
     #likelihood_scan(model_probs, w_i_final, args.out_dir)
     profile_likelihood_scan(model_probs, w_i_final, args.out_dir)
     
+
     # ------------------
     # Uncertainties on the model
     # ------------------
-    plot_ensemble_marginals(f_i_models, x_data, w_i_final, cov_w, feature_names, args.out_dir)
-'''
+    plot_ensemble_marginals(f_i_models, x_data, w_i_final, cov_w_final, feature_names, args.out_dir)

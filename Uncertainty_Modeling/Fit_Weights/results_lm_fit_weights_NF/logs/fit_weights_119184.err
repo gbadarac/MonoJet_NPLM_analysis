@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Fit_Weights/lm_fit_NF_ensemble_weights.py", line 219, in <module>
+    cov_w = compute_sandwich_covariance(H_, w_i_opt, model_probs)
+NameError: name 'H_' is not defined

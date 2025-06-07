@@ -1,0 +1,1092 @@
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847031
+         Iterations: 19
+         Function evaluations: 69
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.849129
+         Iterations: 11
+         Function evaluations: 35
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.839928
+         Iterations: 15
+         Function evaluations: 49
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844322
+         Iterations: 13
+         Function evaluations: 41
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.848541
+         Iterations: 13
+         Function evaluations: 40
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.853760
+         Iterations: 15
+         Function evaluations: 48
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846771
+         Iterations: 13
+         Function evaluations: 37
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846039
+         Iterations: 17
+         Function evaluations: 57
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846199
+         Iterations: 19
+         Function evaluations: 53
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844002
+         Iterations: 15
+         Function evaluations: 73
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.842735
+         Iterations: 17
+         Function evaluations: 79
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.850494
+         Iterations: 18
+         Function evaluations: 51
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.842926
+         Iterations: 9
+         Function evaluations: 33
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844391
+         Iterations: 11
+         Function evaluations: 61
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.849037
+         Iterations: 23
+         Function evaluations: 55
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.848518
+         Iterations: 13
+         Function evaluations: 43
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847778
+         Iterations: 14
+         Function evaluations: 42
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847122
+         Iterations: 11
+         Function evaluations: 36
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847733
+         Iterations: 14
+         Function evaluations: 42
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.842903
+         Iterations: 18
+         Function evaluations: 51
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.849678
+         Iterations: 12
+         Function evaluations: 40
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846077
+         Iterations: 14
+         Function evaluations: 38
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.841484
+         Iterations: 11
+         Function evaluations: 39
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844276
+         Iterations: 14
+         Function evaluations: 51
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.848907
+         Iterations: 15
+         Function evaluations: 45
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.851212
+         Iterations: 15
+         Function evaluations: 51
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847626
+         Iterations: 14
+         Function evaluations: 44
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.841339
+         Iterations: 13
+         Function evaluations: 44
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844307
+         Iterations: 14
+         Function evaluations: 38
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.841537
+         Iterations: 17
+         Function evaluations: 53
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844147
+         Iterations: 13
+         Function evaluations: 39
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.843330
+         Iterations: 14
+         Function evaluations: 45
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847191
+         Iterations: 13
+         Function evaluations: 40
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846878
+         Iterations: 13
+         Function evaluations: 40
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844978
+         Iterations: 13
+         Function evaluations: 38
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.845314
+         Iterations: 17
+         Function evaluations: 55
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844940
+         Iterations: 17
+         Function evaluations: 52
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.845665
+         Iterations: 17
+         Function evaluations: 72
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.842575
+         Iterations: 15
+         Function evaluations: 48
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.848206
+         Iterations: 15
+         Function evaluations: 41
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846504
+         Iterations: 12
+         Function evaluations: 65
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847031
+         Iterations: 14
+         Function evaluations: 53
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846420
+         Iterations: 13
+         Function evaluations: 56
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.843353
+         Iterations: 15
+         Function evaluations: 48
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844635
+         Iterations: 15
+         Function evaluations: 58
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.842415
+         Iterations: 15
+         Function evaluations: 63
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844261
+         Iterations: 13
+         Function evaluations: 40
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.852097
+         Iterations: 11
+         Function evaluations: 36
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.842522
+         Iterations: 16
+         Function evaluations: 55
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.841354
+         Iterations: 17
+         Function evaluations: 74
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846664
+         Iterations: 16
+         Function evaluations: 42
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.842026
+         Iterations: 11
+         Function evaluations: 38
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844810
+         Iterations: 13
+         Function evaluations: 42
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.843765
+         Iterations: 19
+         Function evaluations: 107
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.843086
+         Iterations: 14
+         Function evaluations: 56
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.851631
+         Iterations: 16
+         Function evaluations: 44
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.845886
+         Iterations: 17
+         Function evaluations: 47
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844292
+         Iterations: 13
+         Function evaluations: 41
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.845200
+         Iterations: 18
+         Function evaluations: 49
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.845184
+         Iterations: 17
+         Function evaluations: 51
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.840996
+         Iterations: 19
+         Function evaluations: 57
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846436
+         Iterations: 11
+         Function evaluations: 37
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.848007
+         Iterations: 13
+         Function evaluations: 66
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844269
+         Iterations: 13
+         Function evaluations: 43
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.842323
+         Iterations: 11
+         Function evaluations: 39
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.848541
+         Iterations: 11
+         Function evaluations: 36
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847099
+         Iterations: 15
+         Function evaluations: 69
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.843826
+         Iterations: 15
+         Function evaluations: 68
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844040
+         Iterations: 11
+         Function evaluations: 37
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.849106
+         Iterations: 15
+         Function evaluations: 42
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.841698
+         Iterations: 16
+         Function evaluations: 68
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.852921
+         Iterations: 14
+         Function evaluations: 73
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846619
+         Iterations: 15
+         Function evaluations: 53
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.845757
+         Iterations: 13
+         Function evaluations: 38
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844116
+         Iterations: 13
+         Function evaluations: 43
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846703
+         Iterations: 14
+         Function evaluations: 39
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.848038
+         Iterations: 13
+         Function evaluations: 41
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.845390
+         Iterations: 24
+         Function evaluations: 66
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847885
+         Iterations: 11
+         Function evaluations: 35
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.845634
+         Iterations: 18
+         Function evaluations: 51
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.849274
+         Iterations: 11
+         Function evaluations: 35
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847710
+         Iterations: 12
+         Function evaluations: 37
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.845261
+         Iterations: 13
+         Function evaluations: 41
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.843819
+         Iterations: 17
+         Function evaluations: 77
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.843719
+         Iterations: 13
+         Function evaluations: 41
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.842705
+         Iterations: 13
+         Function evaluations: 40
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846931
+         Iterations: 14
+         Function evaluations: 43
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.838394
+         Iterations: 16
+         Function evaluations: 61
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846855
+         Iterations: 18
+         Function evaluations: 56
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.851913
+         Iterations: 13
+         Function evaluations: 46
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.845085
+         Iterations: 15
+         Function evaluations: 48
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846855
+         Iterations: 18
+         Function evaluations: 46
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.851532
+         Iterations: 9
+         Function evaluations: 30
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.849350
+         Iterations: 13
+         Function evaluations: 39
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844284
+         Iterations: 16
+         Function evaluations: 59
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.849503
+         Iterations: 13
+         Function evaluations: 44
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846451
+         Iterations: 13
+         Function evaluations: 41
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844269
+         Iterations: 11
+         Function evaluations: 32
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.851448
+         Iterations: 11
+         Function evaluations: 36
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.841904
+         Iterations: 13
+         Function evaluations: 41
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.848709
+         Iterations: 18
+         Function evaluations: 64
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.842583
+         Iterations: 17
+         Function evaluations: 50
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846977
+         Iterations: 11
+         Function evaluations: 36
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.849770
+         Iterations: 12
+         Function evaluations: 49
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846207
+         Iterations: 15
+         Function evaluations: 44
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847031
+         Iterations: 16
+         Function evaluations: 59
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847710
+         Iterations: 13
+         Function evaluations: 40
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847404
+         Iterations: 11
+         Function evaluations: 38
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846352
+         Iterations: 13
+         Function evaluations: 66
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844292
+         Iterations: 13
+         Function evaluations: 41
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.849228
+         Iterations: 11
+         Function evaluations: 39
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.849922
+         Iterations: 23
+         Function evaluations: 69
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844269
+         Iterations: 11
+         Function evaluations: 35
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846405
+         Iterations: 20
+         Function evaluations: 56
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.843620
+         Iterations: 14
+         Function evaluations: 50
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847031
+         Iterations: 13
+         Function evaluations: 40
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.848663
+         Iterations: 14
+         Function evaluations: 67
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844269
+         Iterations: 17
+         Function evaluations: 75
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.850609
+         Iterations: 15
+         Function evaluations: 54
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846245
+         Iterations: 13
+         Function evaluations: 40
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.849884
+         Iterations: 17
+         Function evaluations: 84
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.845192
+         Iterations: 14
+         Function evaluations: 40
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847778
+         Iterations: 11
+         Function evaluations: 38
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.853806
+         Iterations: 15
+         Function evaluations: 45
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.840836
+         Iterations: 11
+         Function evaluations: 36
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.848991
+         Iterations: 11
+         Function evaluations: 36
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.842125
+         Iterations: 15
+         Function evaluations: 51
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.853569
+         Iterations: 15
+         Function evaluations: 44
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.848038
+         Iterations: 13
+         Function evaluations: 36
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.848610
+         Iterations: 15
+         Function evaluations: 46
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.841942
+         Iterations: 13
+         Function evaluations: 41
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.848572
+         Iterations: 17
+         Function evaluations: 79
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847176
+         Iterations: 13
+         Function evaluations: 40
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.843407
+         Iterations: 13
+         Function evaluations: 40
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846222
+         Iterations: 11
+         Function evaluations: 34
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847298
+         Iterations: 16
+         Function evaluations: 56
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.843788
+         Iterations: 18
+         Function evaluations: 47
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847427
+         Iterations: 16
+         Function evaluations: 43
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.845169
+         Iterations: 15
+         Function evaluations: 48
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844002
+         Iterations: 15
+         Function evaluations: 48
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.848633
+         Iterations: 14
+         Function evaluations: 44
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846359
+         Iterations: 15
+         Function evaluations: 67
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.841408
+         Iterations: 11
+         Function evaluations: 37
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.848961
+         Iterations: 13
+         Function evaluations: 45
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.850876
+         Iterations: 13
+         Function evaluations: 38
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.839127
+         Iterations: 17
+         Function evaluations: 49
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.850143
+         Iterations: 13
+         Function evaluations: 41
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844177
+         Iterations: 13
+         Function evaluations: 41
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844055
+         Iterations: 15
+         Function evaluations: 46
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.849632
+         Iterations: 16
+         Function evaluations: 48
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.845001
+         Iterations: 13
+         Function evaluations: 65
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846649
+         Iterations: 16
+         Function evaluations: 44
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847321
+         Iterations: 17
+         Function evaluations: 45
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847939
+         Iterations: 15
+         Function evaluations: 47
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.843132
+         Iterations: 16
+         Function evaluations: 49
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846649
+         Iterations: 19
+         Function evaluations: 59
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.849197
+         Iterations: 16
+         Function evaluations: 55
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.843575
+         Iterations: 11
+         Function evaluations: 37
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.849747
+         Iterations: 13
+         Function evaluations: 46
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846405
+         Iterations: 13
+         Function evaluations: 41
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.839676
+         Iterations: 14
+         Function evaluations: 66
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.848709
+         Iterations: 18
+         Function evaluations: 51
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.845573
+         Iterations: 13
+         Function evaluations: 43
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847366
+         Iterations: 18
+         Function evaluations: 59
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.845886
+         Iterations: 15
+         Function evaluations: 48
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.848900
+         Iterations: 16
+         Function evaluations: 43
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.850067
+         Iterations: 18
+         Function evaluations: 84
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.848206
+         Iterations: 18
+         Function evaluations: 53
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.839645
+         Iterations: 15
+         Function evaluations: 45
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846100
+         Iterations: 11
+         Function evaluations: 36
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846115
+         Iterations: 18
+         Function evaluations: 57
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.845291
+         Iterations: 14
+         Function evaluations: 54
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.849327
+         Iterations: 13
+         Function evaluations: 38
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846893
+         Iterations: 19
+         Function evaluations: 56
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844727
+         Iterations: 14
+         Function evaluations: 41
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.843185
+         Iterations: 14
+         Function evaluations: 58
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847862
+         Iterations: 13
+         Function evaluations: 38
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.841949
+         Iterations: 17
+         Function evaluations: 44
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.847229
+         Iterations: 13
+         Function evaluations: 50
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.846390
+         Iterations: 15
+         Function evaluations: 48
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.844246
+         Iterations: 16
+         Function evaluations: 81
+Initial weights: [0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625
+ 0.0625 0.0625 0.0625 0.0625 0.0625 0.0625]
+Optimization terminated successfully.
+         Current function value: -93.849060
+         Iterations: 9
+         Function evaluations: 33

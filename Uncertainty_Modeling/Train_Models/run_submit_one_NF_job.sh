@@ -18,17 +18,17 @@ conda activate nf_env
 # ======================================
 
 # setup
-model_seeds=16
+model_seeds=32
 bootstrap_runs=10
 
 # Model hyperparameters
 n_epochs=1001
 learning_rate=5e-6
 batch_size=512
-hidden_features=32
+hidden_features=64
 num_blocks=2
-num_bins=8
-num_layers=4
+num_bins=6
+num_layers=2
 
 # Base directory
 base_dir="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/EstimationNF_gaussians_bootstrap_outputs"

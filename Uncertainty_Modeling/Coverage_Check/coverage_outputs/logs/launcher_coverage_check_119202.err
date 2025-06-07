@@ -1,0 +1,28 @@
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 90, in <module>
+    [torch.exp(flow.log_prob(x_data)) for flow in f_i_models], 
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 90, in <listcomp>
+    [torch.exp(flow.log_prob(x_data)) for flow in f_i_models], 
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/nflows/distributions/base.py", line 40, in log_prob
+    return self._log_prob(inputs, context)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/nflows/flows/base.py", line 39, in _log_prob
+    noise, logabsdet = self._transform(inputs, context=embedded_context)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1110, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/nflows/transforms/base.py", line 56, in forward
+    return self._cascade(inputs, funcs, context)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/nflows/transforms/base.py", line 50, in _cascade
+    outputs, logabsdet = func(outputs, context)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1110, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/nflows/transforms/autoregressive.py", line 38, in forward
+    autoregressive_params = self.autoregressive_net(inputs, context)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1110, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/nflows/transforms/made.py", line 275, in forward
+    temps = self.initial_layer(inputs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1110, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/nflows/transforms/made.py", line 72, in forward
+    return F.linear(x, self.weight * self.mask, self.bias)
+RuntimeError: expected scalar type Float but found Double

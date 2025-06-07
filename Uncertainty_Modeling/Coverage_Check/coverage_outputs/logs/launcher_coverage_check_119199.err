@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 232, in <module>
+    mu_model = np.sum(w_i_final[:, None] * mu_i, axis=0)  # shape: (D,)
+TypeError: unsupported operand type(s) for *: 'numpy.ndarray' and 'Tensor'

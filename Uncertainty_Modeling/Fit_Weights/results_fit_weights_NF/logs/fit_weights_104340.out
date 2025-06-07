@@ -1,0 +1,22 @@
+Initial weights: [0.5 0.5]
+model_probs stats: min = 1.5636542229913175e-05 max = 1.6565717458724976
+Optimization terminated successfully.
+         Current function value: 0.552176
+         Iterations: 18
+         Function evaluations: 90
+w_i_opt: tensor([0.5637, 0.4283])
+Final weights: tensor([0.6339, 0.3661])
+Sum of weights: 1.0
+H_manual: 0.023319628643840188
+Hessian eigenvalues: [-4.75619150e-06  2.33196282e-02]
+Condition number: -4903.004466263825
+H_autograd: 0.023319419663898777
+‖H_manual - H_autograd‖ = 3.1770212805627013e-07
+H_reg: 0.023419821828529662
+H_reg eigenvalues: [9.52438085e-05 2.34196282e-02]
+‖V_cholesky - V_direct‖ = 5.224649291029008e-12
+‖V @ U - I‖ = 3.5954273474602494
+‖V @ U @ V - V‖ = 9981.637061919995
+cov_w_sandwich:
+ tensor([[0.0019, 0.0027],
+        [0.0027, 0.0037]], dtype=torch.float64, grad_fn=<DivBackward0>)

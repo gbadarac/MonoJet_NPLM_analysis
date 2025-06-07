@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 208, in <module>
+    X_centers_grid = torch.stack([X1.reshape(-1), X2.reshape(-1)], dim=1)  # shape: (B², 2)=(40x40, 2)
+TypeError: expected Tensor as element 0 in argument 0, but got numpy.ndarray

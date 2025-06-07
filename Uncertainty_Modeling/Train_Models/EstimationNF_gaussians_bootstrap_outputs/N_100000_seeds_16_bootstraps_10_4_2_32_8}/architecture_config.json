@@ -1,7 +1,0 @@
-{
-    "num_layers": 4,
-    "hidden_features": 32,
-    "num_bins": 8,
-    "num_blocks": 2,
-    "tail_bound": 2.799772453308105
-}

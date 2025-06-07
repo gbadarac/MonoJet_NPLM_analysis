@@ -1,0 +1,13 @@
+Initial weights: [0.5 0.5]
+model_probs stats: min = 1.5636542229913175e-05 max = 1.6565717458724976
+Optimization terminated successfully.
+         Current function value: 0.552176
+         Iterations: 18
+         Function evaluations: 90
+w_i_opt: tensor([0.5637, 0.4283])
+Final weights: tensor([0.6339, 0.3661])
+Sum of weights: 1.0
+H_torch: 0.00014158631333728073
+Hessian eigenvalues: [9.99999524e-05 1.00233196e-04]
+Condition number: 1.002332439544384
+H_autograd = 0.023319419663898777

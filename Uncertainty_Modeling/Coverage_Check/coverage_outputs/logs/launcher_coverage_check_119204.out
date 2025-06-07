@@ -1,0 +1,12 @@
+Initial weights: [0.03125 0.03125 0.03125 0.03125 0.03125 0.03125 0.03125 0.03125 0.03125
+ 0.03125 0.03125 0.03125 0.03125 0.03125 0.03125 0.03125 0.03125 0.03125
+ 0.03125 0.03125 0.03125 0.03125 0.03125 0.03125 0.03125 0.03125 0.03125
+ 0.03125 0.03125 0.03125 0.03125 0.03125]
+Optimization terminated successfully.
+         Current function value: 0.547615
+         Iterations: 44
+         Function evaluations: 103
+X_centers_grid: torch.Size([1600, 2])
+model_probs_grid: torch.Size([1600, 32])
+mu_i: torch.Size([2, 32])
+Submitted coverage jobs for trial: N_100000_seeds_32_bootstraps_10_2_2_64_6

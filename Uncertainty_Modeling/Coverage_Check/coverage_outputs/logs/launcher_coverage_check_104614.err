@@ -1,0 +1,80 @@
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 246, in <module>
+    sigma_sq = np.einsum("id,ij,jd->d", mu_i, cov_w, mu_i)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/einsumfunc.py", line 1371, in einsum
+    return c_einsum(*operands, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/_tensor.py", line 732, in __array__
+    return self.numpy()
+RuntimeError: Can't call numpy() on Tensor that requires grad. Use tensor.detach().numpy() instead.
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 246, in <module>
+    sigma_sq = np.einsum("id,ij,jd->d", mu_i, cov_w, mu_i)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/einsumfunc.py", line 1371, in einsum
+    return c_einsum(*operands, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/_tensor.py", line 732, in __array__
+    return self.numpy()
+RuntimeError: Can't call numpy() on Tensor that requires grad. Use tensor.detach().numpy() instead.
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 246, in <module>
+    sigma_sq = np.einsum("id,ij,jd->d", mu_i, cov_w, mu_i)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/einsumfunc.py", line 1371, in einsum
+    return c_einsum(*operands, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/_tensor.py", line 732, in __array__
+    return self.numpy()
+RuntimeError: Can't call numpy() on Tensor that requires grad. Use tensor.detach().numpy() instead.
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 246, in <module>
+    sigma_sq = np.einsum("id,ij,jd->d", mu_i, cov_w, mu_i)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/einsumfunc.py", line 1371, in einsum
+    return c_einsum(*operands, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/_tensor.py", line 732, in __array__
+    return self.numpy()
+RuntimeError: Can't call numpy() on Tensor that requires grad. Use tensor.detach().numpy() instead.
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 246, in <module>
+    sigma_sq = np.einsum("id,ij,jd->d", mu_i, cov_w, mu_i)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/einsumfunc.py", line 1371, in einsum
+    return c_einsum(*operands, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/_tensor.py", line 732, in __array__
+    return self.numpy()
+RuntimeError: Can't call numpy() on Tensor that requires grad. Use tensor.detach().numpy() instead.
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 246, in <module>
+    sigma_sq = np.einsum("id,ij,jd->d", mu_i, cov_w, mu_i)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/einsumfunc.py", line 1371, in einsum
+    return c_einsum(*operands, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/_tensor.py", line 732, in __array__
+    return self.numpy()
+RuntimeError: Can't call numpy() on Tensor that requires grad. Use tensor.detach().numpy() instead.
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 246, in <module>
+    sigma_sq = np.einsum("id,ij,jd->d", mu_i, cov_w, mu_i)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/einsumfunc.py", line 1371, in einsum
+    return c_einsum(*operands, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/_tensor.py", line 732, in __array__
+    return self.numpy()
+RuntimeError: Can't call numpy() on Tensor that requires grad. Use tensor.detach().numpy() instead.
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 246, in <module>
+    sigma_sq = np.einsum("id,ij,jd->d", mu_i, cov_w, mu_i)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/einsumfunc.py", line 1371, in einsum
+    return c_einsum(*operands, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/_tensor.py", line 732, in __array__
+    return self.numpy()
+RuntimeError: Can't call numpy() on Tensor that requires grad. Use tensor.detach().numpy() instead.
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 246, in <module>
+    sigma_sq = np.einsum("id,ij,jd->d", mu_i, cov_w, mu_i)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/einsumfunc.py", line 1371, in einsum
+    return c_einsum(*operands, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/_tensor.py", line 732, in __array__
+    return self.numpy()
+RuntimeError: Can't call numpy() on Tensor that requires grad. Use tensor.detach().numpy() instead.
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 246, in <module>
+    sigma_sq = np.einsum("id,ij,jd->d", mu_i, cov_w, mu_i)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/einsumfunc.py", line 1371, in einsum
+    return c_einsum(*operands, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/_tensor.py", line 732, in __array__
+    return self.numpy()
+RuntimeError: Can't call numpy() on Tensor that requires grad. Use tensor.detach().numpy() instead.

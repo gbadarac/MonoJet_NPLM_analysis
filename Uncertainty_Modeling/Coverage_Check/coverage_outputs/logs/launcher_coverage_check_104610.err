@@ -1,0 +1,130 @@
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 233, in <module>
+    mu_model = np.sum(w_i_final[:, None] * mu_i, axis=0)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 2313, in sum
+    return _wrapreduction(a, np.add, 'sum', axis, dtype, out, keepdims=keepdims,
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 86, in _wrapreduction
+    return reduction(axis=axis, out=out, **passkwargs)
+TypeError: sum() received an invalid combination of arguments - got (out=NoneType, axis=int, ), but expected one of:
+ * (*, torch.dtype dtype)
+      didn't match because some of the keywords were incorrect: out, axis
+ * (tuple of ints dim, bool keepdim, *, torch.dtype dtype)
+ * (tuple of names dim, bool keepdim, *, torch.dtype dtype)
+
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 233, in <module>
+    mu_model = np.sum(w_i_final[:, None] * mu_i, axis=0)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 2313, in sum
+    return _wrapreduction(a, np.add, 'sum', axis, dtype, out, keepdims=keepdims,
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 86, in _wrapreduction
+    return reduction(axis=axis, out=out, **passkwargs)
+TypeError: sum() received an invalid combination of arguments - got (out=NoneType, axis=int, ), but expected one of:
+ * (*, torch.dtype dtype)
+      didn't match because some of the keywords were incorrect: out, axis
+ * (tuple of ints dim, bool keepdim, *, torch.dtype dtype)
+ * (tuple of names dim, bool keepdim, *, torch.dtype dtype)
+
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 233, in <module>
+    mu_model = np.sum(w_i_final[:, None] * mu_i, axis=0)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 2313, in sum
+    return _wrapreduction(a, np.add, 'sum', axis, dtype, out, keepdims=keepdims,
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 86, in _wrapreduction
+    return reduction(axis=axis, out=out, **passkwargs)
+TypeError: sum() received an invalid combination of arguments - got (out=NoneType, axis=int, ), but expected one of:
+ * (*, torch.dtype dtype)
+      didn't match because some of the keywords were incorrect: out, axis
+ * (tuple of ints dim, bool keepdim, *, torch.dtype dtype)
+ * (tuple of names dim, bool keepdim, *, torch.dtype dtype)
+
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 233, in <module>
+    mu_model = np.sum(w_i_final[:, None] * mu_i, axis=0)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 2313, in sum
+    return _wrapreduction(a, np.add, 'sum', axis, dtype, out, keepdims=keepdims,
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 86, in _wrapreduction
+    return reduction(axis=axis, out=out, **passkwargs)
+TypeError: sum() received an invalid combination of arguments - got (out=NoneType, axis=int, ), but expected one of:
+ * (*, torch.dtype dtype)
+      didn't match because some of the keywords were incorrect: out, axis
+ * (tuple of ints dim, bool keepdim, *, torch.dtype dtype)
+ * (tuple of names dim, bool keepdim, *, torch.dtype dtype)
+
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 233, in <module>
+    mu_model = np.sum(w_i_final[:, None] * mu_i, axis=0)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 2313, in sum
+    return _wrapreduction(a, np.add, 'sum', axis, dtype, out, keepdims=keepdims,
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 86, in _wrapreduction
+    return reduction(axis=axis, out=out, **passkwargs)
+TypeError: sum() received an invalid combination of arguments - got (out=NoneType, axis=int, ), but expected one of:
+ * (*, torch.dtype dtype)
+      didn't match because some of the keywords were incorrect: out, axis
+ * (tuple of ints dim, bool keepdim, *, torch.dtype dtype)
+ * (tuple of names dim, bool keepdim, *, torch.dtype dtype)
+
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 233, in <module>
+    mu_model = np.sum(w_i_final[:, None] * mu_i, axis=0)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 2313, in sum
+    return _wrapreduction(a, np.add, 'sum', axis, dtype, out, keepdims=keepdims,
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 86, in _wrapreduction
+    return reduction(axis=axis, out=out, **passkwargs)
+TypeError: sum() received an invalid combination of arguments - got (out=NoneType, axis=int, ), but expected one of:
+ * (*, torch.dtype dtype)
+      didn't match because some of the keywords were incorrect: out, axis
+ * (tuple of ints dim, bool keepdim, *, torch.dtype dtype)
+ * (tuple of names dim, bool keepdim, *, torch.dtype dtype)
+
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 233, in <module>
+    mu_model = np.sum(w_i_final[:, None] * mu_i, axis=0)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 2313, in sum
+    return _wrapreduction(a, np.add, 'sum', axis, dtype, out, keepdims=keepdims,
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 86, in _wrapreduction
+    return reduction(axis=axis, out=out, **passkwargs)
+TypeError: sum() received an invalid combination of arguments - got (out=NoneType, axis=int, ), but expected one of:
+ * (*, torch.dtype dtype)
+      didn't match because some of the keywords were incorrect: out, axis
+ * (tuple of ints dim, bool keepdim, *, torch.dtype dtype)
+ * (tuple of names dim, bool keepdim, *, torch.dtype dtype)
+
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 233, in <module>
+    mu_model = np.sum(w_i_final[:, None] * mu_i, axis=0)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 2313, in sum
+    return _wrapreduction(a, np.add, 'sum', axis, dtype, out, keepdims=keepdims,
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 86, in _wrapreduction
+    return reduction(axis=axis, out=out, **passkwargs)
+TypeError: sum() received an invalid combination of arguments - got (out=NoneType, axis=int, ), but expected one of:
+ * (*, torch.dtype dtype)
+      didn't match because some of the keywords were incorrect: out, axis
+ * (tuple of ints dim, bool keepdim, *, torch.dtype dtype)
+ * (tuple of names dim, bool keepdim, *, torch.dtype dtype)
+
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 233, in <module>
+    mu_model = np.sum(w_i_final[:, None] * mu_i, axis=0)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 2313, in sum
+    return _wrapreduction(a, np.add, 'sum', axis, dtype, out, keepdims=keepdims,
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 86, in _wrapreduction
+    return reduction(axis=axis, out=out, **passkwargs)
+TypeError: sum() received an invalid combination of arguments - got (out=NoneType, axis=int, ), but expected one of:
+ * (*, torch.dtype dtype)
+      didn't match because some of the keywords were incorrect: out, axis
+ * (tuple of ints dim, bool keepdim, *, torch.dtype dtype)
+ * (tuple of names dim, bool keepdim, *, torch.dtype dtype)
+
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 233, in <module>
+    mu_model = np.sum(w_i_final[:, None] * mu_i, axis=0)  # shape: (D,)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 2313, in sum
+    return _wrapreduction(a, np.add, 'sum', axis, dtype, out, keepdims=keepdims,
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/core/fromnumeric.py", line 86, in _wrapreduction
+    return reduction(axis=axis, out=out, **passkwargs)
+TypeError: sum() received an invalid combination of arguments - got (out=NoneType, axis=int, ), but expected one of:
+ * (*, torch.dtype dtype)
+      didn't match because some of the keywords were incorrect: out, axis
+ * (tuple of ints dim, bool keepdim, *, torch.dtype dtype)
+ * (tuple of names dim, bool keepdim, *, torch.dtype dtype)
+

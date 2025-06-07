@@ -1,0 +1,180 @@
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 125, in <module>
+    res = minimize(
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/minimize.py", line 97, in minimize
+    return _minimize_newton_exact(fun, x0, **options)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/autograd/grad_mode.py", line 27, in decorate_context
+    return func(*args, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/newton.py", line 295, in _minimize_newton_exact
+    f, g, _, hess = closure(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 109, in closure
+    f = self.fun(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 93, in fun
+    f = self._fun(x)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 123, in nll
+    return -torch.log(ensemble_model(weights, model_probs) + 1e-8).mean() + constraint_term(weights)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 116, in ensemble_model
+    return probs(norm_weights, model_probs)
+NameError: name 'probs' is not defined
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 125, in <module>
+    res = minimize(
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/minimize.py", line 97, in minimize
+    return _minimize_newton_exact(fun, x0, **options)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/autograd/grad_mode.py", line 27, in decorate_context
+    return func(*args, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/newton.py", line 295, in _minimize_newton_exact
+    f, g, _, hess = closure(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 109, in closure
+    f = self.fun(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 93, in fun
+    f = self._fun(x)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 123, in nll
+    return -torch.log(ensemble_model(weights, model_probs) + 1e-8).mean() + constraint_term(weights)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 116, in ensemble_model
+    return probs(norm_weights, model_probs)
+NameError: name 'probs' is not defined
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 125, in <module>
+    res = minimize(
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/minimize.py", line 97, in minimize
+    return _minimize_newton_exact(fun, x0, **options)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/autograd/grad_mode.py", line 27, in decorate_context
+    return func(*args, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/newton.py", line 295, in _minimize_newton_exact
+    f, g, _, hess = closure(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 109, in closure
+    f = self.fun(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 93, in fun
+    f = self._fun(x)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 123, in nll
+    return -torch.log(ensemble_model(weights, model_probs) + 1e-8).mean() + constraint_term(weights)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 116, in ensemble_model
+    return probs(norm_weights, model_probs)
+NameError: name 'probs' is not defined
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 125, in <module>
+    res = minimize(
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/minimize.py", line 97, in minimize
+    return _minimize_newton_exact(fun, x0, **options)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/autograd/grad_mode.py", line 27, in decorate_context
+    return func(*args, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/newton.py", line 295, in _minimize_newton_exact
+    f, g, _, hess = closure(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 109, in closure
+    f = self.fun(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 93, in fun
+    f = self._fun(x)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 123, in nll
+    return -torch.log(ensemble_model(weights, model_probs) + 1e-8).mean() + constraint_term(weights)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 116, in ensemble_model
+    return probs(norm_weights, model_probs)
+NameError: name 'probs' is not defined
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 125, in <module>
+    res = minimize(
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/minimize.py", line 97, in minimize
+    return _minimize_newton_exact(fun, x0, **options)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/autograd/grad_mode.py", line 27, in decorate_context
+    return func(*args, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/newton.py", line 295, in _minimize_newton_exact
+    f, g, _, hess = closure(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 109, in closure
+    f = self.fun(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 93, in fun
+    f = self._fun(x)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 123, in nll
+    return -torch.log(ensemble_model(weights, model_probs) + 1e-8).mean() + constraint_term(weights)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 116, in ensemble_model
+    return probs(norm_weights, model_probs)
+NameError: name 'probs' is not defined
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 125, in <module>
+    res = minimize(
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/minimize.py", line 97, in minimize
+    return _minimize_newton_exact(fun, x0, **options)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/autograd/grad_mode.py", line 27, in decorate_context
+    return func(*args, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/newton.py", line 295, in _minimize_newton_exact
+    f, g, _, hess = closure(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 109, in closure
+    f = self.fun(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 93, in fun
+    f = self._fun(x)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 123, in nll
+    return -torch.log(ensemble_model(weights, model_probs) + 1e-8).mean() + constraint_term(weights)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 116, in ensemble_model
+    return probs(norm_weights, model_probs)
+NameError: name 'probs' is not defined
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 125, in <module>
+    res = minimize(
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/minimize.py", line 97, in minimize
+    return _minimize_newton_exact(fun, x0, **options)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/autograd/grad_mode.py", line 27, in decorate_context
+    return func(*args, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/newton.py", line 295, in _minimize_newton_exact
+    f, g, _, hess = closure(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 109, in closure
+    f = self.fun(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 93, in fun
+    f = self._fun(x)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 123, in nll
+    return -torch.log(ensemble_model(weights, model_probs) + 1e-8).mean() + constraint_term(weights)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 116, in ensemble_model
+    return probs(norm_weights, model_probs)
+NameError: name 'probs' is not defined
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 125, in <module>
+    res = minimize(
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/minimize.py", line 97, in minimize
+    return _minimize_newton_exact(fun, x0, **options)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/autograd/grad_mode.py", line 27, in decorate_context
+    return func(*args, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/newton.py", line 295, in _minimize_newton_exact
+    f, g, _, hess = closure(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 109, in closure
+    f = self.fun(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 93, in fun
+    f = self._fun(x)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 123, in nll
+    return -torch.log(ensemble_model(weights, model_probs) + 1e-8).mean() + constraint_term(weights)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 116, in ensemble_model
+    return probs(norm_weights, model_probs)
+NameError: name 'probs' is not defined
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 125, in <module>
+    res = minimize(
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/minimize.py", line 97, in minimize
+    return _minimize_newton_exact(fun, x0, **options)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/autograd/grad_mode.py", line 27, in decorate_context
+    return func(*args, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/newton.py", line 295, in _minimize_newton_exact
+    f, g, _, hess = closure(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 109, in closure
+    f = self.fun(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 93, in fun
+    f = self._fun(x)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 123, in nll
+    return -torch.log(ensemble_model(weights, model_probs) + 1e-8).mean() + constraint_term(weights)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 116, in ensemble_model
+    return probs(norm_weights, model_probs)
+NameError: name 'probs' is not defined
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 125, in <module>
+    res = minimize(
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/minimize.py", line 97, in minimize
+    return _minimize_newton_exact(fun, x0, **options)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/autograd/grad_mode.py", line 27, in decorate_context
+    return func(*args, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/newton.py", line 295, in _minimize_newton_exact
+    f, g, _, hess = closure(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 109, in closure
+    f = self.fun(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torchmin/function.py", line 93, in fun
+    f = self._fun(x)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 123, in nll
+    return -torch.log(ensemble_model(weights, model_probs) + 1e-8).mean() + constraint_term(weights)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 116, in ensemble_model
+    return probs(norm_weights, model_probs)
+NameError: name 'probs' is not defined

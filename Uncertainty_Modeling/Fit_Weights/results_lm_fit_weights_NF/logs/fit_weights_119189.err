@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Fit_Weights/lm_fit_NF_ensemble_weights.py", line 219, in <module>
+    print("diag cov_manual:", np.diag(cov_w_manual).mean())
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/numpy/lib/twodim_base.py", line 289, in diag
+    v = asanyarray(v)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/_tensor.py", line 732, in __array__
+    return self.numpy()
+RuntimeError: Can't call numpy() on Tensor that requires grad. Use tensor.detach().numpy() instead.

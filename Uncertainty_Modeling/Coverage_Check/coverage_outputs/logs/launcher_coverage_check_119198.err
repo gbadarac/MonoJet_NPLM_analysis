@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 225, in <module>
+    mu_i = torch.matmul(X_centers_grid.T, model_probs_grid) * bin_area  # shape: (M, D)'
+RuntimeError: expected scalar type Double but found Float

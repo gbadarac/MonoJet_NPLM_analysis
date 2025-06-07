@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Fit_Weights/fit_NF_ensemble_weights.py", line 198, in <module>
+    H_reg = H + 1e-4 * torch.eye(M, dtype=torch.float64)
+NameError: name 'H' is not defined

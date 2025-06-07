@@ -1,2 +1,0 @@
-/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/utils.py:125: RuntimeWarning: invalid value encountered in sqrt
-  return np.sqrt(sigma_sq)
