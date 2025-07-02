@@ -1,0 +1,264 @@
+Using device: cuda
+Data shape: torch.Size([100000, 2])
+Loaded 60 models
+f_max 2
+total hits 32
+len(accepted) 1
+total hits 73
+len(accepted) 2
+total hits 117
+len(accepted) 3
+total hits 171
+len(accepted) 4
+total hits 210
+len(accepted) 5
+total hits 244
+len(accepted) 6
+total hits 289
+len(accepted) 7
+total hits 323
+len(accepted) 8
+total hits 364
+len(accepted) 9
+total hits 404
+len(accepted) 10
+total hits 444
+len(accepted) 11
+total hits 469
+len(accepted) 12
+total hits 511
+len(accepted) 13
+total hits 562
+len(accepted) 14
+total hits 605
+len(accepted) 15
+total hits 642
+len(accepted) 16
+total hits 686
+len(accepted) 17
+total hits 714
+len(accepted) 18
+total hits 749
+len(accepted) 19
+total hits 791
+len(accepted) 20
+total hits 835
+len(accepted) 21
+total hits 880
+len(accepted) 22
+total hits 929
+len(accepted) 23
+total hits 961
+len(accepted) 24
+total hits 1012
+len(accepted) 25
+total hits 1054
+len(accepted) 26
+total hits 1091
+len(accepted) 27
+total hits 1141
+len(accepted) 28
+total hits 1180
+len(accepted) 29
+total hits 1219
+len(accepted) 30
+total hits 1253
+len(accepted) 31
+total hits 1294
+len(accepted) 32
+total hits 1339
+len(accepted) 33
+total hits 1375
+len(accepted) 34
+total hits 1418
+len(accepted) 35
+total hits 1460
+len(accepted) 36
+total hits 1508
+len(accepted) 37
+total hits 1547
+len(accepted) 38
+total hits 1577
+len(accepted) 39
+total hits 1617
+len(accepted) 40
+total hits 1651
+len(accepted) 41
+total hits 1691
+len(accepted) 42
+total hits 1740
+len(accepted) 43
+total hits 1781
+len(accepted) 44
+total hits 1833
+len(accepted) 45
+total hits 1867
+len(accepted) 46
+total hits 1892
+len(accepted) 47
+total hits 1925
+len(accepted) 48
+total hits 1962
+len(accepted) 49
+total hits 2007
+len(accepted) 50
+total hits 2039
+len(accepted) 51
+total hits 2080
+len(accepted) 52
+total hits 2118
+len(accepted) 53
+total hits 2171
+len(accepted) 54
+total hits 2209
+len(accepted) 55
+total hits 2260
+len(accepted) 56
+total hits 2298
+len(accepted) 57
+total hits 2335
+len(accepted) 58
+total hits 2373
+len(accepted) 59
+total hits 2414
+len(accepted) 60
+total hits 2458
+len(accepted) 61
+total hits 2496
+len(accepted) 62
+total hits 2532
+len(accepted) 63
+total hits 2562
+len(accepted) 64
+total hits 2615
+len(accepted) 65
+total hits 2659
+len(accepted) 66
+total hits 2687
+len(accepted) 67
+total hits 2729
+len(accepted) 68
+total hits 2765
+len(accepted) 69
+total hits 2802
+len(accepted) 70
+total hits 2834
+len(accepted) 71
+total hits 2877
+len(accepted) 72
+total hits 2922
+len(accepted) 73
+total hits 2958
+len(accepted) 74
+total hits 3006
+len(accepted) 75
+total hits 3032
+len(accepted) 76
+total hits 3081
+len(accepted) 77
+total hits 3126
+len(accepted) 78
+total hits 3164
+len(accepted) 79
+total hits 3202
+len(accepted) 80
+total hits 3235
+len(accepted) 81
+total hits 3265
+len(accepted) 82
+total hits 3298
+len(accepted) 83
+total hits 3330
+len(accepted) 84
+total hits 3370
+len(accepted) 85
+total hits 3400
+len(accepted) 86
+total hits 3448
+len(accepted) 87
+total hits 3487
+len(accepted) 88
+total hits 3528
+len(accepted) 89
+total hits 3558
+len(accepted) 90
+total hits 3586
+len(accepted) 91
+total hits 3620
+len(accepted) 92
+total hits 3659
+len(accepted) 93
+total hits 3702
+len(accepted) 94
+total hits 3741
+len(accepted) 95
+total hits 3775
+len(accepted) 96
+total hits 3813
+len(accepted) 97
+total hits 3845
+len(accepted) 98
+total hits 3876
+len(accepted) 99
+total hits 3909
+len(accepted) 100
+total hits 3952
+len(accepted) 101
+total hits 3995
+len(accepted) 102
+total hits 4032
+len(accepted) 103
+total hits 4064
+len(accepted) 104
+total hits 4104
+len(accepted) 105
+total hits 4129
+len(accepted) 106
+total hits 4168
+len(accepted) 107
+total hits 4203
+len(accepted) 108
+total hits 4250
+len(accepted) 109
+total hits 4290
+len(accepted) 110
+total hits 4333
+len(accepted) 111
+total hits 4378
+len(accepted) 112
+total hits 4421
+len(accepted) 113
+total hits 4457
+len(accepted) 114
+total hits 4495
+len(accepted) 115
+total hits 4538
+len(accepted) 116
+total hits 4580
+len(accepted) 117
+total hits 4620
+len(accepted) 118
+total hits 4651
+len(accepted) 119
+total hits 4684
+len(accepted) 120
+total hits 4721
+len(accepted) 121
+total hits 4760
+len(accepted) 122
+total hits 4801
+len(accepted) 123
+total hits 4837
+len(accepted) 124
+total hits 4872
+len(accepted) 125
+total hits 4908
+len(accepted) 126
+total hits 4953
+len(accepted) 127
+total hits 4989
+len(accepted) 128
+total hits 5030
+len(accepted) 129
+sampl size torch.Size([5000, 2])
+Saved generated samples.
