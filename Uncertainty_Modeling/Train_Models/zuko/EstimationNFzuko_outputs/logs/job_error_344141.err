@@ -1,0 +1,18 @@
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/zuko/EstimationNFzuko.py", line 137, in <module>
+    train_flow(boot_data, seed, boot_indices) #consequently the statististical power of the normalizing flow correpsonds to the size of the bnootstrapped dataset, i.e. 400k
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/zuko/EstimationNFzuko.py", line 53, in train_flow
+    flow = make_flow_zuko(
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/utils.py", line 46, in make_flow_zuko
+    flow = zuko.flows.NSF(
+  File "/work/gbadarac/zuko/zuko/flows/spline.py", line 52, in __init__
+    super().__init__(
+  File "/work/gbadarac/zuko/zuko/flows/autoregressive.py", line 299, in __init__
+    transforms = [
+  File "/work/gbadarac/zuko/zuko/flows/autoregressive.py", line 300, in <listcomp>
+    MaskedAutoregressiveTransform(
+  File "/work/gbadarac/zuko/zuko/flows/autoregressive.py", line 152, in __init__
+    self.hyper = MaskedMLP(adjacency, **kwargs)
+  File "/work/gbadarac/zuko/zuko/nn.py", line 467, in __init__
+    print(f"[MaskedMLP] Layer {i}: mask.shape={mask.shape}, features={features}, indices.shape={indices.shape}")
+UnboundLocalError: local variable 'indices' referenced before assignment

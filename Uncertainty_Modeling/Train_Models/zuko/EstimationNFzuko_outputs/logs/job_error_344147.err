@@ -1,0 +1,22 @@
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/zuko/EstimationNFzuko.py", line 138, in <module>
+    train_flow(boot_data, seed, boot_indices) #consequently the statististical power of the normalizing flow correpsonds to the size of the bnootstrapped dataset, i.e. 400k
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/zuko/EstimationNFzuko.py", line 88, in train_flow
+    train_loss = -flow(batch).log_prob(batch).mean()
+  File "/work/gbadarac/zuko/zuko/distributions.py", line 117, in log_prob
+    z, ladj = self.transform.call_and_ladj(x)
+  File "/work/gbadarac/zuko/zuko/transforms.py", line 144, in call_and_ladj
+    x, ladj = t.call_and_ladj(x)
+  File "/work/gbadarac/zuko/zuko/transforms.py", line 967, in call_and_ladj
+    y, ladj = self.meta(x).call_and_ladj(x)
+  File "/work/gbadarac/zuko/zuko/flows/autoregressive.py", line 211, in meta
+    phi = self.hyper(x)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1110, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/nn/modules/container.py", line 141, in forward
+    input = module(input)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1110, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/work/gbadarac/zuko/zuko/nn.py", line 354, in forward
+    return F.linear(x, self.mask * self.weight, self.bias)
+RuntimeError: mat1 and mat2 shapes cannot be multiplied (512x4 and 32x2)

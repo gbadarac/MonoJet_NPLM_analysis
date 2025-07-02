@@ -7,6 +7,7 @@ from nflows.transforms.base import CompositeTransform
 from nflows.transforms.autoregressive import MaskedPiecewiseRationalQuadraticAutoregressiveTransform
 from nflows.transforms.permutations import ReversePermutation
 import torch.nn.functional as F
+import zuko 
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -38,6 +39,18 @@ def make_flow(num_layers, hidden_features, num_bins, num_blocks, tail_bound, num
             transforms.append(ReversePermutation(features=num_features))
     transform = CompositeTransform(transforms)
     flow = Flow(transform, base_dist)
+    return flow
+
+def make_flow_zuko(num_layers, hidden_features, num_bins, num_blocks, 
+                   num_features=2, num_context=0, bayesian=False):
+    flow = zuko.flows.NSF(
+        features=num_features,
+        context=num_context,
+        transforms=num_layers,
+        hidden_features=[hidden_features] * num_blocks,
+        bins=num_bins,
+        bayesian=bayesian
+    )
     return flow
 
 def average_state_dicts(state_dicts):

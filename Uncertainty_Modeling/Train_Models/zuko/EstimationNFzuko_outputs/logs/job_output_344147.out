@@ -1,0 +1,69 @@
+Using GPU ID (as set by SLURM): 
+/work/gbadarac/zuko/zuko/__init__.py
+Using device: cpu
+target_tensor shape: torch.Size([100000, 2])
+Training model f_000...
+Bootstrapped dataset size: torch.Size([100000, 2])
+DEBUG: Input data shape to flow: torch.Size([100000, 2])
+[MaskedMLP] Layer 0: mask.shape=torch.Size([32, 2]), features=32, indices_prev.shape=torch.Size([2])
+[MaskedMLP] Layer 1: mask.shape=torch.Size([32, 32]), features=32, indices_prev.shape=torch.Size([32])
+[MaskedMLP] Layer 2: mask.shape=torch.Size([34, 32]), features=34, indices_prev.shape=torch.Size([32])
+[MaskedMLP] Layer 0: mask.shape=torch.Size([32, 2]), features=32, indices_prev.shape=torch.Size([2])
+[MaskedMLP] Layer 1: mask.shape=torch.Size([32, 32]), features=32, indices_prev.shape=torch.Size([32])
+[MaskedMLP] Layer 2: mask.shape=torch.Size([34, 32]), features=34, indices_prev.shape=torch.Size([32])
+DEBUG: Flow object: NSF(
+  (transform): LazyComposedTransform(
+    (0): MaskedAutoregressiveTransform(
+      (base): MonotonicRQSTransform(bins=6)
+      (order): [0, 1]
+      (hyper): MaskedMLP(
+        (0): MaskedLinear(in_features=32, out_features=2, bias=True)
+        (1): ReLU()
+        (2): MaskedLinear(in_features=32, out_features=32, bias=True)
+        (3): ReLU()
+        (4): MaskedLinear(in_features=34, out_features=32, bias=True)
+      )
+    )
+    (1): MaskedAutoregressiveTransform(
+      (base): MonotonicRQSTransform(bins=6)
+      (order): [1, 0]
+      (hyper): MaskedMLP(
+        (0): MaskedLinear(in_features=32, out_features=2, bias=True)
+        (1): ReLU()
+        (2): MaskedLinear(in_features=32, out_features=32, bias=True)
+        (3): ReLU()
+        (4): MaskedLinear(in_features=34, out_features=32, bias=True)
+      )
+    )
+  )
+  (base): UnconditionalDistribution(DiagNormal(loc: torch.Size([2]), scale: torch.Size([2])))
+)
+DEBUG: flow._transform LazyComposedTransform(
+  (0): MaskedAutoregressiveTransform(
+    (base): MonotonicRQSTransform(bins=6)
+    (order): [0, 1]
+    (hyper): MaskedMLP(
+      (0): MaskedLinear(in_features=32, out_features=2, bias=True)
+      (1): ReLU()
+      (2): MaskedLinear(in_features=32, out_features=32, bias=True)
+      (3): ReLU()
+      (4): MaskedLinear(in_features=34, out_features=32, bias=True)
+    )
+  )
+  (1): MaskedAutoregressiveTransform(
+    (base): MonotonicRQSTransform(bins=6)
+    (order): [1, 0]
+    (hyper): MaskedMLP(
+      (0): MaskedLinear(in_features=32, out_features=2, bias=True)
+      (1): ReLU()
+      (2): MaskedLinear(in_features=32, out_features=32, bias=True)
+      (3): ReLU()
+      (4): MaskedLinear(in_features=34, out_features=32, bias=True)
+    )
+  )
+)
+DEBUG: Batch shape: torch.Size([512, 2])
+DEBUG: MaskedLinear input shape: torch.Size([512, 4])
+DEBUG: MaskedLinear weight shape: torch.Size([2, 32])
+DEBUG: MaskedLinear mask shape: torch.Size([2, 32])
+job submitted
