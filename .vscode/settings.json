@@ -6,7 +6,6 @@
   "jupyter.experiments.optOutFrom": ["NotebookInteractiveWindow"],
   "workbench.editorAssociations": {
     "*.ipynb": "jupyter-notebook"
-  }
+  },
+  "files.hotExit": "off"
 }
-,
-"files.hotExit": "off"

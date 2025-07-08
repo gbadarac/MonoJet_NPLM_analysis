@@ -1,6 +1,0 @@
-Traceback (most recent call last):
-  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/zuko/EstimationNFzuko.py", line 140, in <module>
-    train_flow(boot_data, seed, boot_indices) #consequently the statististical power of the normalizing flow correpsonds to the size of the bnootstrapped dataset, i.e. 400k
-  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/zuko/EstimationNFzuko.py", line 89, in train_flow
-    print("DEBUG: first layer in flow.hyper:", flow.transform[0].hyper[0])
-TypeError: 'LazyComposedTransform' object is not subscriptable

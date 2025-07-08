@@ -30,36 +30,26 @@ parser.add_argument("--out_dir", type=str, required=True)
 parser.add_argument("--mu_i_file", type=str, required=True)
 args = parser.parse_args()
 
-print('hello')
 # ------------------
 # Load models and initial weights 
 # ------------------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") #sets device to GPU if available 
 os.makedirs(args.trial_dir, exist_ok=True)
 
-f_i_file = os.path.join(args.trial_dir, "f_i_averaged.pth")
-w_i_file = os.path.join(args.trial_dir, "w_i_initial.npy")
-
+f_i_file = os.path.join(args.trial_dir, "f_i.pth")
 f_i_statedicts = torch.load(f_i_file, map_location=device) #list of state_dicts 
-w_i_initial = np.load(w_i_file)  # Initial weights
-#w_i_initial = np.random.uniform(0,1,31)
-print(f"Initial weights: {w_i_initial}")
 
 # ------------------
 # Load architecture config and data 
 # ------------------
 # Save architecture 
-#'''
+
 with open(os.path.join(args.trial_dir, "architecture_config.json")) as f:
     config = json.load(f) 
-'''
-configs = []
-for model_name in ["good_model", "bad_model"]:
-    config_path = os.path.join(args.trial_dir, model_name, "architecture_config.json")
-    with open(config_path) as f:
-        configs.append(json.load(f))
-'''
 
+# ------------------
+# Generate Coverage Data for Target Distribution 
+# ------------------
 def generate_target_data(n_points, seed=None):
     if seed is not None:
         np.random.seed(seed)
@@ -86,7 +76,6 @@ for state_dict in f_i_statedicts:
         hidden_features=config["hidden_features"],
         num_bins=config["num_bins"],
         num_blocks=config["num_blocks"],
-        tail_bound=config["tail_bound"]
     ).to(device) #recreate the flow architecture for each model f_i 
     flow.load_state_dict(state_dict) #load the corresponding params into each model 
     flow.eval() # Set to eval mode to avoid training-time behavior (e.g., dropout)
@@ -128,20 +117,26 @@ attempt = 0
 
 while attempt < max_attempts:
     #w_i_init_torch = torch.tensor(w_i_initial, dtype=torch.float64, requires_grad=True)
-    w_i_init_torch = torch.tensor([ 0.0489, -0.0549,  0.0217,  0.0400,  0.0104,  0.0634,  0.0098,  0.0756,
-         0.0213,  0.0335,  0.0505, -0.0053,  0.0017,  0.0108,  0.0127,  0.0066,
-         0.0315,  0.0264,  0.0262,  0.1018,  0.0717,  0.0223,  0.0015, -0.0130,
-         0.0351,  0.0155,  0.0271,  0.0563,  0.0065,  0.0513,  0.0528, -0.0659,
-         0.0601, -0.0258, -0.0198, -0.0387,  0.0280, -0.0160,  0.0431, -0.0626,
-         0.0246,  0.0034, -0.0270,  0.0072, -0.0303,  0.0098, -0.0195, -0.0674,
-         0.0384,  0.0571,  0.0251, -0.0116,  0.0485,  0.0325,  0.0231,  0.0251,
-         0.0107, -0.0070,  0.0596,  0.0358], dtype=torch.float64)
+    w_i_init_torch = torch.tensor([ 2.7465e-02,  3.9775e-02,  2.9415e-02,  6.0815e-02,  1.6158e-02,
+         8.9291e-02,  5.7799e-03, -1.1811e-02,  2.4000e-02,  3.1447e-02,
+         8.1284e-02, -2.3717e-02,  2.6356e-02, -1.7371e-02, -1.0964e-02,
+         8.3690e-03, -8.1378e-03, -2.3745e-02,  2.1039e-02, -2.9559e-04,
+        -4.8600e-02,  6.1569e-02, -4.8001e-02, -3.0407e-02, -1.4790e-02,
+        -2.3764e-02,  5.1739e-02,  3.5346e-02,  8.6797e-03,  4.0055e-02,
+        -8.1824e-03, -7.8225e-02,  5.8031e-02,  5.0158e-02, -5.7191e-03,
+         1.7794e-02,  6.6486e-02,  1.7646e-02, -1.0253e-02,  1.3935e-02,
+        -4.6986e-02,  3.5882e-03,  3.0478e-02,  9.8500e-02,  1.6057e-02,
+        -4.4616e-03,  5.2506e-03, -4.2853e-03,  2.5735e-02,  1.7025e-02,
+         7.2026e-02,  1.9939e-02, -1.0673e-02,  2.1200e-02,  9.2340e-02,
+        -3.0226e-02,  4.8697e-02,  7.0628e-05,  7.8944e-02,  4.8129e-02],
+       dtype=torch.float64)
     try:
         noise = 1e-2 * torch.randn_like(w_i_init_torch)
         # Generate random signs (+1 or -1)
         sign_flips = torch.randint(0, 2, w_i_init_torch.shape, dtype=torch.float64) * 2 - 1
         w_i_init_torch = ((w_i_init_torch + noise)*sign_flips).detach().clone().requires_grad_()
         print('w_i_init_torch', w_i_init_torch)
+        
         res = minimize(
             nll,                         # your function
             w_i_init_torch,              # initial guess
@@ -153,11 +148,12 @@ while attempt < max_attempts:
         print(f"Attempt {attempt+1}: Optimization failed with error: {e}")
         attempt += 1
 
-    else:
-        print("Optimization failed after multiple attempts.") 
+else:
+    raise RuntimeError("Optimization failed after multiple attempts.")
 
-w_i_opt = res.x.detach()               # ← what the optimizer produced
-w_i_final = w_i_opt # ← the true weights you use
+w_i_final = res.x.detach()               # ← what the optimizer produced # ← the true weights you us
+final_loss = nll(w_i_final).item()
+print("Final loss (NLL):", final_loss)
 
 print("Final weights:", w_i_final)
 print("Sum of weights:", w_i_final.detach().cpu().numpy().sum())
@@ -165,9 +161,8 @@ print("Sum of weights:", w_i_final.detach().cpu().numpy().sum())
 # ------------------
 # Compute uncertainties via Hessian
 # ------------------
-
 # Autograd Hessian for cross-check
-H_autograd = hessian(nll, w_i_opt.double()).detach()
+H_autograd = hessian(nll, w_i_final.double()).detach()
 #print("H_autograd:", torch.norm(H_autograd).item())
 
 def compute_sandwich_covariance(H, w, model_probs, lam=1.0):
@@ -203,13 +198,19 @@ def compute_sandwich_covariance(H, w, model_probs, lam=1.0):
     #print("‖V @ U @ V - V‖ =", (V @ U @ V - V))
     return cov_w
 
-cov_w_autograd = compute_sandwich_covariance(H_autograd, w_i_opt, model_probs)
+cov_w_autograd = compute_sandwich_covariance(H_autograd, w_i_final, model_probs)
 #print("diag cov_autograd:", torch.diag(cov_w_autograd).mean().item())
 
 cov_w_final = cov_w_autograd 
 #print("Weight covariance matrix:\n", cov_w_final)
 
 cov_w_final = cov_w_final.detach().cpu()
+#print("Weight covariance matrix:\n", cov_w_final)
+cov_w_final = cov_w_final.detach().cpu().numpy()
+
+# ------------------
+# Coverage test
+# ------------------
 w_i_final = w_i_final.detach().cpu()
 
 # Upload target's first moment:
@@ -238,6 +239,7 @@ mu_model = torch.matmul(w_i_final[None, :], mu_i)  # shape: (D,)
 # Perform the matrix contraction:
 #   σ²_I[d] = ∑_i ∑_j μ_i[d] ⋅ Cov_w[i, j] ⋅ μ_j[d]
 # for each feature dimension d
+cov_w_final = torch.from_numpy(cov_w_final).to(mu_i.dtype)
 sigma_sq = torch.einsum("id,ij,jd->d", mu_i, cov_w_final, mu_i)  # shape: (D,)
 
 # Take square root to get standard deviation (1σ uncertainty band)

@@ -18,7 +18,7 @@ import mplhep as hep
 # Use CMS style for plots
 hep.style.use("CMS")
 
-def make_flow(num_layers, hidden_features, num_bins, num_blocks, tail_bound, num_features=2, num_context=None, perm=True):
+def make_flow(num_layers, hidden_features, num_bins, num_blocks, num_features=2, num_context=None, perm=True):
     base_dist = StandardNormal(shape=(num_features,))
     transforms = []
     if num_context == 0:
@@ -30,7 +30,7 @@ def make_flow(num_layers, hidden_features, num_bins, num_blocks, tail_bound, num
             hidden_features=hidden_features,
             num_bins=num_bins,
             num_blocks=num_blocks,
-            tail_bound=tail_bound,
+            tail_bound=10.0,
             tails='linear',
             dropout_probability=0.2, 
             use_batch_norm=False 
@@ -140,11 +140,6 @@ def plot_ensemble_marginals(f_i_models, x_data, weights, cov_w, feature_names, o
         f_binned /= N
         f_err /= N
 
-        print(f"[DEBUG] Feature {i+1}")
-        print(f"  f_binned stats: min={np.min(f_binned):.4e}, max={np.max(f_binned):.4e}, mean={np.mean(f_binned):.4e}")
-        print(f"  f_err stats   : min={np.min(f_err):.4e}, max={np.max(f_err):.4e}, mean={np.mean(f_err):.4e}")
-        print(f"  Relative error f_err/f_binned: min={np.min(f_err/f_binned):.4e}, max={np.max(f_err/f_binned):.4e}")
-
         # ------------------
         # 1 and 2 sigma bands calculation 
         # ------------------
@@ -243,55 +238,64 @@ def profile_likelihood_scan(model_probs, w_best, out_dir):
         plt.savefig(outname)
         plt.close()
 
-def plot_marginals(dist1, dist2, target, feature_names, outdir, labels):
-    target = target.cpu().numpy()
-    num_features = target.shape[1]
-    
-    for i in range(num_features):
-        fig, ax_main = plt.subplots(1, 1, figsize=(8, 6))           
-        dist1_feature = dist1[:, i]
-        dist2_feature = dist2[:, i]
-        target_feature=target[:,i]
-        feature_label = feature_names[i]
-        
-        # Combine data for consistent binning
-        bins = 40
-        all_data = np.concatenate([dist1_feature, dist2_feature, target_feature])
-        # Use full support for binning to avoid normalization loss
-        low, high = np.min(all_data), np.max(all_data)
-        bin_edges = np.linspace(low, high, bins + 1)
-        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-        bin_widths = np.diff(bin_edges)
-    
-        # Histograms (shared binning)
-        def hist_with_err(data):
-            counts, _ = np.histogram(data, bins=bin_edges)
-            N_total = np.sum(counts)
-            hist = counts / (N_total * bin_widths)
-            err = np.sqrt(counts) / (N_total * bin_widths)      
-            return hist, err
-        
-        hist_dist1, err_dist1 = hist_with_err(dist1_feature)
-        hist_dist2, err_dist2 = hist_with_err(dist2_feature)
-        hist_target, err_target = hist_with_err(target_feature)
-        
-        # Main plot
-        ax_main.bar(bin_centers, hist_dist1, width=np.diff(bin_edges), alpha=0.3, label=labels[0], color='blue', edgecolor='black')
-        ax_main.bar(bin_centers, hist_dist2, width=np.diff(bin_edges), alpha=0.3, label=labels[1], color='green', edgecolor='black')
-        ax_main.bar(bin_centers, hist_target, width=np.diff(bin_edges), alpha=0.15, label='Target', color='red', edgecolor='black')
-        ax_main.errorbar(bin_centers, hist_dist1, yerr=err_dist1, fmt='None', color='blue', alpha=0.7)
-        ax_main.errorbar(bin_centers, hist_dist2, yerr=err_dist2, fmt='None', color='green', alpha=0.7)
-        ax_main.errorbar(bin_centers, hist_target, yerr=err_target, fmt='None', color='red', alpha=0.7)
 
-        ax_main.set_xlabel(feature_label, fontsize=16)
-        ax_main.set_ylabel("Density", fontsize=16)
-        ax_main.legend(fontsize=14)
+def plot_individual_marginals(models, x_data, feature_names, outdir, num_samples):
+    """
+    For each model in `models`, plot its generated marginals vs the target data (x_data).
 
-        # Save plot
-        plot_path = os.path.join(outdir, f"marginal_feature_{i+1}.png")
-        plt.tight_layout()
-        plt.savefig(plot_path)
-        plt.show()
-        plt.close()
+    Args:
+        models: list of trained normalizing flow models
+        x_data: torch.Tensor of shape (N, D), target data
+        feature_names: list of strings like ["Feature 1", "Feature 2"]
+        outdir: str, path to save plots
+        num_samples: int, number of samples to draw from each model (default 1000)
+    """
+    os.makedirs(outdir, exist_ok=True)
 
-    
+    x_data_small = x_data[:num_samples].cpu().numpy()
+    num_features = x_data_small.shape[1]
+
+    for idx, model in enumerate(models):
+        with torch.no_grad():
+            samples = model.sample(num_samples).cpu().numpy()
+
+        for i in range(num_features):
+            target_feature = x_data_small[:, i]
+            model_feature = samples[:, i]
+            feature_label = feature_names[i]
+
+            # Consistent binning
+            bins = 40
+            all_data = np.concatenate([model_feature, target_feature])
+            low, high = np.min(all_data), np.max(all_data)
+            bin_edges = np.linspace(low, high, bins + 1)
+            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+            bin_widths = np.diff(bin_edges)
+
+            def hist_with_err(data):
+                counts, _ = np.histogram(data, bins=bin_edges)
+                N_total = np.sum(counts)
+                hist = counts / (N_total * bin_widths)
+                err = np.sqrt(counts) / (N_total * bin_widths)
+                return hist, err
+
+            hist_model, err_model = hist_with_err(model_feature)
+            hist_target, err_target = hist_with_err(target_feature)
+
+            fig, ax = plt.subplots(figsize=(8, 6))
+            ax.bar(bin_centers, hist_model, width=bin_widths, alpha=0.3,
+                   label=f"Model {idx}", color='blue', edgecolor='black')
+            ax.errorbar(bin_centers, hist_model, yerr=err_model, fmt='None', color='blue', alpha=0.7)
+
+            ax.bar(bin_centers, hist_target, width=bin_widths, alpha=0.15,
+                   label="Target", color='red', edgecolor='black')
+            ax.errorbar(bin_centers, hist_target, yerr=err_target, fmt='None', color='red', alpha=0.7)
+
+            ax.set_xlabel(feature_label, fontsize=16)
+            ax.set_ylabel("Density", fontsize=16)
+            ax.legend(fontsize=12)
+
+            plot_path = os.path.join(outdir, f"model_{idx}_feature_{i+1}.png")
+            plt.tight_layout()
+            plt.savefig(plot_path)
+            plt.close()

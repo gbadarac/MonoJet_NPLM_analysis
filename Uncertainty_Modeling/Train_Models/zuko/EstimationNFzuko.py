@@ -31,38 +31,46 @@ parser.add_argument("--num_blocks", type=int, default=2)
 parser.add_argument("--num_bins", type=int, default=8)
 parser.add_argument("--num_layers", type=int, default=5)
 parser.add_argument("--bayesian", action="store_true")  
+parser.add_argument("--collect_all", action="store_true", help="Collect all trained models into f_i.pth")
+parser.add_argument("--num_models", type=int, default=1, help="Used with --collect_all to collect N models")
 args = parser.parse_args()
+
+# --- Conditional required arguments ---
+if not args.collect_all:
+    if args.data_path is None or args.seed is None:
+        parser.error("--data_path and --seed are required unless --collect_all is used")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
 # ------------------
+# If collecting, skip training
+# ------------------
+def collect_models():
+    f_i = []
+    for i in range(args.num_models):
+        model_path = os.path.join(args.outdir, f"model_{i:03d}", "model.pth")
+        print(f"Loading model {i:03d}...")
+        state_dict = torch.load(model_path, map_location=device)
+        f_i.append(state_dict)
+        del state_dict
+        gc.collect()
+    torch.save(f_i, os.path.join(args.outdir, "f_i.pth"))
+    print(f"Saved f_i.pth with {len(f_i)} models to {args.outdir}")
+# ------------------
 # Load data
 # ------------------
 target_data = np.load(args.data_path) #load data from generate_target_data.py 
 target_tensor = torch.from_numpy(target_data)
-print('target_tensor shape:', target_tensor.shape)
 
 # ------------------
 # Training function
 # ------------------
-def train_flow(data, seed, indices):
-    print("DEBUG: Input data shape to flow:", data.shape)
+def train_flow(data, model_seed, bootstrap_seed):
 
-    torch.manual_seed(seed) #ensure same initialization for all j for a fixed i 
+    torch.manual_seed(model_seed) #ensure same initialization for all j for a fixed i 
 
-    flow = make_flow_zuko(
-        num_layers=args.num_layers,
-        hidden_features=args.hidden_features,
-        num_bins=args.num_bins,
-        num_blocks=args.num_blocks,
-        num_features=2,
-        num_context=0,  
-        bayesian=args.bayesian
-    )
-
-    print("DEBUG: Flow object:", flow)
-    print("DEBUG: flow._transform", flow.transform)
+    flow = make_flow_zuko(num_layers=args.num_layers ,hidden_features=args.hidden_features, num_bins=args.num_bins, num_blocks=args.num_blocks, num_features=2, num_context=0, bayesian=args.bayesian)
 
     opt=optim.Adam(flow.parameters(), lr=args.learning_rate)
     scheduler = CosineAnnealingLR(opt, T_max=args.n_epochs, eta_min=1e-3)
@@ -83,29 +91,9 @@ def train_flow(data, seed, indices):
         total_train_loss = 0.0
         for batch in train_loader:
             batch = batch[0].to(device)
-            batch = batch[:, :2]
-            print("DEBUG: Batch shape:", batch.shape)
             opt.zero_grad()
-            # Get first transform (MaskedAutoregressiveTransform)
-            first_transform = flow.transform.transforms[0]
-            print("DEBUG: First transform:", first_transform)
-
-            # Get its hypernetwork (MaskedMLP)
-            hypernet = first_transform.hyper
-            print("DEBUG: Hypernet structure:", hypernet)
-
-            # Get the first MaskedLinear layer in the MLP
-            first_layer = hypernet[0]
-            print("DEBUG: First MaskedLinear layer:", first_layer)
-
-            # Print expected input/output shapes of the first layer
-            print("DEBUG: Expected in_features:", first_layer.in_features)
-            print("DEBUG: Expected out_features:", first_layer.out_features)
-
-            # Print batch shape going into the model
-            print("DEBUG: Input batch shape:", batch.shape)
-
-            train_loss = -flow(batch).log_prob(batch).mean()
+    
+            train_loss = -flow().log_prob(batch).mean()
             if args.bayesian:
                 train_loss += 1e-3 * total_KL_divergence(flow)  # KL scaling factor is a hyperparameter
             train_loss.backward()
@@ -119,7 +107,7 @@ def train_flow(data, seed, indices):
         with torch.no_grad():
             for val_batch in val_loader:
                 val_batch = val_batch[0].to(device)
-                val_loss = -flow(val_batch).log_prob(val_batch).mean()
+                val_loss = -flow().log_prob(val_batch).mean()
                 total_val_loss += val_loss.item() * val_batch.size(0)
         avg_val_loss = total_val_loss / len(val_data)
         val_losses.append(avg_val_loss)
@@ -127,12 +115,12 @@ def train_flow(data, seed, indices):
         
         if avg_val_loss < min_loss:
             min_loss = avg_val_loss
-            model_dir = os.path.join(args.outdir, f"model_{seed:03d}")
+            model_dir = os.path.join(args.outdir, f"model_{model_seed:03d}")
             os.makedirs(model_dir, exist_ok=True)
             torch.save(flow.state_dict(), os.path.join(model_dir, "model.pth"))
-            np.save(os.path.join(model_dir, "bootstrap_indices.npy"), indices)
+            metadata = {"seed": model_seed,"bootstrap_seed": bootstrap_seed}
             with open(os.path.join(model_dir, "info.json"), "w") as f:
-                json.dump({"seed": seed}, f, indent=4)
+                json.dump(metadata, f, indent=4)
             patience_counter = 0
         else:
             patience_counter += 1
@@ -144,18 +132,17 @@ def train_flow(data, seed, indices):
 # ------------------
 # Loop: model seeds and bootstraps
 # ------------------
-seed = args.seed
-
+model_seed = args.seed
+bootstrap_seed = args.seed + 10000
 #Note: different models are trained on the same bootstrapped datasets, which means (randmness coming from bootstrapping is the same for every trained model) 
 
-print(f"Training model f_{seed:03d}...")
+print(f"Training model f_{model_seed:03d}...")
 
-np.random.seed(seed)  # Fix bootstrap randomness
+np.random.seed(bootstrap_seed)  # Fix bootstrap randomness
 boot_indices = np.random.choice(len(target_tensor), size=len(target_tensor), replace=True) #the size of bootstrap dataset is the same as the loaded training set, i.e. 400k 
 boot_data = target_tensor[boot_indices].float()
-print("Bootstrapped dataset size:", boot_data.shape)
 
-train_flow(boot_data, seed, boot_indices) #consequently the statististical power of the normalizing flow correpsonds to the size of the bnootstrapped dataset, i.e. 400k
+train_flow(boot_data, model_seed, bootstrap_seed) #consequently the statististical power of the normalizing flow correpsonds to the size of the bnootstrapped dataset, i.e. 400k
 
 # Save architecture config and averaged model if bootstrap_id == 0
 if args.seed==0:
@@ -163,19 +150,12 @@ if args.seed==0:
         "num_layers": args.num_layers,
         "hidden_features": args.hidden_features,
         "num_bins": args.num_bins,
-        "num_blocks": args.num_blocks
+        "num_blocks": args.num_blocks,
+        "bayesian": args.bayesian 
     }
     config_path = os.path.join(args.outdir, "architecture_config.json")
     with open(config_path, "w") as f:
         json.dump(trial_config, f, indent=4)
 
-    # Save f_i_averaged.pth as single model in list (no real averaging)
-    model_dir = os.path.join(args.outdir, f"model_{args.seed:03d}")
-    model_file = os.path.join(model_dir, "model.pth")
-    f_i = [torch.load(model_file, map_location=device)]
-    torch.save(f_i, os.path.join(args.outdir, "f_i.pth"))
-
-
-
-
-
+if args.collect_all:
+    collect_models()

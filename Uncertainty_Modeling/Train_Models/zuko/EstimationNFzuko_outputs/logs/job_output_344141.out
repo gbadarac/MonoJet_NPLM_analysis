@@ -1,7 +1,0 @@
-Using GPU ID (as set by SLURM): 
-/work/gbadarac/zuko/zuko/__init__.py
-Using device: cpu
-Training model f_000...
-Bootstrapped dataset size: torch.Size([100000, 2])
-DEBUG: Input data shape to flow: torch.Size([100000, 2])
-job submitted
