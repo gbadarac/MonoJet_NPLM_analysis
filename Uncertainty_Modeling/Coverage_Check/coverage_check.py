@@ -28,6 +28,7 @@ parser.add_argument("--toy_seed", type=int, required=True)
 parser.add_argument("--trial_dir", type=str, required=True)
 parser.add_argument("--out_dir", type=str, required=True)
 parser.add_argument("--mu_i_file", type=str, required=True)
+parser.add_argument("--n_points", type=int, default=20000, help="Number of target samples to generate")
 args = parser.parse_args()
 
 # ------------------
@@ -61,8 +62,7 @@ def generate_target_data(n_points, seed=None):
     data = np.column_stack((feat1, feat2)).astype(np.float32)
     return data
 
-n_points=20000
-data_np = generate_target_data(n_points, seed=args.toy_seed)
+data_np = generate_target_data(args.n_points, seed=args.toy_seed)
 x_data = torch.from_numpy(data_np).float().to(device)
 
 # ------------------
@@ -132,7 +132,6 @@ while attempt < max_attempts:
        dtype=torch.float64)
     try:
         noise = 1e-2 * torch.randn_like(w_i_init_torch)
-        # Generate random signs (+1 or -1)
         sign_flips = torch.randint(0, 2, w_i_init_torch.shape, dtype=torch.float64) * 2 - 1
         w_i_init_torch = ((w_i_init_torch + noise)*sign_flips).detach().clone().requires_grad_()
         print('w_i_init_torch', w_i_init_torch)

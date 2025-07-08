@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=NF_job
-#SBATCH --array=0-59
+#SBATCH --array=0-99
 # #SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/nflows/EstimationNFnflows_outputs/logs/job_output_%j.out
 # #SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/nflows/EstimationNFnflows_outputs/logs/job_error_%j.err
 #SBATCH --output=/dev/null
@@ -21,7 +21,7 @@ seed=$SLURM_ARRAY_TASK_ID
 export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling:$PYTHONPATH
 
 # === Run training
-python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/nfflows/EstimationNFnflows.py \
+python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/nflows/EstimationNFnflows.py \
     --data_path ${DATA_PATH} \
     --outdir ${TRIAL_DIR} \
     --seed ${seed} \

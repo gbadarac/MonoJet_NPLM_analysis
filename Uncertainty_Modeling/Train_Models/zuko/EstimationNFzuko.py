@@ -20,9 +20,9 @@ from utils import make_flow_zuko
 # Args
 # ------------------
 parser = argparse.ArgumentParser()
-parser.add_argument("--data_path", type=str, required=True)
+parser.add_argument("--data_path", type=str)
 parser.add_argument("--outdir", type=str, required=True)
-parser.add_argument("--seed", type=int, required=True)
+parser.add_argument("--seed", type=int)
 parser.add_argument("--n_epochs", type=int, default=1001)
 parser.add_argument("--batch_size", type=int, default=512)
 parser.add_argument("--learning_rate", type=float, default=5e-6)
@@ -35,13 +35,13 @@ parser.add_argument("--collect_all", action="store_true", help="Collect all trai
 parser.add_argument("--num_models", type=int, default=1, help="Used with --collect_all to collect N models")
 args = parser.parse_args()
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+
 # --- Conditional required arguments ---
 if not args.collect_all:
     if args.data_path is None or args.seed is None:
         parser.error("--data_path and --seed are required unless --collect_all is used")
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
 
 # ------------------
 # If collecting, skip training
@@ -57,6 +57,11 @@ def collect_models():
         gc.collect()
     torch.save(f_i, os.path.join(args.outdir, "f_i.pth"))
     print(f"Saved f_i.pth with {len(f_i)} models to {args.outdir}")
+
+if args.collect_all:
+    collect_models()
+    exit(0)
+
 # ------------------
 # Load data
 # ------------------
@@ -156,6 +161,3 @@ if args.seed==0:
     config_path = os.path.join(args.outdir, "architecture_config.json")
     with open(config_path, "w") as f:
         json.dump(trial_config, f, indent=4)
-
-if args.collect_all:
-    collect_models()

@@ -18,7 +18,7 @@ conda activate nf_env
 # USER PARAMETERS
 # ======================================
 # setup
-model_seeds=60
+model_seeds=100
 # Model hyperparameters
 n_epochs=1001
 learning_rate=5e-6
@@ -31,7 +31,7 @@ num_layers=4
 # Base directory
 base_dir="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/nflows/EstimationNFnflows_outputs"
 #Get dataset size 
-dataset_path="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Generate_Data/saved_generated_target_data/10k_target_training_set.npy"
+dataset_path="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Generate_Data/saved_generated_target_data/100k_target_training_set.npy"
 num_events=$(python -c "import numpy as np; print(np.load('${dataset_path}').shape[0])")
 
 # ======================================
@@ -47,7 +47,7 @@ array_job_id=$(sbatch \
   --parsable \
   --export=ALL,MODEL_SEEDS=${model_seeds},TRIAL_DIR=${trial_dir},DATA_PATH=${dataset_path},N_EPOCHS=${n_epochs},LR=${learning_rate},BATCH_SIZE=${batch_size},HIDDEN_FEATURES=${hidden_features},NUM_BLOCKS=${num_blocks},NUM_BINS=${num_bins},NUM_LAYERS=${num_layers} \
   --array=${array_range} \
-  submit_array_NFzuko.sh | cut -d'_' -f1)
+  submit_array_NFnflows.sh | cut -d'_' -f1)
 
 # === Submit collection job after array finishes
 sbatch --job-name=NF_collect \

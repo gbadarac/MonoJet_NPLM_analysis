@@ -34,28 +34,16 @@ args = parser.parse_args()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") #sets device to GPU if available 
 os.makedirs(args.trial_dir, exist_ok=True)
 
-f_i_file = os.path.join(args.trial_dir, "f_i_averaged.pth")
-w_i_file = os.path.join(args.trial_dir, "w_i_initial.npy")
-
+f_i_file = os.path.join(args.trial_dir, "f_i.pth")
 f_i_statedicts = torch.load(f_i_file, map_location=device) #list of state_dicts 
-w_i_initial = np.load(w_i_file)  # Initial weights
-print(f"Initial weights: {w_i_initial}")
 
 # ------------------
 # Load architecture config and data 
 # ------------------
 # Save architecture 
-#'''
+
 with open(os.path.join(args.trial_dir, "architecture_config.json")) as f:
     config = json.load(f) 
-
-'''
-configs = []
-for model_name in ["good_model", "bad_model"]:
-    config_path = os.path.join(args.trial_dir, model_name, "architecture_config.json")
-    with open(config_path) as f:
-        configs.append(json.load(f))
-'''
 
 x_data = torch.from_numpy(np.load(args.data_path)).float().to(device)
 
@@ -70,7 +58,6 @@ for state_dict in f_i_statedicts:
         hidden_features=config["hidden_features"],
         num_bins=config["num_bins"],
         num_blocks=config["num_blocks"],
-        tail_bound=config["tail_bound"]
     ).to(device) #recreate the flow architecture for each model f_i 
     flow.load_state_dict(state_dict) #load the corresponding params into each model 
     flow.eval() # Set to eval mode to avoid training-time behavior (e.g., dropout)
@@ -108,48 +95,47 @@ def nll(weights):
 max_attempts = 30  # to avoid infinite loops in pathological cases
 attempt = 0
 
+w_i_initial = np.ones(len(f_i_statedicts)) / len(f_i_statedicts)
+print(f"Initial weights: {w_i_initial}")
+
 while attempt < max_attempts:
     #w_i_init_torch = torch.tensor(w_i_initial, dtype=torch.float64, requires_grad=True)
-    
-    #for N_100000_seeds_30_bootstraps_1_8_4_64_10
-    '''
-    w_i_init_torch = torch.tensor([ 0.0895,  0.0318, -0.0158,  0.0264,  0.0955,  0.0367,  0.0655,  0.0600,
-         0.0616,  0.0551,  0.0477, -0.0466,  0.0589,  0.0135,  0.0530,  0.1307,
-        -0.0215, -0.0262,  0.0281,  0.0192,  0.0924,  0.0142,  0.0323,  0.0583,
-         0.0078,  0.0100,  0.0474,  0.0114, -0.0129, -0.0239],
-       dtype=torch.float64)
-    '''
-    #for N_100000_seeds_30_bootstraps_1_4_12_64_15
-    w_i_init_torch = torch.tensor([ 0.0511,  0.0298,  0.0025,  0.1095,  0.0004,  0.0454, -0.0164,  0.0613,
-         0.0319, -0.0104,  0.0301,  0.0738,  0.0335,  0.0279,  0.0335, -0.0180,
-         0.0043,  0.0473,  0.0812,  0.0355,  0.0409,  0.0485, -0.0345,  0.0015,
-         0.0458,  0.0380,  0.1338,  0.0490, -0.0297,  0.0523],
+    w_i_init_torch = torch.tensor([ 2.7465e-02,  3.9775e-02,  2.9415e-02,  6.0815e-02,  1.6158e-02,
+         8.9291e-02,  5.7799e-03, -1.1811e-02,  2.4000e-02,  3.1447e-02,
+         8.1284e-02, -2.3717e-02,  2.6356e-02, -1.7371e-02, -1.0964e-02,
+         8.3690e-03, -8.1378e-03, -2.3745e-02,  2.1039e-02, -2.9559e-04,
+        -4.8600e-02,  6.1569e-02, -4.8001e-02, -3.0407e-02, -1.4790e-02,
+        -2.3764e-02,  5.1739e-02,  3.5346e-02,  8.6797e-03,  4.0055e-02,
+        -8.1824e-03, -7.8225e-02,  5.8031e-02,  5.0158e-02, -5.7191e-03,
+         1.7794e-02,  6.6486e-02,  1.7646e-02, -1.0253e-02,  1.3935e-02,
+        -4.6986e-02,  3.5882e-03,  3.0478e-02,  9.8500e-02,  1.6057e-02,
+        -4.4616e-03,  5.2506e-03, -4.2853e-03,  2.5735e-02,  1.7025e-02,
+         7.2026e-02,  1.9939e-02, -1.0673e-02,  2.1200e-02,  9.2340e-02,
+        -3.0226e-02,  4.8697e-02,  7.0628e-05,  7.8944e-02,  4.8129e-02],
        dtype=torch.float64)
 
     try:
         noise = 1e-2 * torch.randn_like(w_i_init_torch)
-        # Generate random signs (+1 or -1)
         sign_flips = torch.randint(0, 2, w_i_init_torch.shape, dtype=torch.float64) * 2 - 1
-        w_i_init_torch = ((w_i_init_torch + noise)*sign_flips).detach().clone().requires_grad_()
-        print('w_i_init_torch', w_i_init_torch)
+        w_i_init_torch = ((w_i_init_torch + noise) * sign_flips).detach().clone().requires_grad_()
+        
+        print('w_i_init_torch:', w_i_init_torch)
+        
         res = minimize(
-            nll,                         # your function
-            w_i_init_torch,              # initial guess
-            method='newton-exact',       # method
-            options={'disp': False, 'max_iter': 300},     # any options
+            nll,
+            w_i_init_torch,
+            method='newton-exact',
+            options={'disp': False, 'max_iter': 300},
         )
-        break  # success
+        break  # Success
     except IndexError as e:
-        print(f"Attempt {attempt+1}: Optimization failed with error: {e}")
+        print(f"Attempt {attempt + 1}: Optimization failed with error: {e}")
         attempt += 1
+else:
+    raise RuntimeError("Optimization failed after multiple attempts.")
 
-    else:
-        print("Optimization failed after multiple attempts.") 
 
-w_i_opt = res.x.detach()               # ← what the optimizer produced # ← the true weights you us
-
-w_i_final = w_i_opt
-
+w_i_final = res.x.detach()               # ← what the optimizer produced # ← the true weights you us
 final_loss = nll(w_i_final).item()
 print("Final loss (NLL):", final_loss)
 
@@ -160,7 +146,7 @@ print("Sum of weights:", w_i_final.detach().cpu().numpy().sum())
 # Compute uncertainties via Hessian
 # ------------------
 # Autograd Hessian for cross-check
-H_autograd = hessian(nll, w_i_opt.double()).detach()
+H_autograd = hessian(nll, w_i_final.double()).detach()
 #print("H_autograd:", torch.norm(H_autograd).item())
 
 def compute_sandwich_covariance(H, w, model_probs, lam=1.0):
@@ -196,7 +182,7 @@ def compute_sandwich_covariance(H, w, model_probs, lam=1.0):
     #print("‖V @ U @ V - V‖ =", (V @ U @ V - V))
     return cov_w
 
-cov_w_autograd = compute_sandwich_covariance(H_autograd, w_i_opt, model_probs)
+cov_w_autograd = compute_sandwich_covariance(H_autograd, w_i_final, model_probs)
 #print("diag cov_autograd:", torch.diag(cov_w_autograd).mean().item())
 
 cov_w_final = cov_w_autograd 
@@ -219,7 +205,10 @@ if args.plot.lower() == "true":
     # -----------------
     # Marginal plots
     # ------------------
-    plot_individual_marginals(f_i_models, x_data, feature_names, args.out_dir)
+    num_samples=1000
+    out_dir_maginals = os.path.join(args.out_dir, "marginals")
+    os.makedirs(out_dir_maginals, exist_ok=True)
+    plot_individual_marginals(f_i_models, x_data, feature_names, args.out_dir, num_samples)
     
     # ------------------
     # Likelihood profile scan

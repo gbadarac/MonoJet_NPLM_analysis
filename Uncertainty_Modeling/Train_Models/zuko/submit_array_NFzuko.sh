@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=NF_job
 #SBATCH --array=0-59
-# #SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/zuko/EstimationNFzuko_outputs/logs/job_output_%j.out
-# #SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/zuko/EstimationNFzuko_outputs/logs/job_error_%j.err
-#SBATCH --output=/dev/null
-#SBATCH --error=/dev/null
+#SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/zuko/EstimationNFzuko_outputs/logs/job_output_%j.out
+#SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/zuko/EstimationNFzuko_outputs/logs/job_error_%j.err
+# #SBATCH --output=/dev/null
+# #SBATCH --error=/dev/null
 #SBATCH --time=12:00:00
 #SBATCH --partition=standard
 #SBATCH --nodes=1

@@ -7,7 +7,9 @@ from nflows.transforms.base import CompositeTransform
 from nflows.transforms.autoregressive import MaskedPiecewiseRationalQuadraticAutoregressiveTransform
 from nflows.transforms.permutations import ReversePermutation
 import torch.nn.functional as F
-import zuko 
+import sys
+sys.path.insert(0, "/work/gbadarac/zuko")
+import zuko
 
 import matplotlib
 import matplotlib.pyplot as plt

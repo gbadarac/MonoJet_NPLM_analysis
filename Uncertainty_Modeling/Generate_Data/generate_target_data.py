@@ -7,7 +7,7 @@ np.random.seed(1234)
 
 # Output file paths
 output_dir = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Generate_Data/saved_generated_target_data"
-training_file = os.path.join(output_dir, "100k_target_training_set.npy")
+training_file = os.path.join(output_dir, "10k_target_training_set.npy")
 
 # Parameters
 n_bkg = 10000
