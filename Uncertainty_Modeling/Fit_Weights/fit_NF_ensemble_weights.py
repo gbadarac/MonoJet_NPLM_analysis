@@ -99,7 +99,10 @@ w_i_initial = np.ones(len(f_i_statedicts)) / len(f_i_statedicts)
 print(f"Initial weights: {w_i_initial}")
 
 while attempt < max_attempts:
-    #w_i_init_torch = torch.tensor(w_i_initial, dtype=torch.float64, requires_grad=True)
+    w_i_init_torch = torch.tensor(w_i_initial, dtype=torch.float64, requires_grad=True)
+    
+    '''
+    #N_100000_seeds_60_4_16_128_15
     w_i_init_torch = torch.tensor([ 2.7465e-02,  3.9775e-02,  2.9415e-02,  6.0815e-02,  1.6158e-02,
          8.9291e-02,  5.7799e-03, -1.1811e-02,  2.4000e-02,  3.1447e-02,
          8.1284e-02, -2.3717e-02,  2.6356e-02, -1.7371e-02, -1.0964e-02,
@@ -113,6 +116,7 @@ while attempt < max_attempts:
          7.2026e-02,  1.9939e-02, -1.0673e-02,  2.1200e-02,  9.2340e-02,
         -3.0226e-02,  4.8697e-02,  7.0628e-05,  7.8944e-02,  4.8129e-02],
        dtype=torch.float64)
+    '''  
 
     try:
         noise = 1e-2 * torch.randn_like(w_i_init_torch)
@@ -208,7 +212,7 @@ if args.plot.lower() == "true":
     num_samples=1000
     out_dir_maginals = os.path.join(args.out_dir, "marginals")
     os.makedirs(out_dir_maginals, exist_ok=True)
-    plot_individual_marginals(f_i_models, x_data, feature_names, args.out_dir, num_samples)
+    plot_individual_marginals(f_i_models, x_data, feature_names, out_dir_maginals, num_samples)
     
     # ------------------
     # Likelihood profile scan

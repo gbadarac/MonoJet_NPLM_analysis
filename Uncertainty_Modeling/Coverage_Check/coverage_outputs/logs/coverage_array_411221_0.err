@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/coverage_check.py", line 151, in <module>
+    raise RuntimeError("Optimization failed after multiple attempts.")
+RuntimeError: Optimization failed after multiple attempts.

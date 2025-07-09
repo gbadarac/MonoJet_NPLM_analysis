@@ -1,0 +1,14 @@
+Traceback (most recent call last):
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Fit_Weights/fit_NF_ensemble_weights.py", line 221, in <module>
+    profile_likelihood_scan(model_probs, w_i_final, args.out_dir)
+  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/utils.py", line 233, in profile_likelihood_scan
+    plt.ylim(np.min(nll_vals) - 1e-4, np.max(nll_vals) + 1e-4)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/matplotlib/pyplot.py", line 2162, in ylim
+    ret = ax.set_ylim(*args, **kwargs)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/matplotlib/axes/_base.py", line 4052, in set_ylim
+    return self.yaxis._set_lim(bottom, top, emit=emit, auto=auto)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/matplotlib/axis.py", line 1216, in _set_lim
+    v0 = self.axes._validate_converted_limits(v0, self.convert_units)
+  File "/work/gbadarac/miniforge3/envs/nf_env/lib/python3.10/site-packages/matplotlib/axes/_base.py", line 3739, in _validate_converted_limits
+    raise ValueError("Axis limits cannot be NaN or Inf")
+ValueError: Axis limits cannot be NaN or Inf

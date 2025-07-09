@@ -63,9 +63,10 @@ def main(trial_dir, arch_config_path, out_dir, N_generated):
     sampled_mean = np.stack(sampled_mean)
     print("Final shape of sampled_mean:", sampled_mean.shape)
 
+    trial_id = os.path.basename(trial_dir.rstrip("/"))
     out_file = os.path.join(
         out_dir,
-        f"generated_sampled_mean_{len(f_i_statedicts)}_models_{config['num_layers']}_{config['num_blocks']}_{config['hidden_features']}_{config['num_bins']}_v2.npy"
+        f"generated_sampled_means_{trial_id}.npy"
     )
     np.save(out_file, sampled_mean)
     print(f"Saved to {out_file}")

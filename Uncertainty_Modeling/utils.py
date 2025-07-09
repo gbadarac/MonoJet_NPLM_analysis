@@ -241,7 +241,7 @@ def profile_likelihood_scan(model_probs, w_best, out_dir):
         plt.close()
 
 
-def plot_individual_marginals(models, x_data, feature_names, outdir, num_samples):
+def plot_individual_marginals(models, x_data, feature_names, outdir, num_samples, use_zuko=False):
     """
     For each model in `models`, plot its generated marginals vs the target data (x_data).
 
@@ -259,7 +259,10 @@ def plot_individual_marginals(models, x_data, feature_names, outdir, num_samples
 
     for idx, model in enumerate(models):
         with torch.no_grad():
-            samples = model.sample(num_samples).cpu().numpy()
+            if use_zuko:
+                samples = model().sample((num_samples,)).cpu().numpy()
+            else:
+                samples = model.sample(num_samples).cpu().numpy()
 
         for i in range(num_features):
             target_feature = x_data_small[:, i]

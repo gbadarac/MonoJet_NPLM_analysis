@@ -152,6 +152,7 @@ train_flow(boot_data, model_seed, bootstrap_seed) #consequently the statististic
 # Save architecture config and averaged model if bootstrap_id == 0
 if args.seed==0:
     trial_config = {
+        "backend": "zuko",
         "num_layers": args.num_layers,
         "hidden_features": args.hidden_features,
         "num_bins": args.num_bins,

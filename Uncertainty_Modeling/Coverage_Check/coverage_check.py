@@ -129,11 +129,11 @@ while attempt < max_attempts:
         -4.4616e-03,  5.2506e-03, -4.2853e-03,  2.5735e-02,  1.7025e-02,
          7.2026e-02,  1.9939e-02, -1.0673e-02,  2.1200e-02,  9.2340e-02,
         -3.0226e-02,  4.8697e-02,  7.0628e-05,  7.8944e-02,  4.8129e-02],
-       dtype=torch.float64)
+       dtype=torch.float64, requires_grad=True)  # Initial weights
     try:
-        noise = 1e-2 * torch.randn_like(w_i_init_torch)
-        sign_flips = torch.randint(0, 2, w_i_init_torch.shape, dtype=torch.float64) * 2 - 1
-        w_i_init_torch = ((w_i_init_torch + noise)*sign_flips).detach().clone().requires_grad_()
+        #noise = 1e-2 * torch.randn_like(w_i_init_torch)
+        #sign_flips = torch.randint(0, 2, w_i_init_torch.shape, dtype=torch.float64) * 2 - 1
+        #w_i_init_torch = ((w_i_init_torch + noise)*sign_flips).detach().clone().requires_grad_()
         print('w_i_init_torch', w_i_init_torch)
         
         res = minimize(

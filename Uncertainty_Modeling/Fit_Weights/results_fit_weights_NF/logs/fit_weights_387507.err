@@ -1,4 +1,0 @@
-Traceback (most recent call last):
-  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Fit_Weights/fit_NF_ensemble_weights.py", line 208, in <module>
-    plot_individual_marginals(f_i_models, x_data, feature_names, args.out_dir)
-TypeError: plot_individual_marginals() missing 1 required positional argument: 'num_samples'
