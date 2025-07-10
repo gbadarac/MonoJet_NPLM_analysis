@@ -92,7 +92,7 @@ def nll(weights):
     return -torch.log(ensemble_model(weights, model_probs) + 1e-8).mean() + constraint_term(weights)
 
 
-max_attempts = 30  # to avoid infinite loops in pathological cases
+max_attempts = 50  # to avoid infinite loops in pathological cases
 attempt = 0
 
 w_i_initial = np.ones(len(f_i_statedicts)) / len(f_i_statedicts)
@@ -100,7 +100,6 @@ print(f"Initial weights: {w_i_initial}")
 
 while attempt < max_attempts:
     w_i_init_torch = torch.tensor(w_i_initial, dtype=torch.float64, requires_grad=True)
-    
     '''
     #N_100000_seeds_60_4_16_128_15
     w_i_init_torch = torch.tensor([ 2.7465e-02,  3.9775e-02,  2.9415e-02,  6.0815e-02,  1.6158e-02,
@@ -115,9 +114,18 @@ while attempt < max_attempts:
         -4.4616e-03,  5.2506e-03, -4.2853e-03,  2.5735e-02,  1.7025e-02,
          7.2026e-02,  1.9939e-02, -1.0673e-02,  2.1200e-02,  9.2340e-02,
         -3.0226e-02,  4.8697e-02,  7.0628e-05,  7.8944e-02,  4.8129e-02],
-       dtype=torch.float64)
-    '''  
-
+       dtype=torch.float64, requires_grad=True)
+     
+    #N_10000_seeds_60_4_16_128_15
+    w_i_init_torch = torch.tensor([-0.0560, -0.0175,  0.0879,  0.0173, -0.0798,  0.1132, -0.0779,  0.1823,
+         0.0411,  0.1199,  0.1308, -0.0283,  0.0303, -0.2220, -0.0483, -0.1097,
+        -0.0115,  0.0294,  0.0640,  0.1994,  0.0181,  0.1054,  0.0027,  0.0639,
+        -0.1045,  0.1262,  0.0713,  0.0673, -0.0320,  0.0080,  0.0598, -0.1492,
+         0.0786,  0.0501,  0.0270, -0.0269,  0.0496, -0.0210,  0.2292,  0.0553,
+        -0.0439, -0.0717, -0.0065, -0.0134, -0.0471, -0.0475,  0.1849, -0.0451,
+         0.0177, -0.0921,  0.0528,  0.0493, -0.0757,  0.0068,  0.1353, -0.0066,
+        -0.1119,  0.0534, -0.0302,  0.0478], dtype=torch.float64, requires_grad=True)
+    '''
     try:
         noise = 1e-2 * torch.randn_like(w_i_init_torch)
         sign_flips = torch.randint(0, 2, w_i_init_torch.shape, dtype=torch.float64) * 2 - 1
@@ -190,7 +198,7 @@ cov_w_autograd = compute_sandwich_covariance(H_autograd, w_i_final, model_probs)
 #print("diag cov_autograd:", torch.diag(cov_w_autograd).mean().item())
 
 cov_w_final = cov_w_autograd 
-print("Weight covariance matrix:\n", cov_w_final)
+#print("Weight covariance matrix:\n", cov_w_final)
 cov_w_final = cov_w_final.detach().cpu().numpy()
 
 # ------------------

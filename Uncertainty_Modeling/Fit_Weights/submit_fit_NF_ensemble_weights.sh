@@ -2,8 +2,8 @@
 #SBATCH --job-name=fit_weights
 #SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Fit_Weights/results_fit_weights_NF/logs/fit_weights_%j.out
 #SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Fit_Weights/results_fit_weights_NF/logs/fit_weights_%j.err
-#SBATCH --time=00:30:00
-#SBATCH --mem=32G
+#SBATCH --time=01:00:00
+#SBATCH --mem=64G
 #SBATCH --ntasks=1
 # #SBATCH --gres=gpu:1
 # #SBATCH --account=gpu_gres
@@ -17,7 +17,7 @@ conda activate nf_env
 # -----------------------
 # Parameters
 # -----------------------
-trial_dir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/nflows/EstimationNFnflows_outputs/N_10000_seeds_60_4_16_128_15
+trial_dir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/nflows/EstimationNFnflows_outputs/N_10000_seeds_30_4_16_128_15
 
 data_path=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Generate_Data/saved_generated_target_data/10k_target_training_set.npy
 plot=True

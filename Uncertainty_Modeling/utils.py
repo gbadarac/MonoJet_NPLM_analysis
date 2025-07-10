@@ -222,6 +222,13 @@ def profile_likelihood_scan(model_probs, w_best, out_dir):
             nll = -log_likelihood(w_tensor, model_probs).item()
             nll_vals.append(nll)
 
+        nll_vals = np.array(nll_vals)
+
+        # Skip if invalid
+        if not np.all(np.isfinite(nll_vals)):
+            print(f"Skipping w_{i} due to NaN or Inf in NLL values.")
+            continue
+
         # Plot
         plt.figure(figsize=(6, 4))
         plt.plot(w_scan[:len(nll_vals)], nll_vals, label="NLL", color="black")
