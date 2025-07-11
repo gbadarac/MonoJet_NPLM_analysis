@@ -1,0 +1,17 @@
+[1/15] mean: [-0.4860264  0.6280558]
+[2/15] mean: [-0.48894593  0.62060666]
+[3/15] mean: [-0.4915853   0.59693193]
+[4/15] mean: [-0.4959814  0.5951727]
+[5/15] mean: [-0.49512336  0.62648344]
+[6/15] mean: [-0.49722537  0.6121686 ]
+[7/15] mean: [-0.49900976  0.6209611 ]
+[8/15] mean: [-0.49747935  0.59828573]
+[9/15] mean: [-0.49893     0.60690373]
+[10/15] mean: [-0.49422354  0.61663336]
+[11/15] mean: [-0.49184164  0.6010806 ]
+[12/15] mean: [-0.48378626  0.6162765 ]
+[13/15] mean: [-0.4925497  0.5834068]
+[14/15] mean: [-0.50497097  0.6210341 ]
+[15/15] mean: [-0.4960942  0.5971466]
+Final shape of sampled_mean: (15, 2)
+Saved to /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/generate_sampled_means/results_generated_sampled_means/generated_sampled_means_N_10000_seeds_15_4_16_128_15.npy

@@ -99,7 +99,7 @@ w_i_initial = np.ones(len(f_i_statedicts)) / len(f_i_statedicts)
 print(f"Initial weights: {w_i_initial}")
 
 while attempt < max_attempts:
-    w_i_init_torch = torch.tensor(w_i_initial, dtype=torch.float64, requires_grad=True)
+    #w_i_init_torch = torch.tensor(w_i_initial, dtype=torch.float64, requires_grad=True)
     '''
     #N_100000_seeds_60_4_16_128_15
     w_i_init_torch = torch.tensor([ 2.7465e-02,  3.9775e-02,  2.9415e-02,  6.0815e-02,  1.6158e-02,
@@ -115,7 +115,7 @@ while attempt < max_attempts:
          7.2026e-02,  1.9939e-02, -1.0673e-02,  2.1200e-02,  9.2340e-02,
         -3.0226e-02,  4.8697e-02,  7.0628e-05,  7.8944e-02,  4.8129e-02],
        dtype=torch.float64, requires_grad=True)
-     
+    '''
     #N_10000_seeds_60_4_16_128_15
     w_i_init_torch = torch.tensor([-0.0560, -0.0175,  0.0879,  0.0173, -0.0798,  0.1132, -0.0779,  0.1823,
          0.0411,  0.1199,  0.1308, -0.0283,  0.0303, -0.2220, -0.0483, -0.1097,
@@ -125,11 +125,11 @@ while attempt < max_attempts:
         -0.0439, -0.0717, -0.0065, -0.0134, -0.0471, -0.0475,  0.1849, -0.0451,
          0.0177, -0.0921,  0.0528,  0.0493, -0.0757,  0.0068,  0.1353, -0.0066,
         -0.1119,  0.0534, -0.0302,  0.0478], dtype=torch.float64, requires_grad=True)
-    '''
+
     try:
-        noise = 1e-2 * torch.randn_like(w_i_init_torch)
-        sign_flips = torch.randint(0, 2, w_i_init_torch.shape, dtype=torch.float64) * 2 - 1
-        w_i_init_torch = ((w_i_init_torch + noise) * sign_flips).detach().clone().requires_grad_()
+        #noise = 1e-2 * torch.randn_like(w_i_init_torch)
+        #sign_flips = torch.randint(0, 2, w_i_init_torch.shape, dtype=torch.float64) * 2 - 1
+        #w_i_init_torch = ((w_i_init_torch + noise) * sign_flips).detach().clone().requires_grad_()
         
         print('w_i_init_torch:', w_i_init_torch)
         

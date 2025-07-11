@@ -1,0 +1,2 @@
+/var/spool/slurmd/job434199/slurm_script: line 4: 1304803 Killed                  python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/nflows/EstimationNFnflows.py --outdir /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Train_Models/nflows/EstimationNFnflows_outputs/N_100000_seeds_100_4_16_512_15 --collect_all --num_models 100
+slurmstepd: error: Detected 1 oom_kill event in StepId=434199.batch. Some of the step tasks have been OOM Killed.
