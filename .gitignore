@@ -30,4 +30,8 @@
 # Allow tracking of fitted weights and covariances
 !Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/**/w_i_fitted.npy
 !Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/**/cov_w.npy
+# Allow tracking of fixed target data
+!Train_Ensembles/Generate_Data/saved_generated_target_data/100k_target_training_set.npy
+!Train_Ensembles/Generate_Data/saved_generated_target_data/10k_target_training_set.npy
+!Train_Ensembles/Generate_Data/saved_generated_target_data/mu_target.npy
 
