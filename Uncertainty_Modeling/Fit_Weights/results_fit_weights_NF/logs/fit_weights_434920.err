@@ -1,4 +1,0 @@
-Traceback (most recent call last):
-  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Fit_Weights/fit_NF_ensemble_weights.py", line 138, in <module>
-    method='newton-exact',
-RuntimeError: Optimization failed after multiple attempts.

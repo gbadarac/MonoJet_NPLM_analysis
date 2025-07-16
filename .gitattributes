@@ -1,1 +1,2 @@
-*.pth filter=lfs diff=lfs merge=lfs -text
+# Traccia SOLO i file model.pth nei folder model_*/
+#**/model_*/model.pth filter=lfs diff=lfs merge=lfs -text

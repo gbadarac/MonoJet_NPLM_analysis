@@ -1,2 +1,29 @@
 .DS_Store
+# === File rigenerabili ===
 
+# modelli
+*.pth
+
+# Ignora tutto il contenuto delle cartelle logs/
+**/logs/
+
+# === Ignora output non essenziali dei plot ===
+**/likelihood_profiles/
+**/marginals/
+
+# === Python cache ===
+**/__pycache__/
+
+# Ignore generated ensemble samples
+Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/
+
+# Plots
+*.png
+*.jpg
+*.pdf
+
+# Large arrays or generated data
+*.npy
+*.h5
+*.json 
+*.npz 
