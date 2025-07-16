@@ -15,9 +15,6 @@
 # === Python cache ===
 **/__pycache__/
 
-# Ignore generated ensemble samples
-Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/
-
 # Plots
 *.png
 *.jpg
@@ -25,5 +22,9 @@ Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/
 
 # Large arrays or generated data
 *.npy
+# Allow tracking of fitted weights and covariances
+!Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/**/w_i_fitted.npy
+!Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/**/cov_w.npy
+
 *.h5
 *.npz 
