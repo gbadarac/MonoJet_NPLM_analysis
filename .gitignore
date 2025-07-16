@@ -26,5 +26,4 @@ Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/
 # Large arrays or generated data
 *.npy
 *.h5
-*.json 
 *.npz 

@@ -1,0 +1,11 @@
+{
+  "python.defaultInterpreterPath": "/t3home/gbadarac/miniforge3/envs/nplm_env/bin/python",
+  "jupyter.jupyterServerType": "local",
+  "jupyter.disableZMQSupport": true,
+  "jupyter.notebookEditorExperimental": false,
+  "jupyter.experiments.optOutFrom": ["NotebookInteractiveWindow"],
+  "workbench.editorAssociations": {
+    "*.ipynb": "jupyter-notebook"
+  },
+  "files.hotExit": "off"
+}
