@@ -133,8 +133,10 @@ while attempt < max_attempts:
             method='newton-exact',
             options={'disp': False, 'max_iter': 300},
         )
+
         if res.success:
             break
+        
     except Exception as e:
         print(f"Attempt {attempt+1} failed with exception: {e}")
         traceback.print_exc()

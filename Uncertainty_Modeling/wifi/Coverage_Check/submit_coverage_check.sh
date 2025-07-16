@@ -14,9 +14,9 @@
 # ===============================
 # Define the trial configuration
 # ===============================
-TRIAL_NAME="N_100000_seeds_60_4_16_256_15"
+TRIAL_NAME="N_100000_seeds_60_4_48_128_15"
 TRIAL_DIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/${TRIAL_NAME}"
-N_SAMPLED=110000       # Number of target samples for coverage test
+N_SAMPLED=50000       # Number of target samples for coverage test
 COVERAGE_BASE="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/coverage_outputs"
 OUT_DIR_NAME="${TRIAL_NAME}_N_sampled_${N_SAMPLED}"
 OUT_DIR="${COVERAGE_BASE}/${OUT_DIR_NAME}"

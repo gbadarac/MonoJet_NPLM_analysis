@@ -87,7 +87,7 @@ def train_flow(data, model_seed, bootstrap_seed):
 
     def scaled_init(m, init_scale):
         if isinstance(m, torch.nn.Linear):  # also applies to MaskedLinear
-            torch.nn.init.kaiming_normal_(m.weight, a=0.2)
+            torch.nn.init.kaiming_normal_(m.weight, a=0.0)
             m.weight.data *= init_scale
             if m.bias is not None:
                 torch.nn.init.constant_(m.bias, 0.0)
@@ -95,7 +95,7 @@ def train_flow(data, model_seed, bootstrap_seed):
     torch.manual_seed(model_seed) #ensure same initialization for all j for a fixed i 
 
     # Define initialization scale (can be customized)
-    init_scale = 1.0 + 0.1 * (model_seed % 10)
+    init_scale = 1.0 + 0.01 * (model_seed % 10)
 
     flow = make_flow(args.num_layers, args.hidden_features, args.num_bins, args.num_blocks)
 
