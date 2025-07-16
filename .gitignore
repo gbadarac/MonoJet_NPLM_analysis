@@ -28,5 +28,3 @@
 !Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/**/w_i_fitted.npy
 !Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/**/cov_w.npy
 
-*.h5
-*.npz 
