@@ -19,6 +19,9 @@
 *.png
 # Allow tracking of marginal distribution plots only
 !Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/**/ensemble_marginal_feature_*.png
+# Allow tracking of NPLM comparison/calibration plots
+!NPLM/NPLM_NF_ensemble/comparison/**/plots/*.png
+!NPLM/NPLM_NF_ensemble/calibration/**/plots/*.png
 *.jpg
 *.pdf
 
