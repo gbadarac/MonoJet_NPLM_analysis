@@ -1,8 +1,0 @@
-Traceback (most recent call last):
-  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM-embedding/toy.py", line 142, in <module>
-    flow.load_state_dict(torch.load(model_path, weights_only=True))
-  File "/work/gbadarac/miniforge3/envs/nplm_env/lib/python3.10/site-packages/torch/serialization.py", line 712, in load
-    return _load(opened_zipfile, map_location, pickle_module, **pickle_load_args)
-  File "/work/gbadarac/miniforge3/envs/nplm_env/lib/python3.10/site-packages/torch/serialization.py", line 1044, in _load
-    unpickler = UnpicklerWrapper(data_file, **pickle_load_args)
-TypeError: 'weights_only' is an invalid keyword argument for Unpickler()

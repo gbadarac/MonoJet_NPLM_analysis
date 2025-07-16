@@ -1,5 +1,0 @@
-Traceback (most recent call last):
-  File "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM-embedding/toy.py", line 137, in <module>
-    flow = make_flow(num_features, num_context, perm=True)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-TypeError: make_flow() missing 4 required positional arguments: 'num_bins', 'num_blocks', 'num_layers', and 'num_context'
