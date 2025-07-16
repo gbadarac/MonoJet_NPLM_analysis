@@ -17,6 +17,8 @@
 
 # Plots
 *.png
+# Allow tracking of marginal distribution plots only
+!Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/**/ensemble_marginal_feature_*.png
 *.jpg
 *.pdf
 
