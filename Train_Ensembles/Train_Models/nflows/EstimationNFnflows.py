@@ -84,24 +84,31 @@ target_tensor = torch.from_numpy(target_data)
 # Training function
 # ------------------
 def train_flow(data, model_seed, bootstrap_seed):
+    '''
+    def noisy_init(m, noise_std=5e-4):  # softer perturbation
+        if isinstance(m, torch.nn.Linear):  # includes MaskedLinear
+            torch.nn.init.kaiming_normal_(m.weight, a=0.0) # draw from N(0, std^2), std ~ 1/sqrt(fan_in)
+            with torch.no_grad():
+                original_std = m.weight.std().item()
+                noise = torch.randn_like(m.weight) * noise_std
+                noise_std_actual = noise.std().item()
+                m.weight.add_(noise)
 
-    def scaled_init(m, init_scale):
-        if isinstance(m, torch.nn.Linear):  # also applies to MaskedLinear
-            torch.nn.init.kaiming_normal_(m.weight, a=0.0)
-            m.weight.data *= init_scale
+                print(f"[DEBUG] {m.__class__.__name__}: orig std = {original_std:.4f}, noise std = {noise_std_actual:.4f}")
+
             if m.bias is not None:
-                torch.nn.init.constant_(m.bias, 0.0)
-
+                torch.nn.init.constant_(m.bias, 0.0) # set all biases to 0
+    '''
     torch.manual_seed(model_seed) #ensure same initialization for all j for a fixed i 
 
     # Define initialization scale (can be customized)
-    init_scale = 1.0 + 0.01 * (model_seed % 10)
+    #noise_std = 5e-4 + (model_seed % 10) * 1e-4  # ranges from 5e-4 to 1.4e-3
 
     flow = make_flow(args.num_layers, args.hidden_features, args.num_bins, args.num_blocks)
 
-    # Apply custom initialization
-    flow.apply(lambda m: scaled_init(m, init_scale))
-    
+    # Apply light random perturbation
+    #flow.apply(lambda m: noisy_init(m, noise_std))
+
     opt=optim.Adam(flow.parameters(), lr=args.learning_rate)
     scheduler = CosineAnnealingLR(opt, T_max=args.n_epochs, eta_min=1e-3)
     
@@ -145,7 +152,7 @@ def train_flow(data, model_seed, bootstrap_seed):
             model_dir = os.path.join(args.outdir, f"model_{model_seed:03d}")
             os.makedirs(model_dir, exist_ok=True)
             torch.save(flow.state_dict(), os.path.join(model_dir, "model.pth"))
-            metadata = {"seed": model_seed,"bootstrap_seed": bootstrap_seed, "init_scale": init_scale}
+            metadata = {"seed": model_seed,"bootstrap_seed": bootstrap_seed}
             with open(os.path.join(model_dir, "info.json"), "w") as f:
                 json.dump(metadata, f, indent=4)
             patience_counter = 0

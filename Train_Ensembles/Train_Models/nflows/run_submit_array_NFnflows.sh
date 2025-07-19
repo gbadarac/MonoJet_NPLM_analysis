@@ -18,7 +18,7 @@ conda activate nf_env
 # USER PARAMETERS
 # ======================================
 # setup
-model_seeds=60
+model_seeds=1
 # Model hyperparameters
 n_epochs=1001
 learning_rate=5e-6
