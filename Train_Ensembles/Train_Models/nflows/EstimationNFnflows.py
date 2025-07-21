@@ -85,29 +85,21 @@ target_tensor = torch.from_numpy(target_data)
 # ------------------
 def train_flow(data, model_seed, bootstrap_seed):
     '''
-    def noisy_init(m, noise_std=5e-4):  # softer perturbation
-        if isinstance(m, torch.nn.Linear):  # includes MaskedLinear
-            torch.nn.init.kaiming_normal_(m.weight, a=0.0) # draw from N(0, std^2), std ~ 1/sqrt(fan_in)
+    def init(m, noise_std):
+        if isinstance(m, torch.nn.Linear):
             with torch.no_grad():
-                original_std = m.weight.std().item()
-                noise = torch.randn_like(m.weight) * noise_std
-                noise_std_actual = noise.std().item()
-                m.weight.add_(noise)
-
-                print(f"[DEBUG] {m.__class__.__name__}: orig std = {original_std:.4f}, noise std = {noise_std_actual:.4f}")
-
+                m.weight.add_(torch.randn_like(m.weight) * noise_std)
             if m.bias is not None:
-                torch.nn.init.constant_(m.bias, 0.0) # set all biases to 0
+                torch.nn.init.constant_(m.bias, 0.0)
     '''
     torch.manual_seed(model_seed) #ensure same initialization for all j for a fixed i 
 
-    # Define initialization scale (can be customized)
-    #noise_std = 5e-4 + (model_seed % 10) * 1e-4  # ranges from 5e-4 to 1.4e-3
-
     flow = make_flow(args.num_layers, args.hidden_features, args.num_bins, args.num_blocks)
 
-    # Apply light random perturbation
-    #flow.apply(lambda m: noisy_init(m, noise_std))
+    #noise_std = 1e-4 + (model_seed % 10) * 1e-5  # → from 1e-4 to 1.9e-4
+
+    # Apply light random perturbation       
+    #flow.apply(lambda m: init(m, noise_std))
 
     opt=optim.Adam(flow.parameters(), lr=args.learning_rate)
     scheduler = CosineAnnealingLR(opt, T_max=args.n_epochs, eta_min=1e-3)

@@ -26,7 +26,7 @@ plot=True
 # Derive output path
 # -----------------------
 trial_name=$(basename "$trial_dir")  # e.g., "trial_000" #extracts the folder name from the full path 
-out_dir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/${trial_name}  
+out_dir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/${trial_name}
 mkdir -p "$out_dir" #creates a new directory with the correspondent trial name
 
 # Copy trial files to output dir so script runs in isolation

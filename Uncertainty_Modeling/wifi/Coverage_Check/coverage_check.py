@@ -110,28 +110,39 @@ def ensemble_model(weights, model_probs):
 def constraint_term(weights):
     l=1.0
     return l*(torch.sum(weights)-1.0)
-
+'''
 def nll(weights):
     return -torch.log(ensemble_model(weights, model_probs) + 1e-8).mean() + constraint_term(weights)
+'''
+def nll(weights):
+    p = ensemble_model(weights, model_probs)
+    # If any ensemble density value is ≤ 0, return +inf to signal an invalid region.
+    # This prevents log(0) or log(negative) from causing NaNs and guides the optimizer away from this point.
+    if not torch.all(p > 0):
+        return torch.tensor(float("inf"), dtype=torch.float64)
+    return -torch.log(p + 1e-8).mean() + constraint_term(weights)
 
 max_attempts = 50  # to avoid infinite loops in pathological cases
 attempt = 0
 
 while attempt < max_attempts:
-    w_i_init_torch = torch.tensor([-0.0219,  0.0330,  0.0162, -0.0273, -0.0070, -0.0028,  0.0244, -0.0210,
-        -0.0138,  0.0568,  0.0370,  0.0629, -0.0310, -0.0201,  0.0398,  0.0446,
-        -0.0244,  0.0683, -0.0003,  0.0326,  0.0257, -0.0461, -0.0977, -0.0077,
-         0.0194, -0.0031, -0.0010,  0.0470,  0.0526,  0.0245,  0.0147,  0.0132,
-         0.0025,  0.0154,  0.0765,  0.0353,  0.0580,  0.0361,  0.0421,  0.1287,
-        -0.0292, -0.0085,  0.0385, -0.0312,  0.0449,  0.0625,  0.0194,  0.0059,
-         0.0071,  0.0447,  0.0053,  0.0238,  0.0116,  0.0205,  0.0703,  0.0318,
-         0.0028, -0.0482,  0.0121,  0.0339], dtype=torch.float64, requires_grad=True)  
+    w_i_init_torch = torch.tensor([ 0.0215, -0.0046,  0.0137,  0.0529, -0.0136,  0.0256,  0.0321,  0.0028,
+         0.0204, -0.0011,  0.0243,  0.0077, -0.0153, -0.0093, -0.0202,  0.0439,
+         0.0574,  0.0570,  0.0030,  0.0066,  0.0562, -0.0074, -0.0659, -0.0010,
+        -0.0193,  0.0243,  0.0121,  0.0701,  0.0456, -0.0124,  0.0415,  0.0345,
+         0.0566,  0.0450,  0.0043,  0.0105,  0.0392, -0.0049, -0.0073,  0.0012,
+         0.0275, -0.0401,  0.0021,  0.0239, -0.0342, -0.0336,  0.0379,  0.0896,
+        -0.0099,  0.0422,  0.0198,  0.0489, -0.0175,  0.0601,  0.0183,  0.0108,
+         0.0147,  0.0307,  0.0095,  0.0718], dtype=torch.float64, requires_grad=True)  
      
     try:
-        #noise = 1e-2 * torch.randn_like(w_i_init_torch)
-        #sign_flips = torch.randint(0, 2, w_i_init_torch.shape, dtype=torch.float64) * 2 - 1
-        #w_i_init_torch = ((w_i_init_torch + noise)*sign_flips).detach().clone().requires_grad_()
         print('w_i_init_torch', w_i_init_torch)
+
+        loss_val = nll(w_i_init_torch)
+        if not torch.isfinite(loss_val):
+            print(f"Attempt {attempt+1} skipped due to non-finite loss: {loss_val.item()}")
+            attempt += 1
+            continue
         
         res = minimize(
             nll,                         # your function

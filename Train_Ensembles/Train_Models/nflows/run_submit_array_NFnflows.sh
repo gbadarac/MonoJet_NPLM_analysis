@@ -18,7 +18,7 @@ conda activate nf_env
 # USER PARAMETERS
 # ======================================
 # setup
-model_seeds=1
+model_seeds=60
 # Model hyperparameters
 n_epochs=1001
 learning_rate=5e-6
@@ -37,7 +37,7 @@ num_events=$(python -c "import numpy as np; print(np.load('${dataset_path}').sha
 # ======================================
 # Create new trial folder automatically
 # ======================================
-trial_dir="${base_dir}/N_${num_events}_seeds_${model_seeds}_${num_layers}_${num_blocks}_${hidden_features}_${num_bins}"
+trial_dir="${base_dir}/N_${num_events}_seeds_${model_seeds}_${num_layers}_${num_blocks}_${hidden_features}_${num_bins}_ScaledInit"
 mkdir -p "${trial_dir}"
 
 # === Submit array job with all parameters
