@@ -14,6 +14,7 @@ import zuko
 print(zuko.__file__)
 from zuko.utils import total_KL_divergence
 from utils_flows import make_flow_zuko
+from utils_BayesianFlows import plot_bayesian_marginals
 import mplhep as hep
 
 # Use CMS style for plots
@@ -43,19 +44,32 @@ os.makedirs(args.trial_dir, exist_ok=True)
 with open(os.path.join(args.trial_dir, "architecture_config.json")) as f:
     config = json.load(f) 
 
-flow = make_flow_zuko(num_layers=config["num_layers"],hidden_features=config["hidden_fetaures"], num_bins=config["num_bins"], num_blocks=config["num_blocks"], num_features=2, num_context=0, bayesian=config["bayesian"])
+flow = make_flow_zuko(num_layers=config["num_layers"],hidden_features=config["hidden_features"], num_bins=config["num_bins"], num_blocks=config["num_blocks"], num_features=2, num_context=0, bayesian=config["bayesian"]).to(device)
 
+# Loads the learned weights of the NF model into the flow model instance 
 flow.load_state_dict(torch.load(os.path.join(args.trial_dir, "model_000", "model.pth"), map_location=device))
+# Puts the model into evaluation mode
+# This ensures the model behaves deterministically and xconsistently during inference, matching its behavior during validation/testing, not training 
 flow.eval()
 
 x_data = torch.from_numpy(np.load(args.data_path)).float().to(device)
 
-f_i_models = []
+log_probs_list = []
 with torch.no_grad():
     for i in range(100):
-        f_i_models.append(flow().log_prob(x_data))
+        log_probs_list.append(flow().log_prob(x_data))
 
+D = torch.stack(log_probs_list, dim=1)
+P = D.exp()
+P_mean = P.mean(dim=1)
+P_std = P.std(dim=1)
 
-D = torch.stack(f_i_models, dim=1)
-D_mean = D.mean(dim=1)
-D_std = D.exp().std(dim=1)
+np.save(os.path.join(args.out_dir, "log_prob_mean.npy"), P_mean.cpu().numpy())
+np.save(os.path.join(args.out_dir, "density_std.npy"), P_std.cpu().numpy())
+
+# ------------------
+# Plotting 
+# ------------------
+if args.plot.lower() == "true":
+    feature_names = ["Feature 1", "Feature 2"]
+    plot_bayesian_marginals(flow, log_probs_list, x_data, feature_names, args.out_dir)
