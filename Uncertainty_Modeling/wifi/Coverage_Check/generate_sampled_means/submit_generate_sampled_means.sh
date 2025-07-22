@@ -15,7 +15,7 @@ conda activate nf_env
 # ============
 # Parameters
 # ============
-TRIAL_NAME="N_100000_seeds_60_4_16_128_15_ScaledInit"
+TRIAL_NAME="N_100000_seeds_60_4_32_256_15"
 
 TRIAL_DIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/${TRIAL_NAME}"
 ARCH_CONFIG_DIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/${TRIAL_NAME}"

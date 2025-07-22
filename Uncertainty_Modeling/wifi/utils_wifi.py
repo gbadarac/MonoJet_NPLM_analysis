@@ -29,6 +29,56 @@ def log_likelihood(weights, model_probs):
     ll = torch.log(p_x).mean() #averaging the loss over all datapoints 
     return ll 
 
+def profile_likelihood_scan(model_probs, w_best, out_dir):
+    """
+    For each weight w_i, scan NLL as a function of w_i while rescaling all others to sum to (1 - w_i).
+    """
+    os.makedirs(os.path.join(out_dir, "likelihood_profiles"), exist_ok=True)
+
+    n_models = len(w_best)
+    w_best = np.array(w_best)
+
+    for i in range(n_models):
+        n_points=200
+        w_scan = np.linspace(0, 1, n_points)
+        nll_vals = []
+
+        # The other weights (not i) from best-fit, normalized to sum to 1 - w_i
+        w_rest = np.delete(w_best, i)
+        w_rest /= np.sum(w_rest)  # renormalize
+
+        for w_i_val in w_scan:
+            w_other = (1.0 - w_i_val) * w_rest
+            w_full = np.insert(w_other, i, w_i_val)
+            w_tensor = torch.tensor(w_full, dtype=torch.float32)
+            nll = -log_likelihood(w_tensor, model_probs).item()
+            nll_vals.append(nll)
+
+        nll_vals = np.array(nll_vals)
+
+        # Skip if invalid
+        if not np.all(np.isfinite(nll_vals)):
+            print(f"Skipping w_{i} due to NaN or Inf in NLL values.")
+            continue
+
+        # Plot
+        plt.figure(figsize=(6, 4))
+        plt.plot(w_scan[:len(nll_vals)], nll_vals, label="NLL", color="black")
+        plt.axvline(w_best[i], color='red', linestyle=':', label="Best fit")
+
+        plt.xlabel(fr"$w_{i}$", fontsize=12)
+        plt.ylabel("NLL", fontsize=12)
+        plt.title(fr"NLL profile scan for $w_{i}$", fontsize=14)
+        plt.ylim(np.min(nll_vals) - 1e-4, np.max(nll_vals) + 1e-4)
+        plt.legend(fontsize=10)
+        plt.grid()
+        plt.tick_params(labelsize=10)
+        plt.tight_layout()
+
+        outname = os.path.join(out_dir, "likelihood_profiles", f"profile_scan_w{i}.png")
+        plt.savefig(outname)
+        plt.close()
+
 def ensemble_pred(weights, model_probs):
     weights = weights.to(model_probs.device)
     model_vals = (model_probs * weights).sum(dim=1)
@@ -146,56 +196,6 @@ def plot_ensemble_marginals(f_i_models, x_data, weights, cov_w, feature_names, o
         plt.tight_layout()
         outpath = os.path.join(outdir, f"ensemble_marginal_feature_{i+1}.png")
         plt.savefig(outpath)
-        plt.close()
-
-def profile_likelihood_scan(model_probs, w_best, out_dir):
-    """
-    For each weight w_i, scan NLL as a function of w_i while rescaling all others to sum to (1 - w_i).
-    """
-    os.makedirs(os.path.join(out_dir, "likelihood_profiles"), exist_ok=True)
-
-    n_models = len(w_best)
-    w_best = np.array(w_best)
-
-    for i in range(n_models):
-        n_points=200
-        w_scan = np.linspace(0, 1, n_points)
-        nll_vals = []
-
-        # The other weights (not i) from best-fit, normalized to sum to 1 - w_i
-        w_rest = np.delete(w_best, i)
-        w_rest /= np.sum(w_rest)  # renormalize
-
-        for w_i_val in w_scan:
-            w_other = (1.0 - w_i_val) * w_rest
-            w_full = np.insert(w_other, i, w_i_val)
-            w_tensor = torch.tensor(w_full, dtype=torch.float32)
-            nll = -log_likelihood(w_tensor, model_probs).item()
-            nll_vals.append(nll)
-
-        nll_vals = np.array(nll_vals)
-
-        # Skip if invalid
-        if not np.all(np.isfinite(nll_vals)):
-            print(f"Skipping w_{i} due to NaN or Inf in NLL values.")
-            continue
-
-        # Plot
-        plt.figure(figsize=(6, 4))
-        plt.plot(w_scan[:len(nll_vals)], nll_vals, label="NLL", color="black")
-        plt.axvline(w_best[i], color='red', linestyle=':', label="Best fit")
-
-        plt.xlabel(fr"$w_{i}$", fontsize=12)
-        plt.ylabel("NLL", fontsize=12)
-        plt.title(fr"NLL profile scan for $w_{i}$", fontsize=14)
-        plt.ylim(np.min(nll_vals) - 1e-4, np.max(nll_vals) + 1e-4)
-        plt.legend(fontsize=10)
-        plt.grid()
-        plt.tick_params(labelsize=10)
-        plt.tight_layout()
-
-        outname = os.path.join(out_dir, "likelihood_profiles", f"profile_scan_w{i}.png")
-        plt.savefig(outname)
         plt.close()
 
 
