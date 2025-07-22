@@ -23,8 +23,8 @@ model_seeds=60
 n_epochs=1001
 learning_rate=5e-6
 batch_size=512
-hidden_features=128
-num_blocks=16
+hidden_features=256
+num_blocks=32
 num_bins=15
 num_layers=4
 
@@ -37,7 +37,7 @@ num_events=$(python -c "import numpy as np; print(np.load('${dataset_path}').sha
 # ======================================
 # Create new trial folder automatically
 # ======================================
-trial_dir="${base_dir}/N_${num_events}_seeds_${model_seeds}_${num_layers}_${num_blocks}_${hidden_features}_${num_bins}_ScaledInit"
+trial_dir="${base_dir}/N_${num_events}_seeds_${model_seeds}_${num_layers}_${num_blocks}_${hidden_features}_${num_bins}"
 mkdir -p "${trial_dir}"
 
 # === Submit array job with all parameters
