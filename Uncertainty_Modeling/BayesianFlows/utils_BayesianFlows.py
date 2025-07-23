@@ -57,7 +57,8 @@ def plot_bayesian_marginals(flow, log_probs_list, x_data, feature_names, outdir)
         with torch.no_grad():
             pred_logps = []
             for _ in range(len(log_probs_list)):  # match number of MC samples
-                logps = flow().log_prob(x_centers_tensor)
+                sampled_flow = flow()  # Get a new instance of the flow for each sample
+                logps = sampled_flow.log_prob(x_centers_tensor)
                 pred_logps.append(logps)
 
         pred_logps = torch.stack(pred_logps, dim=1)
@@ -69,10 +70,11 @@ def plot_bayesian_marginals(flow, log_probs_list, x_data, feature_names, outdir)
         f_binned /= N
         f_err /= N
 
+        print(f"[DEBUG] Feature {i+1} - max σ: {np.max(f_err):.4f}, mean σ: {np.mean(f_err):.4f}")
+
         # ------------------
         # 1 and 2 sigma bands calculation 
         # ------------------
-
         # Compute 1σ and 2σ bands directly from f_binned and f_err
         band_1s_l = f_binned - f_err
         band_1s_h = f_binned + f_err

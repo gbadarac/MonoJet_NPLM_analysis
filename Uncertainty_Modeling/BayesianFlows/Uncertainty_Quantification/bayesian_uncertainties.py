@@ -16,6 +16,8 @@ from zuko.utils import total_KL_divergence
 from utils_flows import make_flow_zuko
 from utils_BayesianFlows import plot_bayesian_marginals
 import mplhep as hep
+import matplotlib.pyplot as plt
+
 
 # Use CMS style for plots
 hep.style.use("CMS")
@@ -57,7 +59,8 @@ x_data = torch.from_numpy(np.load(args.data_path)).float().to(device)
 log_probs_list = []
 with torch.no_grad():
     for i in range(100):
-        log_probs_list.append(flow().log_prob(x_data))
+        sampled_flow = flow()
+        log_probs_list.append(sampled_flow.log_prob(x_data))
 
 D = torch.stack(log_probs_list, dim=1)
 P = D.exp()
@@ -68,8 +71,27 @@ np.save(os.path.join(args.out_dir, "log_prob_mean.npy"), P_mean.cpu().numpy())
 np.save(os.path.join(args.out_dir, "density_std.npy"), P_std.cpu().numpy())
 
 # ------------------
+# Debug prints
+# ------------------
+print("DEBUG: Shape of P_mean:", P_mean.shape)
+print("DEBUG: Shape of P_std:", P_std.shape)
+print("DEBUG: Sample uncertainties (P_std):", P_std[:10].cpu().numpy())
+print("DEBUG: Mean uncertainty:", P_std.mean().item())
+print("DEBUG: Max uncertainty:", P_std.max().item())
+
+# ------------------
 # Plotting 
 # ------------------
 if args.plot.lower() == "true":
     feature_names = ["Feature 1", "Feature 2"]
     plot_bayesian_marginals(flow, log_probs_list, x_data, feature_names, args.out_dir)
+
+    plt.figure(figsize=(6,4))
+    plt.hist(P_std.cpu().numpy(), bins=50, color='purple', alpha=0.7)
+    plt.xlabel("Predicted std (uncertainty)")
+    plt.ylabel("Frequency")
+    plt.title("Distribution of Uncertainties (P_std)")
+    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.tight_layout()
+    plt.savefig(os.path.join(args.out_dir, "uncertainty_distribution.png"))
+    plt.close()
