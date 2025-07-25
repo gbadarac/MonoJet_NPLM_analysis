@@ -110,10 +110,7 @@ def ensemble_model(weights, model_probs):
 def constraint_term(weights):
     l=1.0
     return l*(torch.sum(weights)-1.0)
-'''
-def nll(weights):
-    return -torch.log(ensemble_model(weights, model_probs) + 1e-8).mean() + constraint_term(weights)
-'''
+
 def nll(weights):
     p = ensemble_model(weights, model_probs)
     # If any ensemble density value is ≤ 0, return +inf to signal an invalid region.
@@ -126,6 +123,7 @@ max_attempts = 50  # to avoid infinite loops in pathological cases
 attempt = 0
 
 while attempt < max_attempts:
+    #put it specifically from the fitting part 
     w_i_init_torch = torch.tensor([ 2.6660e-02,  4.9029e-03,  5.4670e-05,  1.9149e-02,  6.4070e-02,
          9.3286e-03,  3.6494e-02,  8.7958e-02,  7.6974e-02, -1.5255e-02,
         -3.9479e-02, -1.5420e-02, -1.5285e-02,  8.7044e-02,  5.7290e-02,
@@ -141,6 +139,8 @@ while attempt < max_attempts:
        dtype=torch.float64, requires_grad=True)  
      
     try:
+        noise = 1e-3 * torch.randn_like(w_i_init_torch)
+        w_i_init_torch = (w_i_init_torch + noise).detach().clone().requires_grad_()
         print('w_i_init_torch', w_i_init_torch)
 
         loss_val = nll(w_i_init_torch)

@@ -91,11 +91,6 @@ def constraint_term(weights):
     l=1.0
     return l*(torch.sum(weights)-1.0)
 
-'''
-def nll(weights):
-    return -torch.log(ensemble_model(weights, model_probs) + 1e-8).mean() + constraint_term(weights)
-'''
-
 def nll(weights):
     p = ensemble_model(weights, model_probs)
     # If any ensemble density value is ≤ 0, return +inf to signal an invalid region.
@@ -107,33 +102,17 @@ def nll(weights):
 max_attempts = 50  # to avoid infinite loops in pathological cases
 attempt = 0
 
-'''
+
 w_i_initial = np.ones(len(f_i_statedicts)) / len(f_i_statedicts)
 print(f"Initial weights: {w_i_initial}")
-'''
+
 
 while attempt < max_attempts:
-    #w_i_init_torch = torch.tensor(w_i_initial, dtype=torch.float64, requires_grad=True)
-    
-    #N_10000_seeds_60_4_16_128_15
-    w_i_init_torch = torch.tensor([ 2.6660e-02,  4.9029e-03,  5.4670e-05,  1.9149e-02,  6.4070e-02,
-         9.3286e-03,  3.6494e-02,  8.7958e-02,  7.6974e-02, -1.5255e-02,
-        -3.9479e-02, -1.5420e-02, -1.5285e-02,  8.7044e-02,  5.7290e-02,
-         1.5961e-02, -3.6252e-02, -4.3677e-02, -1.4823e-04, -3.4308e-02,
-        -2.3378e-02,  3.6204e-02,  3.1594e-02,  8.5678e-03,  1.2468e-02,
-         2.5487e-02,  1.9723e-02,  2.5634e-02,  6.8171e-02, -9.8194e-03,
-         8.0849e-03,  2.1400e-02,  3.2348e-02,  6.7841e-02,  4.6322e-02,
-         4.8491e-02, -3.6525e-02, -1.7060e-02,  4.7686e-02,  1.4837e-02,
-         3.4592e-02, -2.2595e-02, -6.4887e-02,  1.0992e-01, -3.1935e-03,
-        -7.6124e-02, -2.0110e-02,  4.2485e-02,  3.6925e-02, -1.5192e-02,
-         4.6197e-02,  4.1148e-02, -9.9237e-03,  4.3357e-02,  3.0554e-02,
-        -1.3172e-02, -2.7091e-02,  6.0365e-02,  2.3911e-02,  6.8697e-02],
-       dtype=torch.float64, requires_grad=True)
-    
+    w_i_init_torch = torch.tensor(w_i_initial, dtype=torch.float64, requires_grad=True)
+
     try:
         noise = 1e-2 * torch.randn_like(w_i_init_torch)
-        sign_flips = torch.randint(0, 2, w_i_init_torch.shape, dtype=torch.float64) * 2 - 1
-        w_i_init_torch = ((w_i_init_torch + noise) * sign_flips).detach().clone().requires_grad_()
+        w_i_init_torch = (w_i_init_torch + noise).detach().clone().requires_grad_()
         
         print('w_i_init_torch:', w_i_init_torch)
 
