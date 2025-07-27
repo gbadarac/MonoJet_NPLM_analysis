@@ -102,26 +102,22 @@ def nll(weights):
 max_attempts = 50  # to avoid infinite loops in pathological cases
 attempt = 0
 
-
 w_i_initial = np.ones(len(f_i_statedicts)) / len(f_i_statedicts)
-print(f"Initial weights: {w_i_initial}")
-
 
 while attempt < max_attempts:
     w_i_init_torch = torch.tensor(w_i_initial, dtype=torch.float64, requires_grad=True)
+    noise = 1e-2 * torch.randn_like(w_i_init_torch)
+    w_i_init_torch = (w_i_init_torch + noise).detach().clone().requires_grad_()
+    print('w_i_init_torch:', w_i_init_torch)
 
     try:
-        noise = 1e-2 * torch.randn_like(w_i_init_torch)
-        w_i_init_torch = (w_i_init_torch + noise).detach().clone().requires_grad_()
-        
-        print('w_i_init_torch:', w_i_init_torch)
-
         loss_val = nll(w_i_init_torch)
         if not torch.isfinite(loss_val):
             print(f"Attempt {attempt+1} skipped due to non-finite loss: {loss_val.item()}")
-            attempt += 1
             continue
-                
+
+        print(f"Attempt {attempt+1}: Starting optimization (loss = {loss_val.item():.4f})")
+ 
         res = minimize(
             nll,
             w_i_init_torch,
@@ -130,12 +126,15 @@ while attempt < max_attempts:
         )
 
         if res.success:
+            print(f"Optimization succeeded on attempt {attempt}")
             break
+
+        attempt += 1
         
     except Exception as e:
         print(f"Attempt {attempt+1} failed with exception: {e}")
         traceback.print_exc()
-    attempt += 1
+        attempt += 1
 
 if res is None or not res.success:
     raise RuntimeError("Optimization failed after multiple attempts.")
