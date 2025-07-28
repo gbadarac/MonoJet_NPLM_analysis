@@ -2,12 +2,12 @@
 #SBATCH --job-name=fit_weights
 #SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/logs/fit_weights_%j.out
 #SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/logs/fit_weights_%j.err
-#SBATCH --time=04:00:00
-#SBATCH --mem=64G
+#SBATCH --time=01:00:00
+#SBATCH --mem=12G
 #SBATCH --ntasks=1
-# #SBATCH --gres=gpu:1
-# #SBATCH --account=gpu_gres
-#SBATCH --partition=standard
+#SBATCH --gres=gpu:1
+#SBATCH --account=gpu_gres
+#SBATCH --partition=qgpu
 #SBATCH --nodes=1
 
 # Activate environment
@@ -26,7 +26,7 @@ plot=True
 # Derive output path
 # -----------------------
 trial_name=$(basename "$trial_dir")  # e.g., "trial_000" #extracts the folder name from the full path 
-out_dir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/${trial_name}
+out_dir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/${trial_name}_trial
 mkdir -p "$out_dir" #creates a new directory with the correspondent trial name
 
 # Copy trial files to output dir so script runs in isolation

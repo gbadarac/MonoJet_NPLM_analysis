@@ -51,36 +51,37 @@ with open(os.path.join(args.trial_dir, "architecture_config.json")) as f:
 x_data = torch.from_numpy(np.load(args.data_path)).float().to(device)
 
 # ------------------
-# Reconstruct flows f_i
-# ------------------
-f_i_models = []
-for state_dict in f_i_statedicts:
-#for state_dict, config in zip(f_i_statedicts, configs):
-    flow = make_flow(
-        num_layers=config["num_layers"],
-        hidden_features=config["hidden_features"],
-        num_bins=config["num_bins"],
-        num_blocks=config["num_blocks"],
-    ).to(device) #recreate the flow architecture for each model f_i 
-    flow.load_state_dict(state_dict) #load the corresponding params into each model 
-    flow.eval() # Set to eval mode to avoid training-time behavior (e.g., dropout)
-    #You want all models to produce consistent, deterministic outputs for likelihood evaluation 
-    f_i_models.append(flow)
-
-# ------------------
 # Evaluate f_i(x) -> model_probs
 # ------------------
-with torch.no_grad(): #disables gradient tracking since we are just evaluating the model (to speed things up)
-    model_probs = torch.stack( #torch.stack() to stack all M models along a new dimension dim=1 cretaing a NxM matrix where N are the number of data points 
-        [torch.exp(flow.log_prob(x_data)) for flow in f_i_models], 
-        #each model f_i comes with a log probability, so for getting the actual pdf of the model itself one needs to take the exponential 
-        #this needs to be done because of how NFs are built, i.e. they return log(f_i(x)) but we want to get f_i(x) to get the probability, so we need to take the exponential 
-        #this is standard in NFs because calculating log(f_i(x)) is numerically stable and avoids underflow 
-        dim=1)  # Shape: (N, M)
+model_probs_list = []  # list to collect probabilities from each model f_i
 
-# Move model_probs and f_I_models to CPU for memory safety
-# model_probs is a (N,M) matrix of type (f_0, ... f_(M-1)) where N is the number of data points 
-model_probs = model_probs.to("cpu") 
+with torch.no_grad():  # disables gradient tracking since we are just evaluating the model (to speed things up)
+    for state_dict in f_i_statedicts:
+        flow = make_flow(
+            num_layers=config["num_layers"],
+            hidden_features=config["hidden_features"],
+            num_bins=config["num_bins"],
+            num_blocks=config["num_blocks"],
+        )  # recreate the flow architecture for each model f_i
+
+        flow.load_state_dict(state_dict)  # load the corresponding params into each model
+        flow = flow.to(device)            # move model with weights to GPU safely
+        flow.eval()                       # Set to eval mode to avoid training-time behavior (e.g., dropout)
+        # You want all models to produce consistent, deterministic outputs for likelihood evaluation
+
+        logp = flow.log_prob(x_data)  # each model f_i returns log(f_i(x)) by construction
+        # this needs to be done because of how NFs are built, i.e. they return log(f_i(x))
+        # but we want to get f_i(x) to get the actual pdf of the model itself, so we take the exponential
+        # this is standard in NFs because calculating log(f_i(x)) is numerically stable and avoids underflow
+
+        model_probs_list.append(torch.exp(logp).cpu())  # store on CPU to save GPU memory
+        del flow
+        torch.cuda.empty_cache()  # free memory after each model
+
+model_probs = torch.stack(model_probs_list, dim=1)  # torch.stack() to stack all M models along a new dim dim=1 creating a NxM matrix where N are the number of data points
+
+# model_probs is a (N,M) matrix of type (f_0, ... f_(M-1)) where N is the number of data points
+
 # ------------------
 # Optimize weights via logits using MLE
 # ------------------
@@ -216,4 +217,23 @@ if args.plot.lower() == "true":
     # ------------------
     # Uncertainties on the model
     # ------------------
+    # Clean up memory before reloading models
+    del model_probs_list, model_probs, x_data
+    torch.cuda.empty_cache()
+
+    # Reload f_i_models after weight fitting
+    f_i_models = []
+    for state_dict in f_i_statedicts:
+        flow = make_flow(
+            num_layers=config["num_layers"],
+            hidden_features=config["hidden_features"],
+            num_bins=config["num_bins"],
+            num_blocks=config["num_blocks"],
+        )
+        flow.load_state_dict(state_dict)
+        flow = flow.to(device)
+        flow.eval()
+        f_i_models.append(flow)
+
+    x_data = x_data.to(device)
     plot_ensemble_marginals(f_i_models, x_data, w_i_final, cov_w_final, feature_names, args.out_dir)
