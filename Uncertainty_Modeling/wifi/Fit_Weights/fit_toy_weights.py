@@ -7,8 +7,7 @@ import torch
 import torch.optim as optim
 import numpy as np
 import argparse
-from utils_wifi import probs, plot_ensemble_marginals, profile_likelihood_scan
-from utils_flows import make_flow
+from utils_wifi import probs, plot_gaussian_toy_marginals
 import matplotlib
 import matplotlib.pyplot as plt
 matplotlib.use('Agg')  # ensure it works on clusters without displaying plots
@@ -37,72 +36,36 @@ args = parser.parse_args()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") #sets device to GPU if available 
 os.makedirs(args.trial_dir, exist_ok=True)
 
-f_i_file = os.path.join(args.trial_dir, "f_i.pth")
-f_i_statedicts = torch.load(f_i_file, map_location=device) #list of state_dicts 
+f_i_file = os.path.join(args.trial_dir, "f_i.npy")
 
-# ------------------
-# Load architecture config and data 
-# ------------------
-# Save architecture 
+model_probs_np = np.load(f_i_file)  # shape (N, M)
+model_probs = torch.tensor(model_probs_np, dtype=torch.float64)  # no .requires_grad!
 
-with open(os.path.join(args.trial_dir, "architecture_config.json")) as f:
-    config = json.load(f) 
+# Load data (x_eval) – only needed for plotting
+x_data = torch.from_numpy(np.load(args.data_path)).float().to("cpu")
 
-x_data = torch.from_numpy(np.load(args.data_path)).float().to(device)
-
-# ------------------
-# Reconstruct flows f_i
-# ------------------
-f_i_models = []
-for state_dict in f_i_statedicts:
-#for state_dict, config in zip(f_i_statedicts, configs):
-    flow = make_flow(
-        num_layers=config["num_layers"],
-        hidden_features=config["hidden_features"],
-        num_bins=config["num_bins"],
-        num_blocks=config["num_blocks"],
-    ).to(device) #recreate the flow architecture for each model f_i 
-    flow.load_state_dict(state_dict) #load the corresponding params into each model 
-    flow.eval() # Set to eval mode to avoid training-time behavior (e.g., dropout)
-    #You want all models to produce consistent, deterministic outputs for likelihood evaluation 
-    f_i_models.append(flow)
-
-# ------------------
-# Evaluate f_i(x) -> model_probs
-# ------------------
-with torch.no_grad(): #disables gradient tracking since we are just evaluating the model (to speed things up)
-    model_probs = torch.stack( #torch.stack() to stack all M models along a new dimension dim=1 cretaing a NxM matrix where N are the number of data points 
-        [torch.exp(flow.log_prob(x_data)) for flow in f_i_models], 
-        #each model f_i comes with a log probability, so for getting the actual pdf of the model itself one needs to take the exponential 
-        #this needs to be done because of how NFs are built, i.e. they return log(f_i(x)) but we want to get f_i(x) to get the probability, so we need to take the exponential 
-        #this is standard in NFs because calculating log(f_i(x)) is numerically stable and avoids underflow 
-        dim=1)  # Shape: (N, M)
-
-# Move model_probs and f_I_models to CPU for memory safety
-# model_probs is a (N,M) matrix of type (f_0, ... f_(M-1)) where N is the number of data points 
-model_probs = model_probs.to("cpu") 
 # ------------------
 # Optimize weights via logits using MLE
 # ------------------
-def ensemble_model(weights, model_probs):
-    return probs(weights, model_probs)
-
 def constraint_term(weights):
     l=1.0
     return l*(torch.sum(weights)-1.0)
 
+def probs(weights, model_probs):
+    # weights: (M,), model_probs: (N, M)
+    return (model_probs * weights).sum(dim=1)  # returns (N,)
+
 def nll(weights):
-    p = ensemble_model(weights, model_probs)
-    # If any ensemble density value is ≤ 0, return +inf to signal an invalid region.
-    # This prevents log(0) or log(negative) from causing NaNs and guides the optimizer away from this point.
+    p = probs(weights, model_probs)
     if not torch.all(p > 0):
-        return torch.tensor(float("inf"), dtype=torch.float64)
+        return 1e6 + torch.sum(weights * 0)  # keeps it differentiable
     return -torch.log(p + 1e-8).mean() + constraint_term(weights)
+
 
 max_attempts = 50  # to avoid infinite loops in pathological cases
 attempt = 0
 
-w_i_initial = np.ones(len(f_i_statedicts)) / len(f_i_statedicts)
+w_i_initial = np.ones(model_probs.shape[1]) / model_probs.shape[1]
 
 while attempt < max_attempts:
     w_i_init_torch = torch.tensor(w_i_initial, dtype=torch.float64, requires_grad=True)
@@ -216,4 +179,4 @@ if args.plot.lower() == "true":
     # ------------------
     # Uncertainties on the model
     # ------------------
-    plot_ensemble_marginals(f_i_models, x_data, w_i_final, cov_w_final, feature_names, args.out_dir)
+    plot_gaussian_toy_marginals(model_probs, x_data, w_i_final, cov_w_final, feature_names, args.out_dir)
