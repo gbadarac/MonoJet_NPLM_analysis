@@ -37,3 +37,6 @@
 !Train_Ensembles/Generate_Data/saved_generated_target_data/10k_target_training_set.npy
 !Train_Ensembles/Generate_Data/saved_generated_target_data/mu_target.npy
 
+# Allow Gaussian toy plots and toy models
+!Generate_Gaussian_Toy/saved_generated_gaussian_toys/*.png
+!Generate_Gaussian_Toy/saved_generated_gaussian_toys/*.npy
