@@ -198,4 +198,100 @@ def plot_ensemble_marginals(f_i_models, x_data, weights, cov_w, feature_names, o
         plt.savefig(outpath)
         plt.close()
 
+def toy_pred(weights, model_probs):
+    weights = weights.to(model_probs.device)
+    return (model_probs * weights).sum(dim=1).cpu().numpy()
+
+def plot_gaussian_toy_marginals(model_probs, x_data, weights, cov_w, feature_names, outdir):
+    os.makedirs(outdir, exist_ok=True)
+    x = x_data.cpu().numpy()
+    model_probs_np = model_probs.numpy()
+    weights_np = weights.detach().cpu().numpy() if torch.is_tensor(weights) else weights
+
+    N, M = model_probs_np.shape
+    D = x.shape[1]
+
+    for i in range(D):
+        fig, (ax_main, ax_ratio) = plt.subplots(2, 1, figsize=(8, 10), gridspec_kw={'height_ratios': [3, 1]})
+        feature = x[:, i]
+        feature_label = feature_names[i]
+        bins = 40
+
+        # Define bins
+        margin = 0.05 * (np.max(feature) - np.min(feature))
+        low, high = np.min(feature) - margin, np.max(feature) + margin
+        bin_edges = np.linspace(low, high, bins + 1)
+        bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+        bin_widths = np.diff(bin_edges)
+
+        # Target histogram
+        hist_target_counts, _ = np.histogram(feature, bins=bin_edges)
+        N_target = np.sum(hist_target_counts)
+        hist_target = hist_target_counts / (N_target * bin_widths)
+        err_target = np.sqrt(hist_target_counts) / (N_target * bin_widths)
+
+        # Bin model_probs for each model
+        f_binned_models = []
+        for m in range(M):
+            f_binned, _ = np.histogram(feature, bins=bin_edges, weights=model_probs_np[:, m])
+            f_binned = f_binned / (np.sum(model_probs_np[:, m]) * bin_widths)
+            f_binned_models.append(f_binned)
+        f_binned_models = np.array(f_binned_models).T  # shape: (bins, M)
+
+        # Convert to torch tensors for ensemble prediction and uncertainty
+        f_binned_models_torch = torch.tensor(f_binned_models.T, dtype=torch.float64)  # shape (M, bins)
+        weights_torch = torch.tensor(weights_np, dtype=torch.float64)
+        cov_w_torch = torch.tensor(cov_w, dtype=torch.float64)
+
+        # Ensemble prediction before normalization
+        f_binned = toy_pred(weights_torch, f_binned_models_torch.T)  # shape (bins,)
+        f_err = np.sqrt(np.einsum('ij,jk,ik->i', f_binned_models, cov_w, f_binned_models))
+
+        # Now normalize both f_binned and f_err together
+        N_norm = np.sum(f_binned * bin_widths)
+        f_binned /= N_norm
+        f_err /= N_norm
+
+        # Uncertainty bands
+        band_1s_l = f_binned - f_err
+        band_1s_h = f_binned + f_err
+        band_2s_l = f_binned - 2 * f_err
+        band_2s_h = f_binned + 2 * f_err
+
+        valid_bins = hist_target > 0
+
+        # --- Plot main density ---
+        ax_main.bar(bin_centers, hist_target, width=bin_widths, alpha=0.2, label="Target", color='green', edgecolor='black')
+        ax_main.errorbar(bin_centers, hist_target, yerr=err_target, fmt='None', color='green', alpha=0.7)
+        ax_main.plot(bin_centers[valid_bins], f_binned[valid_bins], '-', color='red', linewidth=1.2, label=r"$f(x) = \sum w_i f_i(x)$")
+        ax_main.fill_between(bin_centers, band_1s_l, band_1s_h, alpha=0.15, label=r"$\pm 1\sigma$", color='blue')
+        ax_main.fill_between(bin_centers, band_2s_l, band_2s_h, alpha=0.08, label=r"$\pm 2\sigma$", color='purple')
+        ax_main.set_xlabel(feature_label, fontsize=16)
+        ax_main.set_ylabel("Density", fontsize=16)
+        ax_main.legend(fontsize=14)
+
+        # --- Plot uncertainty ratios ---
+        f_binned_safe = np.where(f_binned > 0, f_binned, np.nan)
+        ratio_1s_h = band_1s_h / f_binned_safe
+        ratio_2s_h = band_2s_h / f_binned_safe
+        ratio_1s_l = band_1s_l / f_binned_safe
+        ratio_2s_l = band_2s_l / f_binned_safe
+        valid_h = ~np.isnan(ratio_1s_h)
+
+        ax_ratio.plot(bin_centers[valid_h], ratio_1s_h[valid_h], 'o-', color='blue', alpha=0.3, label=r"$+1\sigma$ / mean")
+        ax_ratio.plot(bin_centers[valid_h], ratio_2s_h[valid_h], 'o-', color='purple', alpha=0.3, label=r"$+2\sigma$ / mean")
+        ax_ratio.plot(bin_centers[valid_h], ratio_1s_l[valid_h], 'o-', color='blue', alpha=0.3, label=r"$-1\sigma$ / mean")
+        ax_ratio.plot(bin_centers[valid_h], ratio_2s_l[valid_h], 'o-', color='purple', alpha=0.3, label=r"$-2\sigma$ / mean")
+        ax_ratio.axhline(1.0, color='black', linestyle='--', linewidth=1)
+        ax_ratio.set_ylim(0.9, 1.1)
+        ax_ratio.set_ylabel("Upper band / Mean", fontsize=14)
+        ax_ratio.set_xlabel(feature_label, fontsize=14)
+        ax_ratio.legend(fontsize=12)
+        ax_ratio.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+
+        # Save
+        plt.tight_layout()
+        outpath = os.path.join(outdir, f"gaussian_toy_marginal_feature_{i+1}.png")
+        plt.savefig(outpath)
+        plt.close()
 

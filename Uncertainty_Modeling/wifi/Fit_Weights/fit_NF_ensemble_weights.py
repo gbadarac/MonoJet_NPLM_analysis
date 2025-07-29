@@ -16,6 +16,7 @@ from torch.autograd.functional import hessian
 import mplhep as hep
 from torchmin import minimize 
 import traceback
+import gc  # Add this at the top with other imports
 
 
 # Use CMS style for plots
@@ -48,37 +49,46 @@ f_i_statedicts = torch.load(f_i_file, map_location=device) #list of state_dicts
 with open(os.path.join(args.trial_dir, "architecture_config.json")) as f:
     config = json.load(f) 
 
-x_data = torch.from_numpy(np.load(args.data_path)).float().to(device)
+x_data = torch.from_numpy(np.load(args.data_path)).float()
 
 # ------------------
 # Evaluate f_i(x) -> model_probs
 # ------------------
-model_probs_list = []  # list to collect probabilities from each model f_i
+model_probs_list = []
 
-with torch.no_grad():  # disables gradient tracking since we are just evaluating the model (to speed things up)
-    for state_dict in f_i_statedicts:
-        flow = make_flow(
-            num_layers=config["num_layers"],
-            hidden_features=config["hidden_features"],
-            num_bins=config["num_bins"],
-            num_blocks=config["num_blocks"],
-        )  # recreate the flow architecture for each model f_i
+for state_dict in f_i_statedicts:
+    flow = make_flow(
+        num_layers=config["num_layers"],
+        hidden_features=config["hidden_features"],
+        num_bins=config["num_bins"],
+        num_blocks=config["num_blocks"],
+    )
 
-        flow.load_state_dict(state_dict)  # load the corresponding params into each model
-        flow = flow.to(device)            # move model with weights to GPU safely
-        flow.eval()                       # Set to eval mode to avoid training-time behavior (e.g., dropout)
-        # You want all models to produce consistent, deterministic outputs for likelihood evaluation
+    flow.load_state_dict(state_dict)
+    flow = flow.to("cpu")  # keep model on CPU
 
-        logp = flow.log_prob(x_data)  # each model f_i returns log(f_i(x)) by construction
-        # this needs to be done because of how NFs are built, i.e. they return log(f_i(x))
-        # but we want to get f_i(x) to get the actual pdf of the model itself, so we take the exponential
-        # this is standard in NFs because calculating log(f_i(x)) is numerically stable and avoids underflow
+    flow.eval()
+    batch_size = 5000
+    flow_probs = []
 
-        model_probs_list.append(torch.exp(logp).cpu())  # store on CPU to save GPU memory
-        del flow
-        torch.cuda.empty_cache()  # free memory after each model
+    with torch.no_grad():
+        for i in range(0, len(x_data), batch_size):
+            x_batch = x_data[i:i+batch_size].to("cpu")  # keep data on CPU too
+            logp_batch = flow.log_prob(x_batch)
+            flow_probs.append(torch.exp(logp_batch))
 
-model_probs = torch.stack(model_probs_list, dim=1)  # torch.stack() to stack all M models along a new dim dim=1 creating a NxM matrix where N are the number of data points
+    flow_probs_tensor = torch.cat(flow_probs, dim=0).detach()
+
+    model_probs_list.append(flow_probs_tensor)
+
+    # Cleanup
+    del flow_probs
+    del flow
+    torch.cuda.empty_cache()
+    gc.collect()
+
+
+model_probs = torch.stack(model_probs_list, dim=1).to("cpu").requires_grad_()
 
 # model_probs is a (N,M) matrix of type (f_0, ... f_(M-1)) where N is the number of data points
 
@@ -89,16 +99,19 @@ def ensemble_model(weights, model_probs):
     return probs(weights, model_probs)
 
 def constraint_term(weights):
-    l=1.0
-    return l*(torch.sum(weights)-1.0)
+    return (torch.sum(weights) - 1.0)**2
 
 def nll(weights):
-    p = ensemble_model(weights, model_probs)
-    # If any ensemble density value is ≤ 0, return +inf to signal an invalid region.
-    # This prevents log(0) or log(negative) from causing NaNs and guides the optimizer away from this point.
+    weights = weights.to("cpu")
+    p = probs(weights, model_probs)  # (N,)
+
     if not torch.all(p > 0):
-        return torch.tensor(float("inf"), dtype=torch.float64)
-    return -torch.log(p + 1e-8).mean() + constraint_term(weights)
+        # Use same device and dtype
+        return torch.tensor(float("inf"), dtype=weights.dtype, device=weights.device)
+
+    loss = -torch.log(p + 1e-8).mean() + constraint_term(weights)
+    return loss  # Do NOT detach, do NOT call `.item()`, do NOT convert to float
+
 
 max_attempts = 50  # to avoid infinite loops in pathological cases
 attempt = 0
@@ -118,13 +131,22 @@ while attempt < max_attempts:
             continue
 
         print(f"Attempt {attempt+1}: Starting optimization (loss = {loss_val.item():.4f})")
- 
+
+        torch.cuda.empty_cache()
+        gc.collect()
+
         res = minimize(
             nll,
-            w_i_init_torch,
+            w_i_init_torch.to("cpu"),
             method='newton-exact',
             options={'disp': False, 'max_iter': 300},
         )
+
+        print("Calling minimize with:")
+        print(f"model_probs shape: {model_probs.shape}, device: {model_probs.device}")
+        print(f"weights shape: {w_i_init_torch.shape}, device: {w_i_init_torch.device}")
+        print(f"Allocated CUDA: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
+        print(f"Reserved CUDA: {torch.cuda.memory_reserved() / 1024**3:.2f} GB")
 
         if res.success:
             print(f"Optimization succeeded on attempt {attempt}")
@@ -201,10 +223,14 @@ cov_w_final = cov_w_final.detach().cpu().numpy()
 np.save(os.path.join(args.out_dir, "w_i_fitted.npy"), w_i_final.detach().cpu().numpy())
 np.save(os.path.join(args.out_dir, "cov_w.npy"), cov_w_final)
 
+torch.cuda.empty_cache()
+gc.collect()
+
 # ------------------
 # Plotting 
 # ------------------
 if args.plot.lower() == "true":
+    model_probs = model_probs.cpu()  # Before passing into plotting
     feature_names = ["Feature 1", "Feature 2"]
 
     # ------------------
@@ -235,5 +261,6 @@ if args.plot.lower() == "true":
         flow.eval()
         f_i_models.append(flow)
 
-    x_data = x_data.to(device)
+    # Reload x_data again after deletion and move to correct device
+    x_data = torch.from_numpy(np.load(args.data_path)).float().to(device)
     plot_ensemble_marginals(f_i_models, x_data, w_i_final, cov_w_final, feature_names, args.out_dir)
