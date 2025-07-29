@@ -99,7 +99,7 @@ def ensemble_model(weights, model_probs):
     return probs(weights, model_probs)
 
 def constraint_term(weights):
-    return (torch.sum(weights) - 1.0)**2
+    return (torch.sum(weights) - 1.0)
 
 def nll(weights):
     weights = weights.to("cpu")
@@ -257,7 +257,7 @@ if args.plot.lower() == "true":
             num_blocks=config["num_blocks"],
         )
         flow.load_state_dict(state_dict)
-        flow = flow.to(device)
+        flow = flow.to("cpu")
         flow.eval()
         f_i_models.append(flow)
 
