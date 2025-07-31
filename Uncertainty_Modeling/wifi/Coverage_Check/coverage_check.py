@@ -17,6 +17,7 @@ import mplhep as hep
 from torchmin import minimize
 import torch.nn.functional as F
 import traceback
+import gc 
 
 # Use CMS style for plots
 hep.style.use("CMS")
@@ -65,39 +66,49 @@ def generate_target_data(n_points, seed=None):
     return data
 
 data_np = generate_target_data(args.n_points, seed=args.toy_seed)
-x_data = torch.from_numpy(data_np).float().to(device)
+x_data = torch.from_numpy(data_np).float()
 
 # ------------------
-# Reconstruct flows f_i
+# Evaluate f_i(x) -> model_probs
 # ------------------
-f_i_models = []
+model_probs_list = []
+
 for state_dict in f_i_statedicts:
-#for state_dict, config in zip(f_i_statedicts, configs):
     flow = make_flow(
         num_layers=config["num_layers"],
         hidden_features=config["hidden_features"],
         num_bins=config["num_bins"],
         num_blocks=config["num_blocks"],
-    ).to(device) #recreate the flow architecture for each model f_i 
-    flow.load_state_dict(state_dict) #load the corresponding params into each model 
-    flow.eval() # Set to eval mode to avoid training-time behavior (e.g., dropout)
-    #You want all models to produce consistent, deterministic outputs for likelihood evaluation 
-    f_i_models.append(flow)
+    )
 
-# ------------------
-# Evaluate f_i(x) -> model_probs
-# ------------------
-with torch.no_grad(): #disables gradient tracking since we are just evaluating the model (to speed things up)
-    model_probs = torch.stack( #torch.stack() to stack all M models along a new dimension dim=1 cretaing a NxM matrix where N are the number of data points 
-        [torch.exp(flow.log_prob(x_data)) for flow in f_i_models], 
-        #each model f_i comes with a log probability, so for getting the actual pdf of the model itself one needs to take the exponential 
-        #this needs to be done because of how NFs are built, i.e. they return log(f_i(x)) but we want to get f_i(x) to get the probability, so we need to take the exponential 
-        #this is standsard in NFs because calculating log(f_i(x)) is numerically stable and avoids underflow 
-        dim=1)  # Shape: (N, M)
+    flow.load_state_dict(state_dict)
+    flow = flow.to("cpu")  # keep model on CPU
 
-# Move model_probs to CPU for memory safety
-# model robsa is a (N,M) matrix of type (f_0, ... f_(M-1)) where N is the number of data points 
-model_probs = model_probs.to("cpu")
+    flow.eval()
+    batch_size = 5000
+    flow_probs = []
+
+    with torch.no_grad():
+        for i in range(0, len(x_data), batch_size):
+            x_batch = x_data[i:i+batch_size].to("cpu")  # keep data on CPU too
+            logp_batch = flow.log_prob(x_batch)
+            flow_probs.append(torch.exp(logp_batch))
+
+    flow_probs_tensor = torch.cat(flow_probs, dim=0).detach()
+
+    model_probs_list.append(flow_probs_tensor)
+
+    # Cleanup
+    del flow_probs
+    del flow
+    torch.cuda.empty_cache()
+    gc.collect()
+
+
+model_probs = torch.stack(model_probs_list, dim=1).to("cpu").requires_grad_()
+
+# model_probs is a (N,M) matrix of type (f_0, ... f_(M-1)) where N is the number of data points
+
 
 # ------------------
 # Optimize weights via logits using MLE
@@ -108,61 +119,79 @@ def ensemble_model(weights, model_probs):
     return probs(weights, model_probs)
 
 def constraint_term(weights):
-    l=1.0
-    return l*(torch.sum(weights)-1.0)
+    l=100.0
+    return l*(torch.sum(weights)-1.0)**2
 
 def nll(weights):
-    p = ensemble_model(weights, model_probs)
-    # If any ensemble density value is ≤ 0, return +inf to signal an invalid region.
-    # This prevents log(0) or log(negative) from causing NaNs and guides the optimizer away from this point.
+    weights = weights.to("cpu")
+    p = probs(weights, model_probs)  # (N,)
+
     if not torch.all(p > 0):
-        return torch.tensor(float("inf"), dtype=torch.float64)
-    return -torch.log(p + 1e-8).mean() + constraint_term(weights)
+        # Use same device and dtype
+        return torch.tensor(float("inf"), dtype=weights.dtype, device=weights.device)
+
+    loss = -torch.log(p + 1e-8).mean() + constraint_term(weights)
+    return loss  # Do NOT detach, do NOT call `.item()`, do NOT convert to float
+
 
 max_attempts = 50  # to avoid infinite loops in pathological cases
 attempt = 0
 
+#put it specifically from the fitting part 
+w_i_init_torch = torch.tensor([ 2.6660e-02,  4.9029e-03,  5.4670e-05,  1.9149e-02,  6.4070e-02,
+    9.3286e-03,  3.6494e-02,  8.7958e-02,  7.6974e-02, -1.5255e-02,
+    -3.9479e-02, -1.5420e-02, -1.5285e-02,  8.7044e-02,  5.7290e-02,
+    1.5961e-02, -3.6252e-02, -4.3677e-02, -1.4823e-04, -3.4308e-02,
+    -2.3378e-02,  3.6204e-02,  3.1594e-02,  8.5678e-03,  1.2468e-02,
+    2.5487e-02,  1.9723e-02,  2.5634e-02,  6.8171e-02, -9.8194e-03,
+    8.0849e-03,  2.1400e-02,  3.2348e-02,  6.7841e-02,  4.6322e-02,
+    4.8491e-02, -3.6525e-02, -1.7060e-02,  4.7686e-02,  1.4837e-02,
+    3.4592e-02, -2.2595e-02, -6.4887e-02,  1.0992e-01, -3.1935e-03,
+    -7.6124e-02, -2.0110e-02,  4.2485e-02,  3.6925e-02, -1.5192e-02,
+    4.6197e-02,  4.1148e-02, -9.9237e-03,  4.3357e-02,  3.0554e-02,
+    -1.3172e-02, -2.7091e-02,  6.0365e-02,  2.3911e-02,  6.8697e-02],
+    dtype=torch.float64, requires_grad=True)  
+
 while attempt < max_attempts:
-    #put it specifically from the fitting part 
-    w_i_init_torch = torch.tensor([ 2.6660e-02,  4.9029e-03,  5.4670e-05,  1.9149e-02,  6.4070e-02,
-         9.3286e-03,  3.6494e-02,  8.7958e-02,  7.6974e-02, -1.5255e-02,
-        -3.9479e-02, -1.5420e-02, -1.5285e-02,  8.7044e-02,  5.7290e-02,
-         1.5961e-02, -3.6252e-02, -4.3677e-02, -1.4823e-04, -3.4308e-02,
-        -2.3378e-02,  3.6204e-02,  3.1594e-02,  8.5678e-03,  1.2468e-02,
-         2.5487e-02,  1.9723e-02,  2.5634e-02,  6.8171e-02, -9.8194e-03,
-         8.0849e-03,  2.1400e-02,  3.2348e-02,  6.7841e-02,  4.6322e-02,
-         4.8491e-02, -3.6525e-02, -1.7060e-02,  4.7686e-02,  1.4837e-02,
-         3.4592e-02, -2.2595e-02, -6.4887e-02,  1.0992e-01, -3.1935e-03,
-        -7.6124e-02, -2.0110e-02,  4.2485e-02,  3.6925e-02, -1.5192e-02,
-         4.6197e-02,  4.1148e-02, -9.9237e-03,  4.3357e-02,  3.0554e-02,
-        -1.3172e-02, -2.7091e-02,  6.0365e-02,  2.3911e-02,  6.8697e-02],
-       dtype=torch.float64, requires_grad=True)  
-     
     try:
-        noise = 1e-3 * torch.randn_like(w_i_init_torch)
-        w_i_init_torch = (w_i_init_torch + noise).detach().clone().requires_grad_()
+        noise = 1e-3 * torch.abs(torch.randn_like(w_i_init_torch))
+        w_i_init_torch = (w_i_init_torch * (1.0 + noise)).detach().clone().requires_grad_()
+
+        # Pre-check: make sure resulting ensemble density is valid
+        with torch.no_grad():
+            p = probs(w_i_init_torch, model_probs)
+            if not torch.all(p > 0):
+                print(f"Attempt {attempt+1} skipped: f(x) contains non-positive values after perturbation")
+                attempt += 1 
+                continue
+
         print('w_i_init_torch', w_i_init_torch)
 
         loss_val = nll(w_i_init_torch)
         if not torch.isfinite(loss_val):
             print(f"Attempt {attempt+1} skipped due to non-finite loss: {loss_val.item()}")
-            attempt += 1
             continue
+
+        print(f"Attempt {attempt+1}: Starting optimization (loss = {loss_val.item():.4f})")
+
+        torch.cuda.empty_cache()
+        gc.collect()
         
         res = minimize(
             nll,                         # your function
-            w_i_init_torch,              # initial guess
+            w_i_init_torch.to("cpu"),    # initial guess
             method='newton-exact',       # method
             options={'disp': False, 'max_iter': 300},     # any options
         )
         
         if res.success:
+            print(f"Optimization succeeded on attempt {attempt}")
             break
 
     except Exception as e:
         print(f"Attempt {attempt+1} failed with exception: {e}")
         traceback.print_exc()
-    attempt += 1
+        attempt += 1
 
 if res is None or not res.success:
     raise RuntimeError("Optimization failed after multiple attempts.")

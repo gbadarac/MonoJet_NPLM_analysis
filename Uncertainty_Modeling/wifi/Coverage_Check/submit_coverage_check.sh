@@ -1,14 +1,16 @@
 #!/bin/bash
 #SBATCH --job-name=coverage_array
-# #SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/coverage_outputs/logs/coverage_array_%A_%a.out
-# #SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/coverage_outputs/logs/coverage_array_%A_%a.err
-#SBATCH --output=/dev/null
-#SBATCH --error=/dev/null
-#SBATCH --array=0-299     # ← Launch 300 jobs
+#SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/coverage_outputs/logs/coverage_array_%A_%a.out
+#SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/coverage_outputs/logs/coverage_array_%A_%a.err
+# #SBATCH --output=/dev/null
+# #SBATCH --error=/dev/null
+#SBATCH --array=0-0     # ← Launch 300 jobs
 #SBATCH --time=02:00:00
-#SBATCH --mem=128G
+#SBATCH --mem=32G
 #SBATCH --ntasks=1
-#SBATCH --partition=standard
+#SBATCH --gres=gpu:1
+#SBATCH --account=gpu_gres
+#SBATCH --partition=qgpu,gpu
 #SBATCH --nodes=1
 
 # ===============================
@@ -39,6 +41,7 @@ cp "$TRIAL_DIR"/f_i.pth "$OUT_DIR"/
 # -----------------------
 export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi:$PYTHONPATH
 export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles:$PYTHONPATH
+export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:32
 
 # Call script
 python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/coverage_check.py \
