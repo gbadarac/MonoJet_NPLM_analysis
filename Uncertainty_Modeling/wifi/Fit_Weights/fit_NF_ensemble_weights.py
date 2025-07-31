@@ -99,7 +99,8 @@ def ensemble_model(weights, model_probs):
     return probs(weights, model_probs)
 
 def constraint_term(weights):
-    return (torch.sum(weights) - 1.0)
+    l =100.00
+    return l * (torch.sum(weights) - 1.0)**2 
 
 def nll(weights):
     weights = weights.to("cpu")

@@ -3,11 +3,12 @@
 #SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/logs/fit_weights_%j.out
 #SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/logs/fit_weights_%j.err
 #SBATCH --time=01:00:00
-#SBATCH --mem=32G
+#SBATCH --mem=16G
 #SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
 #SBATCH --gres=gpu:1
 #SBATCH --account=gpu_gres
-#SBATCH --partition=gpu
+#SBATCH --partition=qgpu,gpu
 #SBATCH --nodes=1
 
 # Activate environment
