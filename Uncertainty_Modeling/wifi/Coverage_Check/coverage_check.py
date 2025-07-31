@@ -154,15 +154,23 @@ w_i_init_torch = torch.tensor([ 2.6660e-02,  4.9029e-03,  5.4670e-05,  1.9149e-0
 
 while attempt < max_attempts:
     try:
-        noise = 1e-3 * torch.abs(torch.randn_like(w_i_init_torch))
-        w_i_init_torch = (w_i_init_torch * (1.0 + noise)).detach().clone().requires_grad_()
+        # perturb safely
+        noise = 1e-3 * torch.randn_like(w_i_init_torch)
+        w_perturbed = w_i_init_torch + noise
 
-        # Pre-check: make sure resulting ensemble density is valid
+        # ensure positive + normalized
+        w_perturbed = torch.clamp(w_perturbed, min=1e-6)
+        w_perturbed /= w_perturbed.sum()
+
+        # freeze for autograd
+        w_i_init_torch = w_perturbed.detach().clone().requires_grad_()
+
         with torch.no_grad():
             p = probs(w_i_init_torch, model_probs)
-            if not torch.all(p > 0):
-                print(f"Attempt {attempt+1} skipped: f(x) contains non-positive values after perturbation")
-                attempt += 1 
+            eps = 1e-12
+            if not torch.all(p >= eps):
+                print(f"Attempt {attempt+1} skipped: f(x) contains near-zero or negative values")
+                attempt += 1
                 continue
 
         print('w_i_init_torch', w_i_init_torch)
