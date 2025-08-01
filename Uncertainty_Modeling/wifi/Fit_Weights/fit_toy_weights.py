@@ -39,8 +39,7 @@ os.makedirs(args.trial_dir, exist_ok=True)
 f_i_file = os.path.join(args.trial_dir, "f_i.npy")
 
 model_probs_np = np.load(f_i_file)  # shape (N, M)
-model_probs = torch.tensor(model_probs_np, dtype=torch.float64)  # no .requires_grad!
-
+model_probs = torch.tensor(model_probs_np, dtype=torch.float64, device=device)
 # Load data (x_eval) – only needed for plotting
 x_data = torch.from_numpy(np.load(args.data_path)).float().to("cpu")
 
@@ -48,8 +47,8 @@ x_data = torch.from_numpy(np.load(args.data_path)).float().to("cpu")
 # Optimize weights via logits using MLE
 # ------------------
 def constraint_term(weights):
-    l=1.0
-    return l*(torch.sum(weights)-1.0)
+    l =1e5
+    return l * (torch.sum(weights) - 1.0)**2 
 
 def probs(weights, model_probs):
     # weights: (M,), model_probs: (N, M)
@@ -58,9 +57,10 @@ def probs(weights, model_probs):
 def nll(weights):
     p = probs(weights, model_probs)
     if not torch.all(p > 0):
-        return 1e6 + torch.sum(weights * 0)  # keeps it differentiable
-    return -torch.log(p + 1e-8).mean() + constraint_term(weights)
-
+        # Use same device and dtype
+        return weights.sum() * float("inf")
+    loss = -torch.log(p + 1e-8).mean() + constraint_term(weights)
+    return loss  # Do NOT detach, do NOT call `.item()`, do NOT convert to float
 
 max_attempts = 50  # to avoid infinite loops in pathological cases
 attempt = 0
@@ -75,6 +75,8 @@ while attempt < max_attempts:
 
     try:
         loss_val = nll(w_i_init_torch)
+        print("loss grad_fn:", loss_val.grad_fn)
+
         if not torch.isfinite(loss_val):
             print(f"Attempt {attempt+1} skipped due to non-finite loss: {loss_val.item()}")
             continue
@@ -91,7 +93,6 @@ while attempt < max_attempts:
         if res.success:
             print(f"Optimization succeeded on attempt {attempt}")
             break
-
         attempt += 1
         
     except Exception as e:

@@ -2,13 +2,10 @@
 #SBATCH --job-name=fit_weights
 #SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_gaussian_toy/logs/fit_weights_%j.out
 #SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_gaussian_toy/logs/fit_weights_%j.err
-#SBATCH --time=01:00:00
-#SBATCH --mem=32G
-#SBATCH --ntasks=1
-#SBATCH --gres=gpu:1
-#SBATCH --account=gpu_gres
-#SBATCH --partition=gpu
-#SBATCH --nodes=1
+#SBATCH --partition=short
+#SBATCH --mem=16G
+#SBATCH --cpus-per-task=4
+#SBATCH --time=00:30:00
 
 # Activate environment
 source /work/gbadarac/miniforge3/bin/activate
@@ -17,7 +14,7 @@ conda activate nf_env
 # -----------------------
 # Parameters
 # -----------------------
-trial_dir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Gaussian_Toy/saved_generated_gaussian_toys
+trial_dir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Gaussian_Toy/saved_generated_gaussian_toys/N_60_fluct300
 data_path=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/100k_target_training_set.npy
 plot=True
 

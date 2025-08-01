@@ -21,6 +21,7 @@
 *.png
 # Allow tracking of marginal distribution plots only
 !Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/**/ensemble_marginal_feature_*.png
+!Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_gaussian_toy/**/ensemble_marginal_feature_*.png
 # Allow tracking of NPLM comparison/calibration plots
 !NPLM/NPLM_NF_ensemble/comparison/**/plots/*.png
 !NPLM/NPLM_NF_ensemble/calibration/**/plots/*.png
@@ -32,6 +33,8 @@
 # Allow tracking of fitted weights and covariances
 !Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/**/w_i_fitted.npy
 !Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/**/cov_w.npy
+!Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_gaussian_toy/**/w_i_fitted.npy
+!Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_gaussian_toy/**/cov_w.npy
 # Allow tracking of fixed target data
 !Train_Ensembles/Generate_Data/saved_generated_target_data/100k_target_training_set.npy
 !Train_Ensembles/Generate_Data/saved_generated_target_data/10k_target_training_set.npy

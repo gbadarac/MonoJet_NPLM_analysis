@@ -198,11 +198,9 @@ def plot_ensemble_marginals(f_i_models, x_data, weights, cov_w, feature_names, o
         plt.savefig(outpath)
         plt.close()
 
-def toy_pred(weights, model_probs):
-    weights = weights.to(model_probs.device)
-    return (model_probs * weights).sum(dim=1).cpu().numpy()
 
 def plot_gaussian_toy_marginals(model_probs, x_data, weights, cov_w, feature_names, outdir):
+
     os.makedirs(outdir, exist_ok=True)
     x = x_data.cpu().numpy()
     model_probs_np = model_probs.numpy()
@@ -211,13 +209,16 @@ def plot_gaussian_toy_marginals(model_probs, x_data, weights, cov_w, feature_nam
     N, M = model_probs_np.shape
     D = x.shape[1]
 
+    print(f"[DEBUG] N = {N}, M = {M}, D = {D}")
+    print(f"[DEBUG] cov_w diag min/max = {np.min(np.diag(cov_w)):.2e}, {np.max(np.diag(cov_w)):.2e}")
+
     for i in range(D):
         fig, (ax_main, ax_ratio) = plt.subplots(2, 1, figsize=(8, 10), gridspec_kw={'height_ratios': [3, 1]})
         feature = x[:, i]
         feature_label = feature_names[i]
         bins = 40
 
-        # Define bins
+        # Define binning
         margin = 0.05 * (np.max(feature) - np.min(feature))
         low, high = np.min(feature) - margin, np.max(feature) + margin
         bin_edges = np.linspace(low, high, bins + 1)
@@ -230,37 +231,63 @@ def plot_gaussian_toy_marginals(model_probs, x_data, weights, cov_w, feature_nam
         hist_target = hist_target_counts / (N_target * bin_widths)
         err_target = np.sqrt(hist_target_counts) / (N_target * bin_widths)
 
+        print(f"[DEBUG][Feature {i+1}] Target histogram integral ≈ {np.sum(hist_target * bin_widths):.4f}")
+
+        # ------------------------------------------
         # Bin model_probs for each model
+        # ------------------------------------------
         f_binned_models = []
+        '''
         for m in range(M):
-            f_binned, _ = np.histogram(feature, bins=bin_edges, weights=model_probs_np[:, m])
-            f_binned = f_binned / (np.sum(model_probs_np[:, m]) * bin_widths)
-            f_binned_models.append(f_binned)
+            # Use the current model's weights for each event
+            weighted_hist, _ = np.histogram(feature, bins=bin_edges, weights=model_probs_np[:, m])
+            weighted_hist /= bin_widths  # Convert to density
+            f_binned_models.append(weighted_hist)
+        '''
+        for m in range(M):
+            digitized = np.digitize(feature, bin_edges) - 1  # bin index for each event
+            valid = (digitized >= 0) & (digitized < bins)
+
+            binned = np.zeros(bins)
+            counts = np.zeros(bins)
+            np.add.at(binned, digitized[valid], model_probs_np[valid, m])
+            np.add.at(counts, digitized[valid], 1)
+
+            counts[counts == 0] = 1  # to avoid division by zero
+            binned /= counts         # average predicted density per bin
+
+            f_binned_models.append(binned)
+
         f_binned_models = np.array(f_binned_models).T  # shape: (bins, M)
 
-        # Convert to torch tensors for ensemble prediction and uncertainty
-        f_binned_models_torch = torch.tensor(f_binned_models.T, dtype=torch.float64)  # shape (M, bins)
+
+        print(f"[DEBUG][Feature {i+1}] f_binned_models shape = {f_binned_models.shape}")
+
+        # Convert to torch for ensemble ops
+        f_binned_models_torch = torch.tensor(f_binned_models.T, dtype=torch.float64)  # (M, bins)
         weights_torch = torch.tensor(weights_np, dtype=torch.float64)
         cov_w_torch = torch.tensor(cov_w, dtype=torch.float64)
 
-        # Ensemble prediction before normalization
-        f_binned = toy_pred(weights_torch, f_binned_models_torch.T)  # shape (bins,)
-        f_err = np.sqrt(np.einsum('ij,jk,ik->i', f_binned_models, cov_w, f_binned_models))
+        # Evaluate ensemble mean and uncertainty
+        f_binned = ensemble_pred(weights_torch, f_binned_models_torch.T)
+        f_err = ensemble_unc(cov_w_torch, f_binned_models_torch.T)
 
-        # Now normalize both f_binned and f_err together
-        N_norm = np.sum(f_binned * bin_widths)
-        f_binned /= N_norm
-        f_err /= N_norm
+        area = np.sum(f_binned * bin_widths)
+        f_binned /= area
+        f_err /= area
 
-        # Uncertainty bands
+
+        # Sanity check on area
+        print(f"[Feature {i+1}] ∫f(x) dx =", np.sum(f_binned * bin_widths))
+
+        # Plot bands
         band_1s_l = f_binned - f_err
         band_1s_h = f_binned + f_err
         band_2s_l = f_binned - 2 * f_err
         band_2s_h = f_binned + 2 * f_err
-
         valid_bins = hist_target > 0
 
-        # --- Plot main density ---
+        # Main plot
         ax_main.bar(bin_centers, hist_target, width=bin_widths, alpha=0.2, label="Target", color='green', edgecolor='black')
         ax_main.errorbar(bin_centers, hist_target, yerr=err_target, fmt='None', color='green', alpha=0.7)
         ax_main.plot(bin_centers[valid_bins], f_binned[valid_bins], '-', color='red', linewidth=1.2, label=r"$f(x) = \sum w_i f_i(x)$")
@@ -270,7 +297,7 @@ def plot_gaussian_toy_marginals(model_probs, x_data, weights, cov_w, feature_nam
         ax_main.set_ylabel("Density", fontsize=16)
         ax_main.legend(fontsize=14)
 
-        # --- Plot uncertainty ratios ---
+        # Ratio plot
         f_binned_safe = np.where(f_binned > 0, f_binned, np.nan)
         ratio_1s_h = band_1s_h / f_binned_safe
         ratio_2s_h = band_2s_h / f_binned_safe
@@ -294,4 +321,3 @@ def plot_gaussian_toy_marginals(model_probs, x_data, weights, cov_w, feature_nam
         outpath = os.path.join(outdir, f"gaussian_toy_marginal_feature_{i+1}.png")
         plt.savefig(outpath)
         plt.close()
-
