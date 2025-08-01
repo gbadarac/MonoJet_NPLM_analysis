@@ -5,7 +5,10 @@
 #SBATCH --time=12:00:00
 #SBATCH --mem=24G
 #SBATCH --ntasks=1
-#SBATCH --partition=standard
+#SBATCH --cpus-per-task=1
+#SBATCH --gres=gpu:1
+#SBATCH --account=gpu_gres
+#SBATCH --partition=gpu 
 #SBATCH --nodes=1
 
 # Activate environment
