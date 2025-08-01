@@ -8,7 +8,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --gres=gpu:1
 #SBATCH --account=gpu_gres
-#SBATCH --partition=qgpu,gpu
+#SBATCH --partition=qgpu
 #SBATCH --nodes=1
 
 # Activate environment
@@ -27,7 +27,7 @@ plot=True
 # Derive output path
 # -----------------------
 trial_name=$(basename "$trial_dir")  # e.g., "trial_000" #extracts the folder name from the full path 
-out_dir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/${trial_name}_trial
+out_dir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/${trial_name}_l_1000
 mkdir -p "$out_dir" #creates a new directory with the correspondent trial name
 
 # Copy trial files to output dir so script runs in isolation

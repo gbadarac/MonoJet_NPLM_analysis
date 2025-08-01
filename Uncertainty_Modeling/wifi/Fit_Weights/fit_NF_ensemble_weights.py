@@ -99,7 +99,7 @@ def ensemble_model(weights, model_probs):
     return probs(weights, model_probs)
 
 def constraint_term(weights):
-    l =100.00
+    l =1000.00
     return l * (torch.sum(weights) - 1.0)**2 
 
 def nll(weights):
