@@ -119,7 +119,7 @@ def ensemble_model(weights, model_probs):
     return probs(weights, model_probs)
 
 def constraint_term(weights):
-    l=100.0
+    l=1e5
     return l*(torch.sum(weights)-1.0)**2
 
 def nll(weights):
@@ -137,44 +137,15 @@ def nll(weights):
 max_attempts = 50  # to avoid infinite loops in pathological cases
 attempt = 0
 
-#put it specifically from the fitting part 
-w_i_init_torch = torch.tensor([ 2.6660e-02,  4.9029e-03,  5.4670e-05,  1.9149e-02,  6.4070e-02,
-    9.3286e-03,  3.6494e-02,  8.7958e-02,  7.6974e-02, -1.5255e-02,
-    -3.9479e-02, -1.5420e-02, -1.5285e-02,  8.7044e-02,  5.7290e-02,
-    1.5961e-02, -3.6252e-02, -4.3677e-02, -1.4823e-04, -3.4308e-02,
-    -2.3378e-02,  3.6204e-02,  3.1594e-02,  8.5678e-03,  1.2468e-02,
-    2.5487e-02,  1.9723e-02,  2.5634e-02,  6.8171e-02, -9.8194e-03,
-    8.0849e-03,  2.1400e-02,  3.2348e-02,  6.7841e-02,  4.6322e-02,
-    4.8491e-02, -3.6525e-02, -1.7060e-02,  4.7686e-02,  1.4837e-02,
-    3.4592e-02, -2.2595e-02, -6.4887e-02,  1.0992e-01, -3.1935e-03,
-    -7.6124e-02, -2.0110e-02,  4.2485e-02,  3.6925e-02, -1.5192e-02,
-    4.6197e-02,  4.1148e-02, -9.9237e-03,  4.3357e-02,  3.0554e-02,
-    -1.3172e-02, -2.7091e-02,  6.0365e-02,  2.3911e-02,  6.8697e-02],
-    dtype=torch.float64, requires_grad=True)  
+w_i_initial = np.ones(len(f_i_statedicts)) / len(f_i_statedicts)
 
 while attempt < max_attempts:
+    w_i_init_torch = torch.tensor(w_i_initial, dtype=torch.float64, requires_grad=True)
+    noise = 1e-2 * torch.randn_like(w_i_init_torch)
+    w_i_init_torch = (w_i_init_torch + noise).detach().clone().requires_grad_()
+    print('w_i_init_torch:', w_i_init_torch)
+
     try:
-        # perturb safely
-        noise = 1e-3 * torch.randn_like(w_i_init_torch)
-        w_perturbed = w_i_init_torch + noise
-
-        # ensure positive + normalized
-        w_perturbed = torch.clamp(w_perturbed, min=1e-6)
-        w_perturbed /= w_perturbed.sum()
-
-        # freeze for autograd
-        w_i_init_torch = w_perturbed.detach().clone().requires_grad_()
-
-        with torch.no_grad():
-            p = probs(w_i_init_torch, model_probs)
-            eps = 1e-12
-            if not torch.all(p >= eps):
-                print(f"Attempt {attempt+1} skipped: f(x) contains near-zero or negative values")
-                attempt += 1
-                continue
-
-        print('w_i_init_torch', w_i_init_torch)
-
         loss_val = nll(w_i_init_torch)
         if not torch.isfinite(loss_val):
             print(f"Attempt {attempt+1} skipped due to non-finite loss: {loss_val.item()}")
@@ -184,18 +155,26 @@ while attempt < max_attempts:
 
         torch.cuda.empty_cache()
         gc.collect()
-        
+
         res = minimize(
-            nll,                         # your function
-            w_i_init_torch.to("cpu"),    # initial guess
-            method='newton-exact',       # method
-            options={'disp': False, 'max_iter': 300},     # any options
+            nll,
+            w_i_init_torch.to("cpu"),
+            method='newton-exact',
+            options={'disp': False, 'max_iter': 300},
         )
-        
+
+        print("Calling minimize with:")
+        print(f"model_probs shape: {model_probs.shape}, device: {model_probs.device}")
+        print(f"weights shape: {w_i_init_torch.shape}, device: {w_i_init_torch.device}")
+        print(f"Allocated CUDA: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
+        print(f"Reserved CUDA: {torch.cuda.memory_reserved() / 1024**3:.2f} GB")
+
         if res.success:
             print(f"Optimization succeeded on attempt {attempt}")
             break
 
+        attempt += 1
+        
     except Exception as e:
         print(f"Attempt {attempt+1} failed with exception: {e}")
         traceback.print_exc()
