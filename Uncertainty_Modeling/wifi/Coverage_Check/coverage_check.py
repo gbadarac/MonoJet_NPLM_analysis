@@ -85,7 +85,7 @@ for state_dict in f_i_statedicts:
     flow = flow.to("cpu")  # keep model on CPU
 
     flow.eval()
-    batch_size = 5000
+    batch_size = 5000 #3200
     flow_probs = []
 
     with torch.no_grad():

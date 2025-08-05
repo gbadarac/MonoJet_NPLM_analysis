@@ -110,7 +110,7 @@ def hit_or_miss_2d(x1_min, x1_max, x2_min, x2_max, f_i_models, w_i_fitted, N_eve
     accepted = []
     total_attempts = 0
     batch_size = int(0.5 * N_events)  # Oversample in batches for efficiency
-    total_hits =0
+    total_hits = 0
     while total_hits < N_events and total_attempts < max_attempts:
         # Sample uniformly in 2D space
         x1_samples = torch.empty(batch_size, device=device).uniform_(x1_min, x1_max)
