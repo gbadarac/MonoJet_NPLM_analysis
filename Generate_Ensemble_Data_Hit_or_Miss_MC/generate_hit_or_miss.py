@@ -177,5 +177,5 @@ def hit_or_miss_2d(x1_min, x1_max, x2_min, x2_max, f_i_models, w_i_fitted, N_eve
 tb = 2.8
 
 samples = hit_or_miss_2d(-tb, tb, -tb, tb, f_i_models, w_i_fitted, N_events=5000) 
-np.save(os.path.join(out_dir, "ensemble_generated_samples_4_16_128_15_seed_%i.npy"%(seed)), samples.cpu().numpy())
+np.save(os.path.join(out_dir, "ensemble_generated_samples_4_16_256_15_seed_%i.npy"%(seed)), samples.cpu().numpy())
 print("Saved generated samples.")
