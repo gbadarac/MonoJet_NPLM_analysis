@@ -32,8 +32,8 @@ N_generated = args.generated
 calibration = args.calibration.lower() == "true"
 
 # Load real reference and data
-reference_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Generate_Data/saved_generated_target_data/500k_target_training_set.npy"
-generated_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/concatenated_ensemble_generated_samples_4_16_128_15.npy"
+reference_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/500k_target_training_set.npy"
+generated_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/concatenated_ensemble_generated_samples_4_16_256_15.npy"
 #generated_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/generated_samples/generated_samples_1_models_4_16_128_15.npy"
 
 reference_data = np.load(reference_path).astype('float32')
@@ -153,7 +153,7 @@ for i in range(Ntoys):
 
         return f_binned_stacked, f_err_stacked, bin_centers_stacked
     
-    marginals_dir='/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Fit_Weights/results_no_norm_fit_weights_NF/N_100000_seeds_60_bootstraps_1_4_16_128_15'
+    marginals_dir='/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_seeds_60_4_16_256_15_l_1e5'
     f_bins_centroids, ferr_bins_centroids, bins_centroids = load_stacked_marginals(marginals_dir, num_features=2)
 
     # Run the toy experiment

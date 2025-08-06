@@ -144,6 +144,15 @@ def plot_ensemble_marginals(f_i_models, x_data, weights, cov_w, feature_names, o
         f_err /= N
 
         # ------------------
+        # Save marginals as npz
+        # ------------------
+        out_marginal = os.path.join(outdir, f"marginal_feature_{i+1}_data.npz")
+        np.savez_compressed(out_marginal, 
+                            f_binned=f_binned,
+                            f_err=f_err,
+                            bin_centers=bin_centers)
+
+        # ------------------
         # 1 and 2 sigma bands calculation 
         # ------------------
 
