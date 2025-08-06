@@ -11,13 +11,11 @@
 #SBATCH --partition=gpu
 #SBATCH --nodes=1
 
-
 # Activate conda environment
 source /work/gbadarac/miniforge3/bin/activate
 conda activate nf_env
 
 # Create log dir if it doesn't exist
 mkdir -p /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/logs
-
 
 python generate_hit_or_miss.py --seed $SLURM_ARRAY_TASK_ID
