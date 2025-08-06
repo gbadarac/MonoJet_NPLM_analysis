@@ -93,6 +93,8 @@ for state_dict in f_i_statedicts:
             x_batch = x_data[i:i+batch_size].to("cpu")  # keep data on CPU too
             logp_batch = flow.log_prob(x_batch)
             flow_probs.append(torch.exp(logp_batch))
+            print(f"Allocated CUDA: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
+            print(f"Reserved CUDA: {torch.cuda.memory_reserved() / 1024**3:.2f} GB")
 
     flow_probs_tensor = torch.cat(flow_probs, dim=0).detach()
 
@@ -108,7 +110,6 @@ for state_dict in f_i_statedicts:
 model_probs = torch.stack(model_probs_list, dim=1).to("cpu").requires_grad_()
 
 # model_probs is a (N,M) matrix of type (f_0, ... f_(M-1)) where N is the number of data points
-
 
 # ------------------
 # Optimize weights via logits using MLE
