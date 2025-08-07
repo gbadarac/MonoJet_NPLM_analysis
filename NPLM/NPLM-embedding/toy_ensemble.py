@@ -153,7 +153,7 @@ for i in range(Ntoys):
 
         return f_binned_stacked, f_err_stacked, bin_centers_stacked
     
-    marginals_dir='/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_seeds_60_4_16_256_15_l_1e5'
+    marginals_dir='/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_seeds_60_4_16_256_15_l_1e5_trial'
     f_bins_centroids, ferr_bins_centroids, bins_centroids = load_stacked_marginals(marginals_dir, num_features=2)
 
     # Run the toy experiment
