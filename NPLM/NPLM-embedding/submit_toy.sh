@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH -c 1                 # Number of cores (-c)
 #SBATCH --gpus 1
-#SBATCH -t 0-01:00           # Runtime in D-HH:MM, minimum of 10 minutes
+#SBATCH -t 0-02:00           # Runtime in D-HH:MM, minimum of 10 minutes
 #SBATCH -p gpu               # Partition to submit to     
 #SBATCH --account=gpu_gres   # Account to access GPU resources
 #SBATCH --mem=20000          # Memory pool for all cores (see also --mem-per-cpu)
-#SBATCH -o /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_NF_gaussians_outputs/logs/%x-%j.out  # Keep logs in 'logs'
-#SBATCH -e /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_NF_gaussians_outputs/logs/%x-%j.err  # Keep error logs in 'logs'
+#SBATCH -o /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_NF_one_model/logs/%x-%j.out  # Keep logs in 'logs'
+#SBATCH -e /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_NF_one_model/logs/%x-%j.err  # Keep error logs in 'logs'
 
 # Set the LD_LIBRARY_PATH to include the directory with libcusolver.so.11
 export LD_LIBRARY_PATH=/work/gbadarac/miniforge3/envs/nplm_env/lib:$LD_LIBRARY_PATH
@@ -22,13 +22,14 @@ echo "CUDA version detected: $CUDA_PATH"
 export CUDA_HOME=/usr/local/cuda-$CUDA_PATH  # Dynamically set CUDA path based on detected version
 export PATH=$CUDA_HOME/bin:$PATH
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles:$PYTHONPATH
 
 # Define the output directory for results
-CALIBRATION=False # Change this if needed
+CALIBRATION=True # Change this if needed
 
 # Run the Python script and capture its output
 TEMP_LOG=/tmp/py_output_$SLURM_JOB_ID.log
-python -u /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM-embedding/toy.py -m best_model -g 2000 -r 10000 -t 100 -c $CALIBRATION -M 500 | tee $TEMP_LOG
+python -u /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM-embedding/toy.py -m model -g 20000 -r 100000 -t 100 -c $CALIBRATION -M 1400 | tee $TEMP_LOG
 PYTHON_OUTPUT=$(cat $TEMP_LOG)
 
 # Extract the SLURM_OUTPUT_DIR from the Python script output

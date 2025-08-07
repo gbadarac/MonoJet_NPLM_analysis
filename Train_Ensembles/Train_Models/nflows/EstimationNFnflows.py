@@ -12,7 +12,7 @@ from nflows.transforms.autoregressive import MaskedPiecewiseRationalQuadraticAut
 from nflows.transforms.permutations import ReversePermutation
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import torch.optim as optim
-from utils_flows import make_flow
+
 import gc
 
 # ------------------

@@ -1,6 +1,6 @@
 import glob, h5py, math, time, os, json, argparse, datetime
 import numpy as np
-from FLKutils import *
+from FLKutils_model import *
 from SampleUtils import *
 from sklearn.preprocessing import StandardScaler
 import scipy.stats
@@ -15,10 +15,14 @@ import matplotlib
 matplotlib.use('Agg')  # Set backend before importing pyplot
 import matplotlib.pyplot as plt
 import sys
+from utils_flows import make_flow
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Using device:", device, flush=True)
 
 # give a name to each model and provide a path to where the model's prediction for bkg and signal classes are stored
 folders = {
-    'best_model': '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Normalizing_Flows/EstimationNF_gaussians_outputs/job_4_4_64_8_best_model_580200',
+    'model': '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/N_100000_seeds_60_4_16_256_15/model_001',
 }
 
 parser = argparse.ArgumentParser()
@@ -54,9 +58,9 @@ std_feat2 = 0.4
 bkg_feat2 = np.random.normal(loc=mean_feat2, scale=std_feat2, size=n_bkg)
 
 num_features=2 #dimensionality of the data being transformed.
-hidden_features=64
-num_bins=8
-num_blocks=4
+hidden_features=256
+num_bins=15
+num_blocks=16
 num_layers=4
 
 # In this case: b-tagging score and background energy
@@ -64,16 +68,9 @@ num_layers=4
 # Note: the bkg distribution is the posterior/target distribution which the Normalizing Flow should learn to approximate.
 
 # Combining energy and b-tagging score for both bkg and signal 
-bkg_coord = np.column_stack((bkg_feat1, bkg_feat2))  # Combine btag and bkg for training
-#Initialize the scaler 
-scaler = StandardScaler()
-# Scale the target distribution to help the model to converge faster 
-bkg_coord_scaled = scaler.fit_transform(bkg_coord)
+bkg_coord = np.column_stack((bkg_feat1, bkg_feat2)).astype('float32')  # Combine btag and bkg for training
 
-# Convert to float32 for compatibility with PyTorch
-bkg_coord_scaled = bkg_coord_scaled.astype('float32')
-
-reference = torch.as_tensor(bkg_coord_scaled[:N_ref], dtype=torch.float32)
+reference = torch.as_tensor(bkg_coord[:N_ref], dtype=torch.float32)
 
 # hyper parameters of the model
 M=args.M
@@ -87,9 +84,9 @@ job_id = os.getenv('SLURM_JOB_ID', 'local')
 
 # Define output folder based on calibration flag
 if calibration:
-    folder_out = '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_NF_gaussians_outputs/calibration/'
+    folder_out = '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_NF_one_model/calibration/'
 else:
-    folder_out = '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_NF_gaussians_outputs/comparison/'
+    folder_out = '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_NF_one_model/comparison/'
 
 # Create unique job directory
 job_id = os.getenv('SLURM_JOB_ID', 'local')
@@ -101,53 +98,29 @@ os.makedirs(output_dir, exist_ok=True)
 os.environ['SLURM_OUTPUT_DIR'] = output_dir
 
 # Print the directory path for debugging
-print(f"Output directory set to: {output_dir}")
-
+print(f"Output directory set to: {output_dir}", flush=True)
 ############ begin load data
 
 # NORMALIZING FLOW GENERATED DISTRIBUTION
 # Define the function to recreate the flow
-
-def make_flow(num_features, hidden_features, num_bins, num_blocks, num_layers, num_context, perm=True):
-    base_dist = distributions.StandardNormal(shape=(num_features,))
-
-    transforms = []
-    if num_context == 0:
-        num_context = None
-    for i in range(num_layers):
-        transforms.append(MaskedPiecewiseRationalQuadraticAutoregressiveTransform(features=num_features,
-                                                                                context_features=num_context,
-                                                                                hidden_features=hidden_features,
-                                                                                num_bins=num_bins,
-                                                                                num_blocks=num_blocks,
-                                                                                tail_bound=10.0, #range over which the spline trasnformation is defined 
-                                                                                tails='linear',
-                                                                                dropout_probability=0.2,
-                                                                                use_batch_norm=False))                                                       
-        if i < num_layers - 1 and perm:
-            transforms.append(ReversePermutation(features=num_features)) #Shuffles feature order to increase expressivity
-    transform = CompositeTransform(transforms)
-    flow = Flow(transform, base_dist)
-    return flow
-
-# Parameters for the flow (ensure they match the ones used during training)
-num_context = 0
-
-# Recreate the flow model
-flow = make_flow(num_features, hidden_features, num_bins, num_blocks, num_layers, num_context, perm=True)
+flow = make_flow(num_layers, hidden_features, num_bins, num_blocks)
 
 print('Load data')
 
-model_path = os.path.join(folders[manifold], "best_model.pth")
-flow.load_state_dict(torch.load(model_path))
-flow.eval()  # Set the model to evaluation mode
-print("Best model loaded successfully.")
+model_path = os.path.join(folders[manifold], "model.pth")
+
+flow.load_state_dict(torch.load(model_path, map_location=device))
+
+flow.to(device)
+
+flow.eval()
+print("Model loaded successfully.")
 ############ end load data
     
 ######## standardizes data
 #### compute sigma hyper parameter from data
 
-flk_sigma = candidate_sigma(bkg_coord_scaled[:2000, :], perc=flk_sigma_perc)
+flk_sigma = candidate_sigma(bkg_coord[:2000, :], perc=flk_sigma_perc)
 print('flk_sigma', flk_sigma)
 
 # run toys
@@ -159,59 +132,60 @@ base_seed = int(datetime.datetime.now().timestamp() * 1e6) % (2**32 - 1)
 seeds = base_seed + np.arange(Ntoys)
 
 for i in range(Ntoys):
+    print(f"\n\n========== Starting toy iteration {i} ==========", flush=True)
+
     seed = int(seeds[i])
+    print(f"Seed: {seed}", flush=True)
+
     rng = np.random.default_rng(seed=seed)
     N_generated_p = int(rng.poisson(lam=N_generated, size=1)[0])
     num_samples = int(N_generated_p + N_ref)
+    print(f"N_generated_p: {N_generated_p} | num_samples (gen + ref): {num_samples}", flush=True)
 
-    # Shuffle background data at the beginning of each iteration (if needed)
-    np.random.shuffle(bkg_coord_scaled)
+    np.random.shuffle(bkg_coord)
+    print("Shuffled background", flush=True)
 
     if calibration:
-        data = torch.from_numpy(bkg_coord_scaled[:num_samples])
+        data = torch.from_numpy(bkg_coord[:num_samples])
         label_D = np.ones(N_generated_p, dtype=np.float32)
         label_R = np.zeros(N_ref, dtype=np.float32)
-        w_ref = N_generated_p / N_ref  # Reference weight
+        w_ref = N_generated_p / N_ref
     else:
-        # Sample points from the trained flow
-        ref = torch.from_numpy(bkg_coord_scaled[:N_ref])
-        data_gen = flow.sample(N_generated_p).detach().numpy()
+        ref = torch.from_numpy(bkg_coord[:N_ref])
+        data_gen = flow.sample(N_generated_p).detach().cpu().numpy()
+        print(f"Generated {data_gen.shape[0]} samples from NF", flush=True)
+        # Free up memory: delete flow after sampling
 
         num_gen = data_gen.shape[0]
         num_ref = ref.shape[0]
-
-        # Combine the filtered generated data with the filtered reference data
         data = np.concatenate((data_gen, ref), axis=0)
 
-        # Create labels corresponding to the filtered generated data and reference data
-        label_D = np.ones(num_gen, dtype=np.float32)  # "Generated" labels
+        label_D = np.ones(num_gen, dtype=np.float32)
         label_R = np.zeros(num_ref, dtype=np.float32)
 
-        # Recalculate the reference weight based on the filtered reference samples
-        w_ref = num_gen / num_ref if num_ref > 0 else 1.0  # Avoid division by zero
-  
+        w_ref = num_gen / num_ref if num_ref > 0 else 1.0
+        print(f"Weight w_ref: {w_ref}", flush=True)
 
-    # Convert to float32
     labels = np.concatenate((label_D, label_R), axis=0).astype(np.float32)
-    
     data = np.float32(data)
+    print(f"Data and labels prepared. Data shape: {data.shape}", flush=True)
 
-    # Enable plotting every 20 iterations
     plot_reco = (i % 20 == 0)
     verbose = plot_reco
     if verbose:
-        print(f"Plotting iteration {i}")
+        print(f"Plotting iteration {i}", flush=True)
 
-    # Get FLK configuration
+    print("Getting FLK config...", flush=True)
     flk_config = get_logflk_config(M, flk_sigma, [lam], weight=w_ref, iter=[iterations], seed=None, cpu=False)
+    print("FLK config ready.", flush=True)
 
-    # Set xlabels
     xlabels = ['Feature 1', 'Feature 2']
 
-    # Run the toy experiment
+    print("Calling run_toy...", flush=True)
     t, pred = run_toy(manifold, data, labels, weight=w_ref, seed=seed,
                       flk_config=flk_config, output_path=output_dir, plot=plot_reco, savefig=plot_reco,
                       verbose=verbose, xlabels=xlabels)
+    print(f"run_toy finished. t-value: {t}", flush=True)
 
     ts_list.append(t)
 
