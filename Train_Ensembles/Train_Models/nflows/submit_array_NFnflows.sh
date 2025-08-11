@@ -6,11 +6,11 @@
 #SBATCH --output=/dev/null
 #SBATCH --error=/dev/null
 #SBATCH --time=12:00:00
-#SBATCH --partition=standard
+#SBATCH --partition=gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mem=64G
-# #SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:1
 
 # === Activate env
 source /work/gbadarac/miniforge3/bin/activate
@@ -31,4 +31,5 @@ python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_M
     --hidden_features ${HIDDEN_FEATURES} \
     --num_blocks ${NUM_BLOCKS} \
     --num_bins ${NUM_BINS} \
-    --num_layers ${NUM_LAYERS} 
+    --num_layers "${NUM_LAYERS}" \
+    --num_features "${NUM_FEATURES}"

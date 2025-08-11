@@ -13,8 +13,9 @@ training_file = os.path.join(output_dir, "100k_target_training_set.npy")
 n_bkg = 100000
 
 # Set per-feature means and stds (edit these as you like)
-means = np.array([-0.5, 0.6, 0.2, -0.1], dtype=np.float32)
-stds  = np.array([ 0.25, 0.4, 0.3,  0.2], dtype=np.float32)
+means = np.array([-0.5, 0.6, 0.2, -0.9], dtype=np.float32)
+stds  = np.array([ 0.25, 0.4, 0.3, 0.5], dtype=np.float32)
+
 
 # Generate 4D target distribution: shape (n_bkg, 4)
 bkg_coord = np.random.normal(loc=means, scale=stds, size=(n_bkg, 4)).astype('float32')

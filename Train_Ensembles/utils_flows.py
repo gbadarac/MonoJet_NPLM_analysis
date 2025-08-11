@@ -19,7 +19,7 @@ import mplhep as hep
 # Use CMS style for plots
 hep.style.use("CMS")
 
-def make_flow(num_layers, hidden_features, num_bins, num_blocks, num_features=2, num_context=None, perm=True):
+def make_flow(num_layers, hidden_features, num_bins, num_blocks, num_features, num_context=None, perm=True):
     base_dist = StandardNormal(shape=(num_features,))
     transforms = []
     if num_context == 0:

@@ -13,6 +13,8 @@ from nflows.transforms.permutations import ReversePermutation
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import torch.optim as optim
 
+from utils_flows import make_flow
+
 import gc
 
 # ------------------
@@ -31,6 +33,7 @@ parser.add_argument("--num_bins", type=int, default=8)
 parser.add_argument("--num_layers", type=int, default=5)
 parser.add_argument("--collect_all", action="store_true", help="Collect all trained models into f_i.pth")
 parser.add_argument("--num_models", type=int, default=1, help="Used with --collect_all to collect N models")
+parser.add_argument("--num_features", type=int, required=True, help="Dimensionality of the data")
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -94,7 +97,7 @@ def train_flow(data, model_seed, bootstrap_seed):
     '''
     torch.manual_seed(model_seed) #ensure same initialization for all j for a fixed i 
 
-    flow = make_flow(args.num_layers, args.hidden_features, args.num_bins, args.num_blocks)
+    flow = make_flow(args.num_layers, args.hidden_features, args.num_bins, args.num_blocks, args.num_features)
 
     #noise_std = 1e-4 + (model_seed % 10) * 1e-5  # → from 1e-4 to 1.9e-4
 
@@ -180,7 +183,8 @@ if args.seed==0:
         "num_layers": args.num_layers,
         "hidden_features": args.hidden_features,
         "num_bins": args.num_bins,
-        "num_blocks": args.num_blocks
+        "num_blocks": args.num_blocks,
+        "num_features": args.num_features
     }
     config_path = os.path.join(args.outdir, "architecture_config.json")
     with open(config_path, "w") as f:
