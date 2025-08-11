@@ -6,7 +6,7 @@ import os
 np.random.seed(1234)
 
 # Output file paths
-output_dir = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data"
+output_dir = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim"
 training_file = os.path.join(output_dir, "500k_target_training_set.npy")
 
 # Parameters
