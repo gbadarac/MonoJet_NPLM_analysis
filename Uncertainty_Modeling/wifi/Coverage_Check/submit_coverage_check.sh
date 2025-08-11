@@ -21,7 +21,7 @@ TRIAL_DIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Tra
 N_SAMPLED=110000       # Number of target samples for coverage test
 COVERAGE_BASE="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/coverage_outputs"
 OUT_DIR_NAME="${TRIAL_NAME}_N_sampled_${N_SAMPLED}"
-OUT_DIR="${COVERAGE_BASE}/${OUT_DIR_NAME}_memoory_check"
+OUT_DIR="${COVERAGE_BASE}/${OUT_DIR_NAME}"
 MU_TARGET_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/mu_target.npy"
 MU_I_FILE="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/generate_sampled_means/results_generated_sampled_means/generated_sampled_means_${TRIAL_NAME}.npy"
 

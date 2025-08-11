@@ -1,0 +1,8 @@
+{
+    "backend": "nflows",
+    "num_layers": 4,
+    "hidden_features": 128,
+    "num_bins": 15,
+    "num_blocks": 16,
+    "num_features": 4
+}
