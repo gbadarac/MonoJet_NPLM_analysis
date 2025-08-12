@@ -7,11 +7,11 @@ import torch
 import torch.optim as optim
 import numpy as np
 import argparse
-from utils_wifi import probs, plot_ensemble_marginals, profile_likelihood_scan
+from utils_wifi import probs, plot_ensemble_marginals_2d, plot_ensemble_marginals_4d, profile_likelihood_scan
 from utils_flows import make_flow
 import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-matplotlib.use('Agg')  # ensure it works on clusters without displaying plots
 from torch.autograd.functional import hessian
 import mplhep as hep
 from torchmin import minimize 
@@ -62,6 +62,7 @@ for state_dict in f_i_statedicts:
         hidden_features=config["hidden_features"],
         num_bins=config["num_bins"],
         num_blocks=config["num_blocks"],
+        num_features=config["num_features"]
     )
 
     flow.load_state_dict(state_dict)
@@ -88,7 +89,10 @@ for state_dict in f_i_statedicts:
     gc.collect()
 
 
-model_probs = torch.stack(model_probs_list, dim=1).to("cpu").requires_grad_()
+#model_probs = torch.stack(model_probs_list, dim=1).to("cpu").requires_grad_()
+model_probs = torch.stack(model_probs_list, dim=1).to(dtype=torch.float64, device="cpu")
+# no requires_grad_() here
+
 
 # model_probs is a (N,M) matrix of type (f_0, ... f_(M-1)) where N is the number of data points
 
@@ -103,15 +107,19 @@ def constraint_term(weights):
     return l * (torch.sum(weights) - 1.0)**2 
 
 def nll(weights):
-    weights = weights.to("cpu")
+    # assume: weights is float64 CPU and requires_grad=True
     p = probs(weights, model_probs)  # (N,)
 
-    if not torch.all(p > 0):
-        # Use same device and dtype
-        return torch.tensor(float("inf"), dtype=weights.dtype, device=weights.device)
+    if (p <= 0).any():
+        # Differentiable penalty instead of a detached +inf
+        bad = torch.clamp_min(-p, 0.0)          # max(0, -p)
+        penalty = 1e6 * bad.pow(2).mean()       # smooth, large
+        return penalty + constraint_term(weights) \
+               + 1e-12 * (weights**2).sum()     # tiny ridge for conditioning
 
-    loss = -torch.log(p + 1e-8).mean() + constraint_term(weights)
-    return loss  # Do NOT detach, do NOT call `.item()`, do NOT convert to float
+    loss = -torch.log(p + 1e-12).mean() + constraint_term(weights) \
+           + 1e-12 * (weights**2).sum()
+    return loss
 
 
 max_attempts = 50  # to avoid infinite loops in pathological cases
@@ -119,6 +127,7 @@ attempt = 0
 
 w_i_initial = np.ones(len(f_i_statedicts)) / len(f_i_statedicts)
 
+res = None
 while attempt < max_attempts:
     w_i_init_torch = torch.tensor(w_i_initial, dtype=torch.float64, requires_grad=True)
     noise = 1e-2 * torch.randn_like(w_i_init_torch)
@@ -136,18 +145,7 @@ while attempt < max_attempts:
         torch.cuda.empty_cache()
         gc.collect()
 
-        res = minimize(
-            nll,
-            w_i_init_torch.to("cpu"),
-            method='newton-exact',
-            options={'disp': False, 'max_iter': 300},
-        )
-
-        print("Calling minimize with:")
-        print(f"model_probs shape: {model_probs.shape}, device: {model_probs.device}")
-        print(f"weights shape: {w_i_init_torch.shape}, device: {w_i_init_torch.device}")
-        print(f"Allocated CUDA: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
-        print(f"Reserved CUDA: {torch.cuda.memory_reserved() / 1024**3:.2f} GB")
+        res = minimize(nll, w_i_init_torch, method='newton-exact', options={'disp': False, 'max_iter': 300})
 
         if res.success:
             print(f"Optimization succeeded on attempt {attempt}")
@@ -174,7 +172,8 @@ print("Sum of weights:", w_i_final.detach().cpu().numpy().sum())
 # Compute uncertainties via Hessian
 # ------------------
 # Autograd Hessian for cross-check
-H_autograd = hessian(nll, w_i_final.double()).detach()
+w_for_hess = w_i_final.detach().double().requires_grad_()
+H_autograd = hessian(nll, w_for_hess).detach()
 #print("H_autograd:", torch.norm(H_autograd).item())
 
 def compute_sandwich_covariance(H, w, model_probs, lam=1.0):
@@ -188,7 +187,7 @@ def compute_sandwich_covariance(H, w, model_probs, lam=1.0):
     #print('eigvalues of V', torch.linalg.eigvalsh(V))
     #print('V', V)
 
-    # Compute f(x) = sum_j w_j^2 f_j(x)
+    # Compute f(x) = sum_j w_j f_j(x)
     f = (model_probs * w).sum(dim=1)  # shape: (N,)
 
     grads = torch.zeros((N, M), dtype=torch.float64)  # ∂L/∂w_i(x)
@@ -232,7 +231,8 @@ gc.collect()
 # ------------------
 if args.plot.lower() == "true":
     model_probs = model_probs.cpu()  # Before passing into plotting
-    feature_names = ["Feature 1", "Feature 2"]
+    #feature_names = ["Feature 1", "Feature 2"]
+    feature_names = ["Feature 1", "Feature 2", "Feature 3", "Feature 4"]
 
     # ------------------
     # Likelihood profile scan
@@ -256,6 +256,7 @@ if args.plot.lower() == "true":
             hidden_features=config["hidden_features"],
             num_bins=config["num_bins"],
             num_blocks=config["num_blocks"],
+            num_features=config["num_features"]
         )
         flow.load_state_dict(state_dict)
         flow = flow.to("cpu")
@@ -264,4 +265,8 @@ if args.plot.lower() == "true":
 
     # Reload x_data again after deletion and move to correct device
     x_data = torch.from_numpy(np.load(args.data_path)).float().to(device)
-    plot_ensemble_marginals(f_i_models, x_data, w_i_final, cov_w_final, feature_names, args.out_dir)
+    #plot_ensemble_marginals_2d(f_i_models, x_data, w_i_final, cov_w_final, feature_names, args.out_dir)
+    plot_ensemble_marginals_4d(
+    f_i_models, x_data, w_i_final, cov_w_final, feature_names, args.out_dir,
+    bins=40, S=100000, sample_batch=20000
+)
