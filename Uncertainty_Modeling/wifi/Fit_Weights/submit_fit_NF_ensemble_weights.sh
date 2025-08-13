@@ -27,7 +27,7 @@ plot=True
 # Derive output path
 # -----------------------
 trial_name=$(basename "$trial_dir")  # e.g., "trial_000" #extracts the folder name from the full path 
-out_dir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/${trial_name}_trial
+out_dir=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/${trial_name}_trial_3
 mkdir -p "$out_dir" #creates a new directory with the correspondent trial name
 
 # Copy trial files to output dir so script runs in isolation
@@ -43,7 +43,7 @@ export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:32
 # -----------------------
 # Run the Python script
 # -----------------------
-python fit_NF_ensemble_weights.py \
+python fit_NF_ensemble_weights_4d.py \
     --trial_dir "$trial_dir" \
     --data_path "$data_path" \
     --out_dir "$out_dir" \

@@ -92,9 +92,11 @@ for state_dict in f_i_statedicts:
 #model_probs = torch.stack(model_probs_list, dim=1).to("cpu").requires_grad_()
 model_probs = torch.stack(model_probs_list, dim=1).to(dtype=torch.float64, device="cpu")
 # no requires_grad_() here
-
-
 # model_probs is a (N,M) matrix of type (f_0, ... f_(M-1)) where N is the number of data points
+
+print("model_probs:", model_probs.shape, model_probs.dtype)
+print("min/max:", model_probs.min().item(), model_probs.max().item())
+print("<=0 fraction:", (model_probs <= 0).double().mean().item())
 
 # ------------------
 # Optimize weights via logits using MLE
@@ -107,20 +109,15 @@ def constraint_term(weights):
     return l * (torch.sum(weights) - 1.0)**2 
 
 def nll(weights):
-    # assume: weights is float64 CPU and requires_grad=True
-    p = probs(weights, model_probs)  # (N,)
-
-    if (p <= 0).any():
-        # Differentiable penalty instead of a detached +inf
-        bad = torch.clamp_min(-p, 0.0)          # max(0, -p)
-        penalty = 1e6 * bad.pow(2).mean()       # smooth, large
-        return penalty + constraint_term(weights) \
-               + 1e-12 * (weights**2).sum()     # tiny ridge for conditioning
-
-    loss = -torch.log(p + 1e-12).mean() + constraint_term(weights) \
-           + 1e-12 * (weights**2).sum()
-    return loss
-
+    p = probs(weights, model_probs)          # (N,)
+    eps = 1e-9                               # numerical floor
+    # barrier only on negative f(x)
+    pen_neg = 1e6 * torch.relu(-p).pow(2).mean()
+    # use clamped p in the log to avoid NaNs during early iters
+    loss_ll = -torch.log(torch.clamp(p, min=eps)).mean()
+    sum1_pen = 1e5 * (weights.sum() - 1.0)**2
+    ridge = 1e-12 * (weights**2).sum()
+    return loss_ll + sum1_pen + ridge + pen_neg
 
 max_attempts = 50  # to avoid infinite loops in pathological cases
 attempt = 0
@@ -168,6 +165,10 @@ print("Final loss (NLL):", final_loss)
 print("Final weights:", w_i_final)
 print("Sum of weights:", w_i_final.detach().cpu().numpy().sum())
 
+print("Final weights sum:", w_i_final.sum().item(),
+      "min:", w_i_final.min().item(),
+      "max:", w_i_final.max().item())
+
 # ------------------
 # Compute uncertainties via Hessian
 # ------------------
@@ -176,48 +177,58 @@ w_for_hess = w_i_final.detach().double().requires_grad_()
 H_autograd = hessian(nll, w_for_hess).detach()
 #print("H_autograd:", torch.norm(H_autograd).item())
 
+evals = torch.linalg.eigvalsh(0.5*(H_autograd+H_autograd.T))
+print("H eig min/max:", evals.min().item(), evals.max().item())
 
-def compute_sandwich_covariance(H, w, model_probs, lam=1.0):
-    M = len(w)
-    N = model_probs.shape[0]
+def compute_sandwich_covariance_4d(H, w, model_probs):
+    H = 0.5 * (H + H.T)
+    M, N = w.numel(), model_probs.shape[0]
 
-    w = w.detach().clone().double().requires_grad_()
-    model_probs = model_probs.double()
+    # basis for the sum-to-one tangent space
+    E = torch.eye(M, dtype=torch.float64)
+    S_raw = E[:, :-1] - E[:, [-1]]
+    S, _ = torch.linalg.qr(S_raw)             # (M, M-1)
 
-    V = torch.linalg.solve(H, torch.eye(M, dtype=torch.float64))
-    #print('eigvalues of V', torch.linalg.eigvalsh(V))
-    #print('V', V)
+    H_red = S.T @ H @ S
 
-    # Compute f(x) = sum_j w_j f_j(x)
-    f = (model_probs * w).sum(dim=1)  # shape: (N,)
+    f = (model_probs * w).sum(dim=1)          # (N,)
+    # adaptive floor to avoid exploding scores on tiny f
+    q01 = torch.quantile(f.detach(), 0.001)
+    eps = max(1e-6, float(q01.item()) * 0.1)
+    f_safe = torch.clamp(f, min=eps)
 
-    grads = torch.zeros((N, M), dtype=torch.float64)  # ∂L/∂w_i(x)
+    # data-score Jacobian (NO +lam here)
+    G  = -(model_probs / f_safe[:, None])     # (N, M)
+    Gc = G - G.mean(dim=0, keepdim=True)
+    U  = (Gc.T @ Gc) / N                      # (M, M)
+    U_red = S.T @ U @ S
 
-    for j in range(M):
-        f_j = model_probs[:, j]
-        grads[:, j] = - (f_j) / (f + 1e-12) + lam 
+    # safe inverse of H_red
+    he = torch.linalg.eigvalsh(H_red)
+    ridge = (1e-10 + 1e-8 * float(he.abs().max()))
+    H_red = H_red + ridge * torch.eye(M-1, dtype=torch.float64)
+    V_red = torch.linalg.solve(H_red, torch.eye(M-1, dtype=torch.float64))
 
-    # Compute U matrix
-    mean_grad = grads.mean(dim=0, keepdim=True)
-    U = ((grads - mean_grad).T @ (grads - mean_grad)) / N
-    #print('eigvalues of U', torch.linalg.eigvalsh(U))
-    #print('U', U)
+    cov_red = (V_red @ U_red @ V_red.T) / N
+    cov_w   = S @ cov_red @ S.T
+    cov_w   = 0.5 * (cov_w + cov_w.T)
 
-    cov_w = V @ U @ V.T
-    cov_w = cov_w/N
-
-    #print("‖V @ U - I‖ =", (V @ U - torch.eye(M, dtype=torch.float64)))
-    #print("‖V @ U @ V - V‖ =", (V @ U @ V - V))
+    # tiny PSD clean-up
+    ce, Ue = torch.linalg.eigh(cov_w)
+    ce = torch.clamp(ce, min=1e-18)
+    cov_w = Ue @ torch.diag(ce) @ Ue.T
     return cov_w
 
-cov_w_final = compute_sandwich_covariance(H_autograd, w_i_final, model_probs)
 
-#print("diag cov_autograd:", torch.diag(cov_w_autograd).mean().item())
+cov_w_final = compute_sandwich_covariance_4d(H_autograd, w_i_final, model_probs)
+d  = torch.diag(cov_w_final)
+ec = torch.linalg.eigvalsh(0.5*(cov_w_final+cov_w_final.T))
+print("Cov_w diag mean:", d.mean().item())
+print("Cov_w eig min/max:", ec.min().item(), ec.max().item())
 
-#print("Weight covariance matrix:\n", cov_w_final)
 cov_w_final = cov_w_final.detach().cpu().numpy()
 
-# ------------------
+# -----------------
 # Save final outputs
 # ------------------
 # Save final weights and covariance matrix to correct location
@@ -240,7 +251,6 @@ if args.plot.lower() == "true":
     # ------------------
     #likelihood_scan(model_probs, w_i_final, args.out_dir)
     #profile_likelihood_scan(model_probs, w_i_final, args.out_dir)
-    
     
     # ------------------
     # Uncertainties on the model
@@ -266,4 +276,5 @@ if args.plot.lower() == "true":
 
     # Reload x_data again after deletion and move to correct device
     x_data = torch.from_numpy(np.load(args.data_path)).float().to(device)
-    plot_ensemble_marginals_2d(f_i_models, x_data, w_i_final, cov_w_final, feature_names, args.out_dir)
+    #plot_ensemble_marginals_2d(f_i_models, x_data, w_i_final, cov_w_final, feature_names, args.out_dir)
+    plot_ensemble_marginals_4d(f_i_models, x_data, w_i_final, cov_w_final, feature_names, args.out_dir)

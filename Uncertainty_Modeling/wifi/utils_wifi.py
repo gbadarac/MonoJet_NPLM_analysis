@@ -207,157 +207,135 @@ def plot_ensemble_marginals_2d(f_i_models, x_data, weights, cov_w, feature_names
         plt.savefig(outpath)
         plt.close()
 
-# -----------------------------
-# sampling-based marginals
-# -----------------------------
-def plot_ensemble_marginals_4d(
-    f_i_models,
-    x_data,
-    weights,
-    cov_w,
-    feature_names,
-    outdir,
-    bins=40,
-    S=100000,          # samples per model
-    sample_batch=20000 # draw in chunks to save RAM
-):
-    """
-    Compute & plot 1-D marginals of a D-dimensional ensemble via Monte-Carlo marginalization.
-
-    For each model f_i:
-      - draw S samples in R^D
-      - histogram each coordinate into the chosen binning -> per-feature basis phi_i[:, i_model]
-    Then per bin:
-      - prediction:  f_binned = phi @ w
-      - uncertainty: sqrt( phi · cov_w · phi^T )
-
-    Saves one PNG per feature and a compressed NPZ with f_binned, f_err, bin_centers.
-    """
-
-    os.makedirs(outdir, exist_ok=True)
-
-    # prep
+def plot_ensemble_marginals_4d(f_i_models, x_data, weights, cov_w, feature_names, outdir,
+                            bins=40, K=1024, device="cpu"):
     x = x_data.cpu().numpy()
-    M = len(f_i_models)
-    D = x.shape[1]
-    assert D == len(feature_names), "feature_names length must match x_data.shape[1]"
+    N, D = x.shape
+    weights = weights.detach().cpu().double()
+    cov_w = torch.from_numpy(cov_w).double()
 
-    # ensure weights and covariance are numpy-friendly
-    if torch.is_tensor(weights):
-        w_np = weights.detach().cpu().numpy()
-        w_torch = weights.detach().to(dtype=torch.float64, device="cpu")
-    else:
-        w_np = np.asarray(weights, dtype=np.float64)
-        w_torch = torch.tensor(w_np, dtype=torch.float64, device="cpu")
-    assert w_np.shape == (M,), f"weights must have shape ({M},)"
-
-    cov_w = np.asarray(cov_w)
-    assert cov_w.shape == (M, M), "cov_w must be (M, M)"
-
-    # bin edges per feature from data (with small margin)
-    bin_edges = []
-    bin_centers = []
-    bin_widths = []
+    # Pre-sample the "other features" once per feature to reduce variance jitter across bins
+    rng = np.random.default_rng(1234)
+    others_bank = {}
     for i in range(D):
+        # K rows, D columns; we will overwrite column i with the scan value
+        idx = rng.integers(0, N, size=K)
+        X_others = x[idx].copy()  # shape (K, D)
+        others_bank[i] = X_others
+
+    for i in range(D):
+        fig, (ax_main, ax_ratio) = plt.subplots(2,1,figsize=(8, 10), gridspec_kw={'height_ratios': [3,1]})
+        feature_label = feature_names[i]
         xi = x[:, i]
+
+        # binning on the data support
         margin = 0.05 * (xi.max() - xi.min())
-        lo, hi = xi.min() - margin, xi.max() + margin
-        edges = np.linspace(lo, hi, bins + 1)
-        bin_edges.append(edges)
-        bin_centers.append(0.5 * (edges[:-1] + edges[1:]))
-        bin_widths.append(np.diff(edges))
+        low, high = xi.min() - margin, xi.max() + margin
+        bin_edges = np.linspace(low, high, bins + 1)
+        bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+        bin_widths = np.diff(bin_edges)
 
-    # containers: per-feature per-model densities; phi[i] has shape (bins, M)
-    phi = [np.zeros((bins, M), dtype=np.float64) for _ in range(D)]
+        # target histogram + errors
+        hist_counts, _ = np.histogram(xi, bins=bin_edges)
+        N_target = hist_counts.sum()
+        hist_target = hist_counts / (N_target * bin_widths)
+        err_target = np.sqrt(hist_counts) / (N_target * bin_widths)
 
-    # sample each model once, reuse for all features
-    for j, flow in enumerate(f_i_models):
-        counts_per_feat = [np.zeros(bins, dtype=np.int64) for _ in range(D)]
-        drawn = 0
-        while drawn < S:
-            n = min(sample_batch, S - drawn)
-            with torch.no_grad():
-                samp = flow.sample(n).cpu().numpy()   # (n, D)
-            for i in range(D):
-                c, _ = np.histogram(samp[:, i], bins=bin_edges[i])
-                counts_per_feat[i] += c
-            drawn += n
+        # ---- Monte Carlo marginalization over other features ----
+        X_others = others_bank[i]  # (K, D)
+        # Build (B, K, D) tensor: each bin center paired with the same K draws for other dims
+        B = len(bin_centers)
+        X_batch = np.repeat(X_others[None, :, :], B, axis=0)  # (B, K, D)
+        X_batch[:, :, i] = bin_centers[:, None]               # set the i-th column to the bin center
 
-        # convert to densities and store into phi
-        for i in range(D):
-            dens = counts_per_feat[i] / (S * bin_widths[i])   # (bins,)
-            phi[i][:, j] = dens
+        # Flatten to (B*K, D) and evaluate all models
+        X_flat = torch.from_numpy(X_batch.reshape(B * K, D)).float().to(device)
 
-    # plot per feature
-    for i in range(D):
-        centers = bin_centers[i]
-        widths = bin_widths[i]
+        with torch.no_grad():
+            # probs_per_model: (B*K, M)
+            probs_per_model = torch.stack(
+                [torch.exp(flow.log_prob(X_flat)).cpu().double() for flow in f_i_models],
+                dim=1
+            )  # (B*K, M) double on CPU
 
-        # target 1-D marginal from data
-        counts_t, _ = np.histogram(x[:, i], bins=bin_edges[i])
-        N_t = counts_t.sum()
-        hist_target = counts_t / (N_t * widths)
-        err_target = np.sqrt(counts_t) / (N_t * widths)
+        # Average over K to get v(c) for each bin center: v(c) is (M,)
+        probs_per_model = probs_per_model.view(B, K, -1)      # (B, K, M)
+        v_mat = probs_per_model.mean(dim=1)                   # (B, M)
 
-        # prediction & uncertainty using your helpers
-        phi_i = phi[i]                                         # (bins, M) numpy
-        phi_i_t = torch.from_numpy(phi_i).to(dtype=torch.float64, device="cpu")  # (bins, M)
+        # Ensemble mean and uncertainty at each center
+        w_col = weights.view(-1, 1)                           # (M,1)
+        f_binned = (v_mat @ weights).numpy()                  # (B,)
+        # sigma^2(c) = v(c)^T Cov_w v(c)
+        cov_w_t = cov_w
+        sigma2 = (v_mat @ cov_w_t @ v_mat.T).diagonal().numpy()
+        f_err = np.sqrt(np.maximum(sigma2, 0.0))              # (B,)
 
-        f_binned = ensemble_pred(w_torch, phi_i_t)             # (bins,) numpy
-        f_err    = ensemble_unc(cov_w,  phi_i_t)               # (bins,) numpy
+        # Normalize to unit area over the scan dimension
+        area = np.sum(f_binned * bin_widths)
+        if area > 0:
+            f_binned /= area
+            f_err    /= area
 
-        # optional tiny renorm (should be ~1 already)
-        Z = np.sum(f_binned * widths)
-        if np.isfinite(Z) and Z != 0:
-            f_binned /= Z
-            f_err    /= Z
+        print(f"[feat {i}] f_binned min/max:", f_binned.min(), f_binned.max())
+        print(f"[feat {i}] f_err min/max:", f_err.min(), f_err.max())
 
         # save npz
-        np.savez_compressed(
-            os.path.join(outdir, f"marginal_feature_{i+1}_data.npz"),
-            f_binned=f_binned, f_err=f_err, bin_centers=centers
-        )
+        out_marginal = os.path.join(outdir, f"marginal_feature_{i+1}_data.npz")
+        np.savez_compressed(out_marginal, f_binned=f_binned, f_err=f_err, bin_centers=bin_centers)
 
-        # bands (clip at 0 just for plotting)
-        b1l = np.clip(f_binned - f_err, 0.0, None)
-        b1h = f_binned + f_err
-        b2l = np.clip(f_binned - 2*f_err, 0.0, None)
-        b2h = f_binned + 2*f_err
+        # bands
+        band_1s_l = f_binned - f_err
+        band_1s_h = f_binned + f_err
+        band_2s_l = f_binned - 2*f_err
+        band_2s_h = f_binned + 2*f_err
 
-        # plot
-        fig, (ax_main, ax_ratio) = plt.subplots(
-            2, 1, figsize=(8, 10), gridspec_kw={'height_ratios': [3, 1]}
-        )
-        feature_label = feature_names[i]
+        valid_bins = hist_target > 0
+        # Target: green
+        ax_main.bar(bin_centers, hist_target, width=bin_widths, alpha=0.2,
+                    label="Target", color='green', edgecolor='black')
+        ax_main.errorbar(bin_centers, hist_target, yerr=err_target,
+                         fmt='None', color='green', alpha=0.7)
 
-        # main
-        ax_main.bar(centers, hist_target, width=widths, alpha=0.2, label="Target",
-                    color='green', edgecolor='black')
-        ax_main.errorbar(centers, hist_target, yerr=err_target, fmt='None', color='green', alpha=0.7)
-        ax_main.plot(centers, f_binned, '-', color='red', lw=1.2, label=r"$f(x)=\sum w_i f_i(x)$")
-        ax_main.fill_between(centers, b1l, b1h, alpha=0.15, label=r"$\pm 1\sigma$", color='blue')
-        ax_main.fill_between(centers, b2l, b2h, alpha=0.08, label=r"$\pm 2\sigma$", color='purple')
+        # Ensemble mean: red
+        ax_main.plot(bin_centers[valid_bins], f_binned[valid_bins], '-',
+                     color='red', linewidth=1.2,
+                     label=r"$f(x)=\sum_i w_i f_i(x)$")
+
+        # Bands: blue (±1σ) and purple (±2σ)
+        ax_main.fill_between(bin_centers, band_1s_l, band_1s_h,
+                             alpha=0.15, color='blue', label=r"$\pm 1\sigma$")
+        ax_main.fill_between(bin_centers, band_2s_l, band_2s_h,
+                             alpha=0.08, color='purple', label=r"$\pm 2\sigma$")
+
         ax_main.set_xlabel(feature_label, fontsize=16)
         ax_main.set_ylabel("Density", fontsize=16)
         ax_main.legend(fontsize=14)
 
-        # ratio panel: band thickness relative to mean
-        fb_safe = np.where(f_binned > 0, f_binned, np.nan)
-        r1 = (b1h - f_binned) / fb_safe
-        r2 = (b2h - f_binned) / fb_safe
-        ax_ratio.plot(centers, 1.0 + r1, 'o-', alpha=0.6, label=r"$+1\sigma$/mean")
-        ax_ratio.plot(centers, 1.0 + r2, 'o-', alpha=0.6, label=r"$+2\sigma$/mean")
-        ax_ratio.axhline(1.0, color='black', ls='--', lw=1)
-        ax_ratio.set_ylim(0.9, 1.1)
-        ax_ratio.set_ylabel("Upper band / Mean", fontsize=14)
+        # ratios
+        f_safe = np.where(f_binned > 0, f_binned, np.nan)
+        r1h = band_1s_h / f_safe
+        r2h = band_2s_h / f_safe
+        r1l = band_1s_l / f_safe
+        r2l = band_2s_l / f_safe
+        valid = ~np.isnan(r1h)
+
+        # Ratio lines use same colors: blue/purple
+        ax_ratio.plot(bin_centers[valid], r1h[valid], 'o-', color='blue', alpha=0.3, label=r"+1σ / mean")
+        ax_ratio.plot(bin_centers[valid], r2h[valid], 'o-', color='purple', alpha=0.3, label=r"+2σ / mean")
+        ax_ratio.plot(bin_centers[valid], r1l[valid], 'o-', color='blue', alpha=0.3, label=r"-1σ / mean")
+        ax_ratio.plot(bin_centers[valid], r2l[valid], 'o-', color='purple', alpha=0.3, label=r"-2σ / mean")
+
+        ax_ratio.axhline(1.0, color='black', linestyle='--', linewidth=1)
+        ax_ratio.set_ylim(0.9, 1.1)  # match 2D function
+        ax_ratio.set_ylabel("Band / Mean", fontsize=14)
         ax_ratio.set_xlabel(feature_label, fontsize=14)
         ax_ratio.legend(fontsize=12)
-        ax_ratio.grid(True, which='both', ls='--', lw=0.5, alpha=0.7)
+        ax_ratio.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
 
         plt.tight_layout()
-        plt.savefig(os.path.join(outdir, f"ensemble_marginal_feature_{i+1}.png"))
+        outpath = os.path.join(outdir, f"ensemble_marginal_feature_{i+1}.png")
+        plt.savefig(outpath)
         plt.close()
-
 
 def plot_gaussian_toy_marginals(model_probs, x_data, weights, cov_w, feature_names, outdir):
 
