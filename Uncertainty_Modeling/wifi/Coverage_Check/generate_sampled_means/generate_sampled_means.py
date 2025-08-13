@@ -42,6 +42,7 @@ def main(trial_dir, arch_config_path, out_dir, N_generated):
             hidden_features=config["hidden_features"],
             num_bins=config["num_bins"],
             num_blocks=config["num_blocks"],
+            num_features=config["num_features"]
         ).to(device)
 
         flow.load_state_dict(state_dict)

@@ -7,17 +7,17 @@ import torch
 import torch.optim as optim
 import numpy as np
 import argparse
-from utils_wifi import probs, plot_ensemble_marginals_2d, plot_ensemble_marginals_4d, profile_likelihood_scan
+from utils_wifi import probs
 from utils_flows import make_flow
 import matplotlib
-matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+matplotlib.use('Agg')  # ensure it works on clusters without displaying plots
 from torch.autograd.functional import hessian
 import mplhep as hep
-from torchmin import minimize 
+from torchmin import minimize
+import torch.nn.functional as F
 import traceback
-import gc  # Add this at the top with other imports
-
+import gc 
 
 # Use CMS style for plots
 hep.style.use("CMS")
@@ -26,10 +26,12 @@ hep.style.use("CMS")
 # Args
 # ------------------
 parser = argparse.ArgumentParser()
+parser.add_argument("--mu_target_path", type=str, required=True)
+parser.add_argument("--toy_seed", type=int, required=True)
 parser.add_argument("--trial_dir", type=str, required=True)
-parser.add_argument("--data_path", type=str, required=True)
 parser.add_argument("--out_dir", type=str, required=True)
-parser.add_argument("--plot", type=str, required=True)
+parser.add_argument("--mu_i_file", type=str, required=True)
+parser.add_argument("--n_points", type=int, default=20000, help="Number of target samples to generate")
 args = parser.parse_args()
 
 # ------------------
@@ -49,7 +51,25 @@ f_i_statedicts = torch.load(f_i_file, map_location=device) #list of state_dicts
 with open(os.path.join(args.trial_dir, "architecture_config.json")) as f:
     config = json.load(f) 
 
-x_data = torch.from_numpy(np.load(args.data_path)).float()
+# ------------------
+# Generate Coverage Data for Target Distribution 
+# ------------------
+def generate_target_data(n_points, seed=None):
+    """
+    Generate a 4D Gaussian with per-feature means/stds.
+    Returns an array of shape (n_points, 4), dtype float32.
+    """
+    if seed is not None:
+        np.random.seed(seed)
+
+    means = np.array([-0.5, 0.6, 0.2, -0.9], dtype=np.float32)
+    stds  = np.array([ 0.25, 0.4, 0.3, 0.5], dtype=np.float32)
+
+    data = np.random.normal(loc=means, scale=stds, size=(n_points, 4)).astype(np.float32)
+    return data
+
+data_np = generate_target_data(args.n_points, seed=args.toy_seed)
+x_data = torch.from_numpy(data_np).float()
 
 # ------------------
 # Evaluate f_i(x) -> model_probs
@@ -69,7 +89,7 @@ for state_dict in f_i_statedicts:
     flow = flow.to("cpu")  # keep model on CPU
 
     flow.eval()
-    batch_size = 5000
+    batch_size = 5000 #3200
     flow_probs = []
 
     with torch.no_grad():
@@ -77,6 +97,8 @@ for state_dict in f_i_statedicts:
             x_batch = x_data[i:i+batch_size].to("cpu")  # keep data on CPU too
             logp_batch = flow.log_prob(x_batch)
             flow_probs.append(torch.exp(logp_batch))
+            print(f"Allocated CUDA: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
+            print(f"Reserved CUDA: {torch.cuda.memory_reserved() / 1024**3:.2f} GB")
 
     flow_probs_tensor = torch.cat(flow_probs, dim=0).detach()
 
@@ -89,24 +111,21 @@ for state_dict in f_i_statedicts:
     gc.collect()
 
 
-#model_probs = torch.stack(model_probs_list, dim=1).to("cpu").requires_grad_()
-model_probs = torch.stack(model_probs_list, dim=1).to(dtype=torch.float64, device="cpu")
-# no requires_grad_() here
-# model_probs is a (N,M) matrix of type (f_0, ... f_(M-1)) where N is the number of data points
+model_probs = torch.stack(model_probs_list, dim=1).to("cpu").requires_grad_()
 
-print("model_probs:", model_probs.shape, model_probs.dtype)
-print("min/max:", model_probs.min().item(), model_probs.max().item())
-print("<=0 fraction:", (model_probs <= 0).double().mean().item())
+# model_probs is a (N,M) matrix of type (f_0, ... f_(M-1)) where N is the number of data points
 
 # ------------------
 # Optimize weights via logits using MLE
 # ------------------
+# Convert initial weights to torch tensor
+
 def ensemble_model(weights, model_probs):
     return probs(weights, model_probs)
 
 def constraint_term(weights):
-    l =1e5
-    return l * (torch.sum(weights) - 1.0)**2 
+    l=1e5
+    return l*(torch.sum(weights)-1.0)**2
 
 def nll(weights):
     p = probs(weights, model_probs)          # (N,)
@@ -142,7 +161,12 @@ while attempt < max_attempts:
         torch.cuda.empty_cache()
         gc.collect()
 
-        res = minimize(nll, w_i_init_torch, method='newton-exact', options={'disp': False, 'max_iter': 300})
+        res = minimize(
+            nll,
+            w_i_init_torch.to("cpu"),
+            method='newton-exact',
+            options={'disp': False, 'max_iter': 300},
+        )
 
         if res.success:
             print(f"Optimization succeeded on attempt {attempt}")
@@ -170,8 +194,7 @@ print("Sum of weights:", w_i_final.detach().cpu().numpy().sum())
 # ------------------
 # Autograd Hessian for cross-check
 w_for_hess = w_i_final.detach().double().requires_grad_()
-H_autograd = hessian(nll, w_for_hess).detach()
-#print("H_autograd:", torch.norm(H_autograd).item())
+H_autograd = hessian(nll, w_for_hess).detach()#print("H_autograd:", torch.norm(H_autograd).item())
 
 def compute_sandwich_covariance_4d(H, w, model_probs):
     H = 0.5 * (H + H.T)
@@ -213,55 +236,66 @@ def compute_sandwich_covariance_4d(H, w, model_probs):
     return cov_w
 
 cov_w_final = compute_sandwich_covariance_4d(H_autograd, w_i_final, model_probs)
+#print("diag cov_autograd:", torch.diag(cov_w_autograd).mean().item())
+#print("Weight covariance matrix:\n", cov_w_final)
 cov_w_final = cov_w_final.detach().cpu().numpy()
 
-# -----------------
-# Save final outputs
 # ------------------
-# Save final weights and covariance matrix to correct location
-np.save(os.path.join(args.out_dir, "w_i_fitted.npy"), w_i_final.detach().cpu().numpy())
-np.save(os.path.join(args.out_dir, "cov_w.npy"), cov_w_final)
+# Coverage test
+# ------------------
+w_i_final = w_i_final.detach().cpu()
 
-torch.cuda.empty_cache()
-gc.collect()
+# Upload target's first moment:
+# Load target first moment
+mu_target = np.load(args.mu_target_path)  # shape: (D,)
 
 # ------------------
-# Plotting 
+# Compute model's first moment μ_model
 # ------------------
-if args.plot.lower() == "true":
-    model_probs = model_probs.cpu()  # Before passing into plotting
-    #feature_names = ["Feature 1", "Feature 2"]
-    feature_names = ["Feature 1", "Feature 2", "Feature 3", "Feature 4"]
+#Goal: compute mu_i = ∫dx*x*f_i(x) ~ sum(x_k * f_i(x_k) * ∆x)
 
-    # ------------------
-    # Likelihood profile scan
-    # ------------------
-    #likelihood_scan(model_probs, w_i_final, args.out_dir)
-    #profile_likelihood_scan(model_probs, w_i_final, args.out_dir)
-    
-    # ------------------
-    # Uncertainties on the model
-    # ------------------
-    # Clean up memory before reloading models
-    del model_probs_list, model_probs, x_data
-    torch.cuda.empty_cache()
+mu_i = np.load(args.mu_i_file)  # Initial weights
+mu_i = torch.tensor(mu_i, dtype=torch.float64)
 
-    # Reload f_i_models after weight fitting
-    f_i_models = []
-    for state_dict in f_i_statedicts:
-        flow = make_flow(
-            num_layers=config["num_layers"],
-            hidden_features=config["hidden_features"],
-            num_bins=config["num_bins"],
-            num_blocks=config["num_blocks"],
-            num_features=config["num_features"]
-        )
-        flow.load_state_dict(state_dict)
-        flow = flow.to("cpu")
-        flow.eval()
-        f_i_models.append(flow)
+# Compute μ_model = ∑_i w_i ⋅ μ_i
+# This is the ensemble-averaged moment: weighted sum of the μ_i using the optimized weights w_i
+mu_model = torch.matmul(w_i_final[None, :], mu_i)  # shape: (D,)
 
-    # Reload x_data again after deletion and move to correct device
-    x_data = torch.from_numpy(np.load(args.data_path)).float().to(device)
-    #plot_ensemble_marginals_2d(f_i_models, x_data, w_i_final, cov_w_final, feature_names, args.out_dir)
-    plot_ensemble_marginals_4d(f_i_models, x_data, w_i_final, cov_w_final, feature_names, args.out_dir)
+# ------------------
+# Compute uncertainty σ_I (propagation of weight covariance)
+# ------------------
+# We propagate the uncertainty on the weights through the functional:
+#     σ²_I = ∇I(w)^T ⋅ Cov(w) ⋅ ∇I(w)
+# where ∇I(w) ≡ [∂I/∂w_i] = μ_i (since I(w) = ∑ w_i μ_i)
+
+# Perform the matrix contraction:
+#   σ²_I[d] = ∑_i ∑_j μ_i[d] ⋅ Cov_w[i, j] ⋅ μ_j[d]
+# for each feature dimension d
+cov_w_final = torch.from_numpy(cov_w_final).to(mu_i.dtype)
+sigma_sq = torch.einsum("id,ij,jd->d", mu_i, cov_w_final, mu_i)  # shape: (D,)
+
+# Take square root to get standard deviation (1σ uncertainty band)
+sigma_I = np.sqrt(sigma_sq)
+
+# Check if |μ_model - μ_target| < σ_I (per feature) and save boolean 
+diff = np.abs(mu_model - mu_target)
+within_band = diff < sigma_I  # boolean vector
+
+# ------------------
+# Save results for post-processing
+# ------------------
+# Convert NumPy arrays to lists for JSON serialization
+results = {
+    "mu_target": mu_target.tolist(),
+    "mu_model": mu_model.tolist(),
+    "diff": diff.tolist(),
+    "sigma_integral": sigma_I.tolist(),
+    "within_band": within_band.tolist(),
+    "toy_seed": int(args.toy_seed),
+    "weights": w_i_final.tolist(),
+    "sum weights": w_i_final.sum().tolist()
+}
+
+out_file = os.path.join(args.out_dir, f"toy_{args.toy_seed:03d}.json")
+with open(out_file, "w") as f:
+    json.dump(results, f, indent=2)
