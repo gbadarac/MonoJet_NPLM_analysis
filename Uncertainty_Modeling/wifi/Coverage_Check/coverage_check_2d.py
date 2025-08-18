@@ -118,6 +118,7 @@ model_probs = torch.stack(model_probs_list, dim=1).to("cpu").requires_grad_()
 def ensemble_model(weights, model_probs):
     return probs(weights, model_probs)
 
+'''
 def constraint_term(weights):
     l=1e5
     return l*(torch.sum(weights)-1.0)**2
@@ -133,6 +134,16 @@ def nll(weights):
         penalty = 1e6 * bad.pow(2).mean()       # smooth, large
         return penalty + constraint_term(weights) + eps     
     loss = -torch.log(p + 1e-12).mean() + constraint_term(weights) + eps
+    return loss
+'''
+def constraint_term(weights):
+    l=1e0
+    return l*(torch.sum(weights)-1.0)
+
+def nll(weights):
+    # assume: weights is float64 CPU and requires_grad=True
+    p = torch.clamp_min(probs(weights, model_probs), 0.0)  # (N,)
+    loss = -torch.log(p + 1e-12).mean() + constraint_term(weights)
     return loss
 
 max_attempts = 50 

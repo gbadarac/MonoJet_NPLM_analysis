@@ -4,7 +4,7 @@
 # #SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/coverage_outputs/logs/coverage_array_%A_%a.err
 #SBATCH --output=/dev/null
 #SBATCH --error=/dev/null
-#SBATCH --array=0-299  # ← Launch 300 jobs
+#SBATCH --array=0-99  # ← Launch 300 jobs
 #SBATCH --time=02:00:00
 #SBATCH --mem=32G
 #SBATCH --ntasks=1
@@ -18,10 +18,9 @@
 # ===============================
 TRIAL_NAME="N_100000_dim_4_seeds_60_4_16_128_15"
 TRIAL_DIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/4_dim/${TRIAL_NAME}"
-#TRIAL_DIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/${TRIAL_NAME}"
-N_SAMPLED=150000       # Number of target samples for coverage test
+N_SAMPLED=200000       # Number of target samples for coverage test
 COVERAGE_BASE="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/coverage_outputs"
-OUT_DIR_NAME="${TRIAL_NAME}_N_sampled_${N_SAMPLED}"
+OUT_DIR_NAME="${TRIAL_NAME}_N_sampled_${N_SAMPLED}_trial"
 OUT_DIR="${COVERAGE_BASE}/${OUT_DIR_NAME}"
 MU_TARGET_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/4_dim/mu_target.npy"
 MU_I_FILE="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/generate_sampled_means/results_generated_sampled_means/generated_sampled_means_${TRIAL_NAME}.npy"

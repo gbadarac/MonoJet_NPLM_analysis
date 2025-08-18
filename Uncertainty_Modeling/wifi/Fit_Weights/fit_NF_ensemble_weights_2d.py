@@ -103,22 +103,16 @@ def ensemble_model(weights, model_probs):
     return probs(weights, model_probs)
 
 def constraint_term(weights):
-    l =1e5
-    return l * (torch.sum(weights) - 1.0)**2 
+    l=1e0
+    return l*(torch.sum(weights)-1.0)
 
 def nll(weights):
     # assume: weights is float64 CPU and requires_grad=True
-    p = probs(weights, model_probs)  # (N,)
-
-    if (p <= 0).any():
-        # Differentiable penalty instead of a detached +inf
-        bad = torch.clamp_min(-p, 0.0)          # max(0, -p)
-        penalty = 1e6 * bad.pow(2).mean()       # smooth, large
-        return penalty + constraint_term(weights) + 1e-12 * (weights**2).sum()     # tiny ridge for conditioning
-
-    loss = -torch.log(p + 1e-12).mean() + constraint_term(weights) + 1e-12 * (weights**2).sum()
+    p = torch.clamp_min(probs(weights, model_probs), 0.0)  # (N,)
+    loss = -torch.log(p + 1e-12).mean() + constraint_term(weights)
     return loss
 
+attempt = 0
 max_attempts = 50  
 w_i_initial = np.ones(len(f_i_statedicts)) / len(f_i_statedicts)
 

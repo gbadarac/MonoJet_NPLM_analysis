@@ -55,7 +55,7 @@ def main(trial_dir, arch_config_path, out_dir, N_generated):
         sampled_mean.append(mean)
         print(f"[{i+1}/{len(f_i_statedicts)}] mean: {mean}")
 
-        # --- Crucial cleanup ---
+        # --- cleanup ---
         del flow, gen_data
         gc.collect()
         if torch.cuda.is_available():

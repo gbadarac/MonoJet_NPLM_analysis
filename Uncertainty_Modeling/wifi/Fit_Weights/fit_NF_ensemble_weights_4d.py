@@ -104,6 +104,7 @@ print("<=0 fraction:", (model_probs <= 0).double().mean().item())
 def ensemble_model(weights, model_probs):
     return probs(weights, model_probs)
 
+'''
 def constraint_term(weights):
     l =1e5
     return l * (torch.sum(weights) - 1.0)**2 
@@ -118,6 +119,17 @@ def nll(weights):
     sum1_pen = 1e5 * (weights.sum() - 1.0)**2
     ridge = 1e-12 * (weights**2).sum()
     return loss_ll + sum1_pen + ridge + pen_neg
+'''
+
+def constraint_term(weights):
+    l=1e0
+    return l*(torch.sum(weights)-1.0)
+
+def nll(weights):
+    # assume: weights is float64 CPU and requires_grad=True
+    p = torch.clamp_min(probs(weights, model_probs), 0.0)  # (N,)
+    loss = -torch.log(p + 1e-12).mean() + constraint_term(weights)
+    return loss
 
 max_attempts = 50  # to avoid infinite loops in pathological cases
 attempt = 0
