@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=NF_launcher
-#SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/4_dim/logs/launcher_output_%j.out
-#SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/4_dim/logs/launcher_error_%j.err
+#SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/logs/launcher_output_%j.out
+#SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/logs/launcher_error_%j.err
 #SBATCH --time=00:10:00
 #SBATCH --mem=96G
 #SBATCH --partition=gpu
@@ -19,21 +19,21 @@ conda activate nf_env
 # ======================================
 # setup
 model_seeds=60
-num_features=4
+num_features=2
 
 # Model hyperparameters
 n_epochs=1001
 learning_rate=5e-6
 batch_size=512
-hidden_features=128
-num_blocks=16
-num_bins=15
+hidden_features=64
+num_blocks=8
+num_bins=8
 num_layers=4
 
 # Base directory
-base_dir="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/4_dim"
+base_dir="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim"
 #Get dataset size 
-dataset_path="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/4_dim/100k_target_training_set.npy"
+dataset_path="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_target_training_set.npy"
 num_events=$(python -c "import numpy as np; print(np.load('${dataset_path}').shape[0])")
 
 # ======================================

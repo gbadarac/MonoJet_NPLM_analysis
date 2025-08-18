@@ -31,5 +31,5 @@ python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_M
     --hidden_features ${HIDDEN_FEATURES} \
     --num_blocks ${NUM_BLOCKS} \
     --num_bins ${NUM_BINS} \
-    --num_layers "${NUM_LAYERS}" \
-    --num_features "${NUM_FEATURES}"
+    --num_layers ${NUM_LAYERS} \
+    --num_features ${NUM_FEATURES}
