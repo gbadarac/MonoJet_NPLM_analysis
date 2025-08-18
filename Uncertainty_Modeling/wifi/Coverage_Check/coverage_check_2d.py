@@ -125,19 +125,17 @@ def constraint_term(weights):
 def nll(weights):
     # assume: weights is float64 CPU and requires_grad=True
     p = probs(weights, model_probs)  # (N,)
-
+    eps = 1e-12 * (weights**2).sum() #ridge term for numerical stability of the hessian 
+    # Handle invalid probabilities 
     if (p <= 0).any():
         # Differentiable penalty instead of a detached +inf
         bad = torch.clamp_min(-p, 0.0)          # max(0, -p)
         penalty = 1e6 * bad.pow(2).mean()       # smooth, large
-        return penalty + constraint_term(weights) \
-               + 1e-12 * (weights**2).sum()     # tiny ridge for conditioning
-
-    loss = -torch.log(p + 1e-12).mean() + constraint_term(weights) \
-           + 1e-12 * (weights**2).sum()
+        return penalty + constraint_term(weights) + eps     
+    loss = -torch.log(p + 1e-12).mean() + constraint_term(weights) + eps
     return loss
 
-max_attempts = 50  # to avoid infinite loops in pathological cases
+max_attempts = 50 
 attempt = 0
 
 w_i_initial = np.ones(len(f_i_statedicts)) / len(f_i_statedicts)
@@ -180,7 +178,7 @@ while attempt < max_attempts:
 if res is None or not res.success:
     raise RuntimeError("Optimization failed after multiple attempts.")
 
-w_i_final = res.x.detach()               # ← what the optimizer produced # ← the true weights you us
+w_i_final = res.x.detach()               # ← what the optimizer produced # ← the true weights you use
 final_loss = nll(w_i_final).item()
 print("Final loss (NLL):", final_loss)
 

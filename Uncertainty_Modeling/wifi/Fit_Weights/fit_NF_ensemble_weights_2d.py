@@ -114,16 +114,12 @@ def nll(weights):
         # Differentiable penalty instead of a detached +inf
         bad = torch.clamp_min(-p, 0.0)          # max(0, -p)
         penalty = 1e6 * bad.pow(2).mean()       # smooth, large
-        return penalty + constraint_term(weights) \
-               + 1e-12 * (weights**2).sum()     # tiny ridge for conditioning
+        return penalty + constraint_term(weights) + 1e-12 * (weights**2).sum()     # tiny ridge for conditioning
 
-    loss = -torch.log(p + 1e-12).mean() + constraint_term(weights) \
-           + 1e-12 * (weights**2).sum()
+    loss = -torch.log(p + 1e-12).mean() + constraint_term(weights) + 1e-12 * (weights**2).sum()
     return loss
 
-max_attempts = 50  # to avoid infinite loops in pathological cases
-attempt = 0
-
+max_attempts = 50  
 w_i_initial = np.ones(len(f_i_statedicts)) / len(f_i_statedicts)
 
 res = None
