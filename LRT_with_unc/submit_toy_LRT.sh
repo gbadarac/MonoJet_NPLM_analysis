@@ -30,7 +30,7 @@ w_cov="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wi
 hit_or_miss_data="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/N_100000_dim_2_seeds_60_4_16_256_15/concatenated_ensemble_generated_samples_4_16_256_15.npy"
 ensemble_dir="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/N_100000_dim_2_seeds_60_4_16_256_15"
 
-PY=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/toy_LRT_with_unc_trial.py
+PY=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/toy_LRT_with_unc.py
 CMD=(python -u "$PY"
      -t "$N_TOYS"
      -c "$CALIBRATION"
