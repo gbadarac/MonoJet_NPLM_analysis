@@ -8,7 +8,7 @@ from torch.autograd import Variable
 import math 
 
 class GaussianKernelLayer(nn.Module):
-    def __init__(self, centers_init, coefficients_init, sigma, train_centers=True):
+    def __init__(self, centers_init, coefficients_init, sigma, train_centers=False):
         """
         centers: torch.Tensor of shape (m, d)  -> Gaussian centers
         sigma: float or torch scalar           -> fixed std deviation
@@ -41,7 +41,7 @@ class TAU(nn.Module):
     """
     def __init__(self, input_shape, ensemble_probs, weights_init, weights_cov, weights_mean, 
                  gaussian_center, gaussian_coeffs,
-                 lambda_regularizer=1e5, gaussian_sigma=0.1,
+                 lambda_regularizer=1e5, gaussian_sigma=0.1, train_centers=False,
                  train_weights=True, train_net=True, 
                  model='TAU', name=None, **kwargs):
         super(TAU, self).__init__()
@@ -99,7 +99,7 @@ class TAU(nn.Module):
         self.train_net = train_net
         if self.train_net:
             self.coeffs = nn.Parameter(torch.tensor([1, 0.], dtype=torch.float32), requires_grad=True)
-            self.network = GaussianKernelLayer(gaussian_center, gaussian_coeffs, gaussian_sigma)
+            self.network = GaussianKernelLayer(gaussian_center, gaussian_coeffs, gaussian_sigma, train_centers=train_centers)
             # self.network = nn.Sequential(nn.Linear(self.x_dim, 1000), nn.Sigmoid(),
             #                              nn.Linear(1000, 1), nn.Sigmoid())  # flow
 
@@ -152,7 +152,10 @@ class TAU(nn.Module):
             coeffs = self.softmax(self.coeffs)
             # p = 0.5*(1+coeffs[0])*ensemble[:, 0] + 0.5*coeffs[1]*net_out 
             p = self.relu(coeffs[0] * ensemble[:, 0] + coeffs[1] * net_out )
-            return -torch.log(p).sum() - aux.sum() + self.lambda_regularizer * self.weights_constraint_term()
+            lambda_krl = 10  # tune in [1e-4, 1e-2]
+            k = self.network.softmax(self.network.coefficients)      # softmaxed kernel weights
+            pen_krl = lambda_krl * k.pow(2).mean()
+            return -torch.log(p).sum() - aux.sum() + self.lambda_regularizer * self.weights_constraint_term()+ pen_krl
         else:
             p = self.relu(self.call(x))
             return -torch.log(p).sum() - aux.sum() + self.lambda_regularizer * self.weights_constraint_term()

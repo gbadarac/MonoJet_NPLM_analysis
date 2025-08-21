@@ -156,7 +156,7 @@ model_den = TAU((None, 2),
     lambda_regularizer=1e6, train_net=False)
 
 # Numerator model (with kernels)
-n_kernels = 20
+n_kernels = 100
 centers = x_data[:n_kernels].clone()                 # float32
 coeffs  = torch.ones((n_kernels,), dtype=torch.float32) / n_kernels
 
@@ -165,11 +165,11 @@ model_num = TAU((None, 2),
     weights_init=w_init,
     weights_cov=w_cov,
     weights_mean=w_init,
-    gaussian_center=centers, gaussian_coeffs=coeffs, gaussian_sigma=0.3,
+    gaussian_center=centers, gaussian_coeffs=coeffs, gaussian_sigma=0.1,
     lambda_regularizer=1e6, train_net=True)
 
 # ------------------ Train DENOMINATOR ------------------
-optimizer = torch.optim.Adam(model_den.parameters(), lr=0.001)
+optimizer = torch.optim.Adam(model_den.parameters(), lr=0.0001)
 loss_hist_den, epoch_hist_den = [], []
 
 for epoch in range(epochs):
@@ -203,7 +203,7 @@ np.save(os.path.join(out_dir, "den_ensemble_weights.npy"),
 
 
 # ------------------ Train NUMERATOR ------------------
-optimizer = torch.optim.Adam(model_num.parameters(), lr=0.001)
+optimizer = torch.optim.Adam(model_num.parameters(), lr=0.0001)
 loss_hist_num, epoch_hist_num = [], []
 
 for epoch in range(epochs):
@@ -312,7 +312,7 @@ def _build_line(axis, npts=2000):
         z = np.stack([np.full_like(x, fixed), x], axis=1)
     return x, z, xmin, xmax, fixed
 
-def _plot_line(axis):
+def plot_line(axis):
     # grid along the chosen axis
     x, z, xmin, xmax, fixed = _build_line(axis, npts=2000)
 
@@ -333,22 +333,22 @@ def _plot_line(axis):
     # draw
     fig, ax = plt.subplots(figsize=(6, 4.2))
     ax.plot(x, y_gt,  label="Ground truth",              linewidth=1.8)
-    ax.plot(x, y_ens, label="Ensemble (uploaded)",       linewidth=1.8)
+    ax.plot(x, y_ens, label="Ensemble",       linewidth=1.8)
     ax.plot(x, y_num, label="Ensemble + extra DOF",      linewidth=1.8)
 
     ax.set_xlim(xmin, xmax)
     ax.margins(x=0.02, y=0.04)
-    ax.set_xlabel(f"Axis {axis} (other fixed @ {fixed:.3f})", fontsize=11)
-    ax.set_ylabel("Joint density", fontsize=11)
+    ax.set_xlabel(f"Axis {axis}", fontsize=11)
+    ax.set_ylabel("Density", fontsize=11)
     ax.tick_params(axis="both", labelsize=9)
     ax.legend(fontsize=9, frameon=True, framealpha=0.9, handlelength=2.0)
     fig.tight_layout(pad=0.3)
-    fig.savefig(os.path.join(out_dir, f"line_slice_{tag}.png"), dpi=220, bbox_inches="tight")
+    fig.savefig(os.path.join(out_dir, f"line_slice_{axis}.png"), dpi=220, bbox_inches="tight")
     plt.close(fig)
 
     del sd
     gc.collect()
 
 # Make both slices: vary axis 0 (fix axis 1), and vary axis 1 (fix axis 0)
-_plot_line(axis=0)
-_plot_line(axis=1)
+plot_line(axis=0)
+plot_line(axis=1)
