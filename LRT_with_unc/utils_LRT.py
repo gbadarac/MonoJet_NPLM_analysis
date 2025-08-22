@@ -152,7 +152,7 @@ class TAU(nn.Module):
             coeffs = self.softmax(self.coeffs)
             # p = 0.5*(1+coeffs[0])*ensemble[:, 0] + 0.5*coeffs[1]*net_out 
             p = self.relu(coeffs[0] * ensemble[:, 0] + coeffs[1] * net_out )
-            lambda_krl = 1e4  # tune in [1e-4, 1e-2]
+            lambda_krl = 10  # tune in [1e-4, 1e-2]
             k = self.network.softmax(self.network.coefficients)      # softmaxed kernel weights
             pen_krl = lambda_krl * k.pow(2).mean()
             return -torch.log(p).sum() - aux.sum() + self.lambda_regularizer * self.weights_constraint_term()+ pen_krl
