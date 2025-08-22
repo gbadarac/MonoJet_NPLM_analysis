@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH -c 1
+#SBATCH -c 4
 #SBATCH --gpus 1
-#SBATCH -t 0-01:00
+#SBATCH -t 0-03:00
 #SBATCH -p gpu
 #SBATCH --account=gpu_gres
 #SBATCH --mem=20000
@@ -23,7 +23,7 @@ export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:32
 
 CALIBRATION=False
 N_TOYS=100
-BASE_OUT="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/results/N_100000_dim_2_seeds_60_4_16_256_15_freezed_train_centers_L2_10_lr_1e-4_kernels_100_sigma_1e-1"
+BASE_OUT="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/results/N_100000_dim_2_seeds_60_4_16_256_15_L2_1e4_lr_1e-4_kernels_100_sigma_13e-2_epochs_20000"
 
 w="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_256_15/w_i_fitted.npy"
 w_cov="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_256_15/cov_w.npy"

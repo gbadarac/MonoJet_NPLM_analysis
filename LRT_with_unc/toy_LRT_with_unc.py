@@ -14,8 +14,9 @@ import json
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import time 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # GPU if available
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-t', '--toys', type=int, required=True, help="Number of toys")
@@ -73,9 +74,8 @@ if w_init is not None and w_cov is not None:
 print(f"Calibration mode: {calibration}")
 print(f"Data shape: {data.shape}")
 
-# Float32 tensor for both flows and TAU
-x_data = torch.from_numpy(data).float()
-
+# move data to device once
+x_data = torch.from_numpy(data).float().to(device, non_blocking=True)
 # -------- Load ensemble --------
 f_i_file = os.path.join(args.ensemble_dir, "f_i.pth")
 cfg_file = os.path.join(args.ensemble_dir, "architecture_config.json")
@@ -87,6 +87,7 @@ with open(cfg_file) as f:
 
 # ------------------ Evaluate f_i(x) -> model_probs (float32) ------------------
 model_probs_list = []
+batch_size = 5000
 
 for state_dict in f_i_statedicts:
     flow = make_flow(
@@ -96,36 +97,29 @@ for state_dict in f_i_statedicts:
         num_blocks=config["num_blocks"],
         num_features=config["num_features"]
     )
-
     flow.load_state_dict(state_dict)
-    flow = flow.to("cpu").float()  # keep model on CPU, float32
+    flow = flow.to(device).float().eval()  # run on GPU if available
 
-    flow.eval()
-    batch_size = 5000
-    flow_probs = []
-
+    vals = []
     with torch.no_grad():
-        for i in range(0, len(x_data), batch_size):
-            x_batch = x_data[i:i+batch_size]  # float32 on CPU
-            logp_batch = flow.log_prob(x_batch)  # float32
-            flow_probs.append(torch.exp(logp_batch))
+        for i in range(0, x_data.shape[0], batch_size):
+            x_batch = x_data[i:i+batch_size].to(device, non_blocking=True)
+            lp = flow.log_prob(x_batch)
+            vals.append(torch.exp(lp).detach().to("cpu"))  # collect on CPU
 
-    flow_probs_tensor = torch.cat(flow_probs, dim=0).detach()  # float32
+    flow_probs_tensor = torch.cat(vals, dim=0)   # CPU tensor
     model_probs_list.append(flow_probs_tensor)
 
     # Cleanup
-    del flow_probs
-    del flow
-    torch.cuda.empty_cache()
+    del vals, flow
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
     gc.collect()
 
+# Stack on CPU, then a single transfer to device
 model_probs = torch.stack(model_probs_list, dim=1).contiguous().float()
-model_probs.requires_grad_(False)
-del model_probs_list
-gc.collect()
-
-del f_i_statedicts
-gc.collect()
+del model_probs_list; gc.collect()
+model_probs = model_probs.to(device, non_blocking=True)
 
 # ------------------ Helpers ------------------
 def probs(weights, model_probs):
@@ -144,52 +138,93 @@ def nll_aux(weights, weights_0, weights_cov):
     return loss
 
 # ------------------ TAU models (float32 everywhere) ------------------
-epochs = 100000
+epochs = 20000
+patience = 1000
+tol = 1e-5
+max_time_min = 55
+t0 = time.time()
 
-# Denominator model (no extra kernels)
-model_den = TAU((None, 2),
-    ensemble_probs=model_probs,   # float32
-    weights_init=w_init,          # float32 or None
-    weights_cov=w_cov,            # float32 or None
-    weights_mean=w_init,          # float32 or None
-    gaussian_center=[], gaussian_coeffs=[], gaussian_sigma=None,
-    lambda_regularizer=1e6, train_net=False)
+# Make sure w_init/w_cov are on device if present
+w_init_dev = w_init.to(device) if isinstance(w_init, torch.Tensor) else w_init
+w_cov_dev  = w_cov.to(device)  if isinstance(w_cov,  torch.Tensor)  else w_cov
 
-# Numerator model (with kernels)
+# Denominator: no extra kernels
+model_den = TAU(
+    (None, 2),
+    ensemble_probs=model_probs,
+    weights_init=w_init_dev,
+    weights_cov=w_cov_dev,
+    weights_mean=w_init_dev,
+    gaussian_center=[],
+    gaussian_coeffs=[],
+    gaussian_sigma=None,
+    lambda_regularizer=1e6,
+    train_net=False).to(device)
+
+# Numerator: pass ensemble_probs=model_probs (NOT None)
 n_kernels = 100
-centers = x_data[:n_kernels].clone()                 # float32
-coeffs  = torch.ones((n_kernels,), dtype=torch.float32) / n_kernels
+centers = x_data[:n_kernels].clone()  # already on device
+coeffs  = torch.ones((n_kernels,), dtype=torch.float32, device=device) / n_kernels
 
-model_num = TAU((None, 2),
-    ensemble_probs=model_probs,   # float32
-    weights_init=w_init,
-    weights_cov=w_cov,
-    weights_mean=w_init,
-    gaussian_center=centers, gaussian_coeffs=coeffs, gaussian_sigma=0.1,
-    lambda_regularizer=1e6, train_net=True)
+model_num = TAU(
+    (None, 2),
+    ensemble_probs=model_probs,
+    weights_init=w_init_dev,
+    weights_cov=w_cov_dev,
+    weights_mean=w_init_dev,
+    gaussian_center=centers,
+    gaussian_coeffs=coeffs,
+    gaussian_sigma=0.13,
+    lambda_regularizer=1e6,
+    train_net=True).to(device)
 
-# ------------------ Train DENOMINATOR ------------------
-optimizer = torch.optim.Adam(model_den.parameters(), lr=0.0001)
-loss_hist_den, epoch_hist_den = [], []
+# ------------------ Train Function ------------------
+def train_loop(model, name, lr=1e-4):
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    loss_hist, epoch_hist = [], []
+    best = float("inf")
+    bad = 0
 
-for epoch in range(epochs):
-    optimizer.zero_grad()
-    loss = model_den.loss(x_data)     # float32 tensor
-    loss.backward()
-    optimizer.step()
-    if (epoch + 1) % 1000 == 0:
-        print(f"[DEN] Epoch {epoch+1}/{epochs}  Loss: {loss.item():.6f}")
-        loss_hist_den.append(loss.item())
-        epoch_hist_den.append(epoch + 1)
+    for epoch in range(1, epochs + 1):
+        opt.zero_grad(set_to_none=True)
+        loss = model.loss(x_data)   # runs on device
+        loss.backward()
+        opt.step()
 
-den_losses = np.array(loss_hist_den, dtype=np.float32)
-den_epochs = np.array(epoch_hist_den, dtype=np.int32)
+        # log + early stop checks every 100 iters
+        if epoch % 100 == 0:
+            cur = float(loss.detach().item())
+            print(f"[{name}] epoch {epoch} loss {cur:.6f}", flush=True)
+            loss_hist.append(cur)
+            epoch_hist.append(epoch)
+
+            if cur + tol < best:
+                best = cur
+                bad = 0
+            else:
+                bad += 1
+                if bad >= patience:
+                    print(f"[{name}] early stopping at epoch {epoch} best {best:.6f}", flush=True)
+                    break
+
+        # time budget: stop cleanly before SLURM wall time
+        if (time.time() - t0) / 60.0 > max_time_min:
+            print(f"[{name}] stopping due to time budget at epoch {epoch}", flush=True)
+            break
+
+    return np.array(epoch_hist, np.int32), np.array(loss_hist, np.float32)
+
+
+model_den.ensemble_probs = model_probs
+model_num.ensemble_probs = model_probs
+
+den_epochs, den_losses = train_loop(model_den, "DEN")
 np.savez(os.path.join(out_dir, "den_loss_curve.npz"),
          epochs=den_epochs, loss=den_losses)
 
 # Save loss curve
 fig, ax = plt.subplots()
-ax.plot(epoch_hist_den, loss_hist_den)
+ax.plot(den_epochs, den_losses)
 ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.set_title("Denominator loss")
 fig.savefig(os.path.join(out_dir, "denominator_loss.png"), dpi=180, bbox_inches="tight")
 plt.close(fig)
@@ -201,29 +236,13 @@ np.save(os.path.join(out_dir, "denominator.npy"), denominator)
 np.save(os.path.join(out_dir, "den_ensemble_weights.npy"),
         model_den.weights.detach().cpu().numpy())
 
-
-# ------------------ Train NUMERATOR ------------------
-optimizer = torch.optim.Adam(model_num.parameters(), lr=0.0001)
-loss_hist_num, epoch_hist_num = [], []
-
-for epoch in range(epochs):
-    optimizer.zero_grad()
-    loss = model_num.loss(x_data)     # float32 tensor
-    loss.backward()
-    optimizer.step()
-    if (epoch + 1) % 1000 == 0:
-        print(f"[NUM] Epoch {epoch+1}/{epochs}  Loss: {loss.item():.6f}")
-        loss_hist_num.append(loss.item())
-        epoch_hist_num.append(epoch + 1)
-
-num_losses = np.array(loss_hist_num, dtype=np.float32)
-num_epochs = np.array(epoch_hist_num, dtype=np.int32)
+num_epochs, num_losses = train_loop(model_num, "NUM")
 np.savez(os.path.join(out_dir, "num_loss_curve.npz"),
          epochs=num_epochs, loss=num_losses)
 
 # Save loss curve
 fig, ax = plt.subplots()
-ax.plot(epoch_hist_num, loss_hist_num)
+ax.plot(num_epochs, num_losses)
 ax.set_yscale("log")
 ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.set_title("Numerator loss")
 fig.savefig(os.path.join(out_dir, "numerator_loss.png"), dpi=180, bbox_inches="tight")
@@ -282,8 +301,10 @@ def _evaluate_krl_on_grid(layer, z_np):
     if (layer is None) or (layer.centers.numel() == 0):
         return np.zeros((z_np.shape[0],), dtype=np.float32)
     with torch.no_grad():
-        zt = torch.from_numpy(z_np).float()
-        return layer(zt).detach().cpu().numpy().astype(np.float32)
+        dev = layer.centers.device  # use the layer's device
+        zt = torch.from_numpy(z_np).float().to(dev, non_blocking=True)
+        out = layer(zt)
+        return out.detach().cpu().numpy().astype(np.float32)
 
 def _evaluate_gt_on_grid(z_np):
     """Ground-truth joint pdf along the line points z_np."""
