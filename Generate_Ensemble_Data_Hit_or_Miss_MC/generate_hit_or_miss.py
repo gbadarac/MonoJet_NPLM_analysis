@@ -26,13 +26,17 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", device)
 
 # Set paths
-trial_dir = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_seeds_60_4_16_256_15_l_1e5"
-data_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/100k_target_training_set.npy"
-out_dir = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data"
+trial_dir = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_128_15_trial"
+data_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_target_training_set.npy"
+subdir = f"N_100000_dim_2_seeds_60_4_16_128_15"
+out_dir = os.path.join(
+    "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data",
+    subdir,
+)
 os.makedirs(out_dir, exist_ok=True)
 
 # Reference architecture (consistent across models)
-arch_config_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/N_100000_seeds_60_4_16_256_15/architecture_config.json"
+arch_config_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/N_100000_dim_2_seeds_60_4_16_128_15/architecture_config.json"
 
 # Load model weights and configs
 with open(arch_config_path) as f:
@@ -40,18 +44,18 @@ with open(arch_config_path) as f:
 
 f_i_statedicts = torch.load(os.path.join(trial_dir, "f_i.pth"), map_location=device)
 #w_i_fitted = torch.tensor(np.load(os.path.join(trial_dir, "w_i_fitted.npy")), dtype=torch.float64)
-w_i_fitted = torch.tensor([ 2.6661e-02,  4.9029e-03,  5.4670e-05,  1.9149e-02,  6.4070e-02,
-         9.3286e-03,  3.6494e-02,  8.7958e-02,  7.6974e-02, -1.5255e-02,
-        -3.9479e-02, -1.5420e-02, -1.5285e-02,  8.7045e-02,  5.7291e-02,
-         1.5961e-02, -3.6252e-02, -4.3677e-02, -1.4824e-04, -3.4309e-02,
-        -2.3378e-02,  3.6204e-02,  3.1594e-02,  8.5678e-03,  1.2468e-02,
-         2.5487e-02,  1.9723e-02,  2.5634e-02,  6.8171e-02, -9.8194e-03,
-         8.0850e-03,  2.1400e-02,  3.2348e-02,  6.7841e-02,  4.6322e-02,
-         4.8491e-02, -3.6525e-02, -1.7060e-02,  4.7686e-02,  1.4838e-02,
-         3.4592e-02, -2.2595e-02, -6.4887e-02,  1.0992e-01, -3.1935e-03,
-        -7.6125e-02, -2.0111e-02,  4.2485e-02,  3.6925e-02, -1.5192e-02,
-         4.6197e-02,  4.1148e-02, -9.9237e-03,  4.3357e-02,  3.0554e-02,
-        -1.3172e-02, -2.7091e-02,  6.0366e-02,  2.3911e-02,  6.8697e-02],
+w_i_fitted = torch.tensor([ 2.7465e-02,  3.9775e-02,  2.9415e-02,  6.0815e-02,  1.6158e-02,
+         8.9290e-02,  5.7797e-03, -1.1812e-02,  2.4000e-02,  3.1447e-02,
+         8.1284e-02, -2.3717e-02,  2.6356e-02, -1.7371e-02, -1.0963e-02,
+         8.3692e-03, -8.1379e-03, -2.3745e-02,  2.1039e-02, -2.9520e-04,
+        -4.8599e-02,  6.1569e-02, -4.8001e-02, -3.0407e-02, -1.4790e-02,
+        -2.3764e-02,  5.1739e-02,  3.5346e-02,  8.6801e-03,  4.0055e-02,
+        -8.1822e-03, -7.8225e-02,  5.8031e-02,  5.0157e-02, -5.7196e-03,
+         1.7794e-02,  6.6487e-02,  1.7647e-02, -1.0253e-02,  1.3936e-02,
+        -4.6986e-02,  3.5879e-03,  3.0478e-02,  9.8500e-02,  1.6057e-02,
+        -4.4614e-03,  5.2503e-03, -4.2855e-03,  2.5735e-02,  1.7025e-02,
+         7.2025e-02,  1.9940e-02, -1.0673e-02,  2.1200e-02,  9.2340e-02,
+        -3.0226e-02,  4.8697e-02,  7.0400e-05,  7.8944e-02,  4.8129e-02],
        dtype=torch.float64)
 
 # Load data
@@ -66,26 +70,14 @@ for state_dict in f_i_statedicts:
         hidden_features=config["hidden_features"],
         num_bins=config["num_bins"],
         num_blocks=config["num_blocks"],
-    ).to(device)
+        num_features=config["num_features"],
+    )
     flow.load_state_dict(state_dict)
     flow.eval()
     f_i_models.append(flow)
     del flow
     gc.collect()
 
-'''
-# Define ensemble callable f(x1, x2) using the fitted weights and flow models
-def f(x1, x2, f_i_models, w_i_fitted):
-    """
-    Compute ensemble density f(x1, x2) = sum_i w_i * f_i(x1, x2)
-    Input: x1, x2 of shape (N,) — output: (N,)
-    """
-    x = torch.stack([x1, x2], dim=1)  # shape (N, 2)
-    with torch.no_grad():
-        probs = torch.stack([torch.exp(model.log_prob(x)) for model in f_i_models], dim=1)  # (N, M)
-        w = w_i_fitted.to(probs.device)
-        return (probs * w).sum(dim=1)  # shape (N,)
-'''
 
 def f(x1, x2, f_i_models, w_i_fitted):
     """
@@ -177,5 +169,5 @@ def hit_or_miss_2d(x1_min, x1_max, x2_min, x2_max, f_i_models, w_i_fitted, N_eve
 tb = 2.8
 
 samples = hit_or_miss_2d(-tb, tb, -tb, tb, f_i_models, w_i_fitted, N_events=5000) 
-np.save(os.path.join(out_dir, "ensemble_generated_samples_4_16_256_15_seed_%i.npy"%(seed)), samples.cpu().numpy())
+np.save(os.path.join(out_dir, "ensemble_generated_samples_4_16_128_15_seed_%i.npy"%(seed)), samples.cpu().numpy())
 print("Saved generated samples.")
