@@ -62,7 +62,7 @@ out_dir = os.path.join(args.out_dir, mode, toy_name)
 os.makedirs(out_dir, exist_ok=True)
 print(f"Output directory set to: {out_dir}", flush=True)
 
-N_events = 10000
+N_events = 100000
 
 def generate_target_data(n_points, seed=None):
     if seed is not None:

@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=LRT_100toys
-#SBATCH --array=0-9
+#SBATCH --array=0-99
 #SBATCH --time=01:00:00
 #SBATCH --mem=20G
 #SBATCH --ntasks=1
@@ -38,13 +38,13 @@ export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensemb
 # -------------------------
 # Static config
 # -------------------------
-CALIBRATION=False
-BASE_OUT="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/results/N_100000_dim_2_seeds_60_4_16_256_15_toys_10_trial"
+CALIBRATION=True
+BASE_OUT="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/results/N_100000_dim_2_seeds_60_4_16_128_15_toys_100_N_sampled_100k"
 
-w="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_256_15/w_i_fitted.npy"
-w_cov="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_256_15/cov_w.npy"
-hit_or_miss_data="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/N_100000_dim_2_seeds_60_4_16_256_15/concatenated_ensemble_generated_samples_4_16_256_15.npy"
-ensemble_dir="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/N_100000_dim_2_seeds_60_4_16_256_15"
+w="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_128_15_trial/w_i_fitted.npy"
+w_cov="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_128_15_trial/cov_w.npy"
+hit_or_miss_data="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/N_100000_dim_2_seeds_60_4_16_128_15/concatenated_ensemble_generated_samples_4_16_128_15.npy"
+ensemble_dir="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/N_100000_dim_2_seeds_60_4_16_128_15"
 
 PY=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/toys_LRT_with_unc.py
 
