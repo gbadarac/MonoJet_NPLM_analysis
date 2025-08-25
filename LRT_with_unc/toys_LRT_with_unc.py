@@ -30,6 +30,17 @@ parser.add_argument('--out_dir', type=str, required=True, help="Base output dire
 parser.add_argument('--ensemble_dir', type=str, required=True, help="Directory containing the ensemble models")
 args = parser.parse_args()
 
+seed = int(args.toys)
+
+import random
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
 # Convert string to bool
 calibration = args.calibration.lower() == "true"
 
@@ -65,11 +76,23 @@ def generate_target_data(n_points, seed=None):
 # -------- Ground truth data --------
 if calibration:
     if args.hit_or_miss_data:
-        data = np.load(args.hit_or_miss_data)[:N_events].astype(np.float32)
+        full = np.load(args.hit_or_miss_data).astype(np.float32)
+
+        # Per-toy deterministic RNG → different subset for each toy id
+        rng = np.random.default_rng(seed=seed)
+
+        # Sample without replacement when possible; fall back to with replacement
+        if full.shape[0] >= N_events:
+            idx = rng.choice(full.shape[0], size=N_events, replace=False)
+        else:
+            idx = rng.choice(full.shape[0], size=N_events, replace=True)
+
+        data = full[idx].copy()   # copy to avoid any unexpected views
     else:
         raise ValueError("Calibration mode requires --hit_or_miss_data")
 else:
     data = generate_target_data(N_events, seed=args.toys)
+
 
 if w_init is not None and w_cov is not None:
     print(f"Loaded w shape: {w_init.shape}, w_cov shape: {w_cov.shape}")
