@@ -499,7 +499,7 @@ def plot_line_binned(axis, band=0.03, nbins=60, n_samp=150_000):
     num_strip = num_samples[mask_num, axis]
 
     # --- plot
-    fig, ax = plt.subplots(figsize=(6.2, 4.2))
+    fig, ax = plt.subplots(figsize=(6, 4.2))
 
     # histograms (density=True makes area = 1 over the plotted range)
     ax.hist(data_strip, bins=bins, density=True, histtype="step", linewidth=1.8, label="Ground truth")
@@ -517,14 +517,21 @@ def plot_line_binned(axis, band=0.03, nbins=60, n_samp=150_000):
             cx, ref = _kde_conditional_curve(data_strip, bins)
             ax.plot(cx, ref, linewidth=1.0, alpha=0.6)
 
+    # --- styling to match plot_line
     ax.set_xlim(xmin, xmax)
+    ax.margins(x=0.02, y=0.04)
     ax.set_xlabel(f"Axis {axis}", fontsize=11)
     ax.set_ylabel("Density", fontsize=11)
-    ax.set_title(f"Binned conditional (strip ±{band:.3f} at axis {other}={fixed:.3f})", fontsize=10)
+    ax.tick_params(axis="both", labelsize=9)
     ax.legend(fontsize=9, frameon=True, framealpha=0.9, handlelength=2.0)
+
     fig.tight_layout(pad=0.3)
     fig.savefig(os.path.join(out_dir, f"line_slice_binned_{axis}.png"), dpi=220, bbox_inches="tight")
     plt.close(fig)
+
+    del sd_for_sampling
+    gc.collect()
+
 
 # make both binned slices to match your existing line plots
 plot_line_binned(axis=0, band=0.03, nbins=60, n_samp=150_000)
