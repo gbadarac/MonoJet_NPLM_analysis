@@ -1,12 +1,13 @@
 #!/bin/bash
 #SBATCH --job-name=LRT_100toys
-#SBATCH --array=0-0
-#SBATCH --time=01:00:00
+#SBATCH --array=27-27
+#SBATCH --time=02:00:00
 #SBATCH --mem=20G
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
 #SBATCH --account=gpu_gres
 #SBATCH --partition=qgpu,gpu
+# #SBATCH --partition=standard
 #SBATCH --nodes=1
 #SBATCH -o /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/results/logs/%x-%A_%a.out
 #SBATCH -e /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/results/logs/%x-%A_%a.err
@@ -38,8 +39,8 @@ export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensemb
 # -------------------------
 # Static config
 # -------------------------
-CALIBRATION=True
-BASE_OUT="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/results/N_100000_dim_2_seeds_60_4_16_128_15_toys_1_N_sampled_100k_no_clamp"
+CALIBRATION=False 
+BASE_OUT="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/results/N_100000_dim_2_seeds_60_4_16_128_15_toys_1_N_sampled_100k_20_kernels"
 
 w="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_128_15_trial/w_i_fitted.npy"
 w_cov="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_128_15_trial/cov_w.npy"

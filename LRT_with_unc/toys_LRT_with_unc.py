@@ -187,7 +187,7 @@ model_den = TAU(
     train_net=False).to(device)
 
 # Numerator: pass ensemble_probs=model_probs (NOT None)
-n_kernels = 100
+n_kernels = 20
 centers = x_data[:n_kernels].clone()  # already on device
 coeffs  = torch.ones((n_kernels,), dtype=torch.float32, device=device) / n_kernels
 
@@ -201,6 +201,7 @@ model_num = TAU(
     gaussian_coeffs=coeffs,
     gaussian_sigma=0.05,
     lambda_regularizer=1e6,
+    lambda_net=1e5,
     train_net=True).to(device)
 
 # ------------------ Train Function ------------------
@@ -239,7 +240,6 @@ def train_loop(model, name, lr=1e-4):
 
     return np.array(epoch_hist, np.int32), np.array(loss_hist, np.float32)
 
-
 model_den.ensemble_probs = model_probs
 model_num.ensemble_probs = model_probs
 
@@ -257,10 +257,9 @@ denominator = model_den.loglik(x_data).detach().cpu().numpy()
 
 num_epochs, num_losses = train_loop(model_num, "NUM")
 
-# Save loss curve
+# Save loss curve (linear y-scale)
 fig, ax = plt.subplots()
 ax.plot(num_epochs, num_losses)
-ax.set_yscale("log")
 ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.set_title("Numerator loss")
 fig.savefig(os.path.join(out_dir, "numerator_loss.png"), dpi=180, bbox_inches="tight")
 plt.close(fig)

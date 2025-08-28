@@ -21,6 +21,10 @@ class GaussianKernelLayer(nn.Module):
         self.softmax = nn.Softmax(dim=0)
         self.norm_const = (1.0 / ((2 * math.pi) ** (d / 2) * (self.sigma ** d)))
 
+    def get_coefficients(self):
+        #return self.softmax(self.coefficients)
+        return self.coefficients
+
     def forward(self, x):
         """
         x: shape (N, d) -> batch of N points
@@ -41,10 +45,11 @@ class TAU(nn.Module):
     """
     def __init__(self, input_shape, ensemble_probs, weights_init, weights_cov, weights_mean, 
                  gaussian_center, gaussian_coeffs,
-                 lambda_regularizer=1e5, gaussian_sigma=0.1, train_centers=False,
+                 lambda_regularizer=1e5, lambda_net=1e-6, gaussian_sigma=0.1, train_centers=False,
                  train_weights=True, train_net=True, 
                  model='TAU', name=None, **kwargs):
         super(TAU, self).__init__()
+        self.lambda_net = float(lambda_net)  
         self.ensemble_probs = ensemble_probs.float()   # [N, m] -> float32
         self.x_dim = input_shape[1]
         print("problem dimensionality:", self.x_dim)
@@ -116,9 +121,15 @@ class TAU(nn.Module):
     def get_coeffs(self):
         return self.softmax(self.coeffs)
 
+    def net_coeffs_L2(self):
+        return torch.sum(self.network.get_coefficients()**2)
+        
     def weights_constraint_term(self):
-        return (torch.sum(self.weights) - 1.0) ** 2 
-    
+        return (torch.sum(self.weights) - 1.0)**2/self.weights.shape[0]
+
+    def amplitudes_constraint_term(self):
+        return (torch.sum(self.network.get_coefficients()) - 1.0)**2/self.network.get_coefficients().shape[0]
+        
     def net_constraint_term(self):
         squared_sum = 0.0
         for param in self.network.parameters():
@@ -127,35 +138,39 @@ class TAU(nn.Module):
         return squared_sum
     
     def log_auxiliary_term(self):
-        if self.aux_model is None:
-            return torch.tensor(0.0, dtype=self.weights.dtype, device=self.weights.device)
         return self.aux_model.log_prob(self.weights) 
 
     def loglik(self, x):
-        x = x.float()
         aux = self.log_auxiliary_term()
         if self.train_net:
             ensemble, net_out = self.call(x)
             coeffs = self.softmax(self.coeffs)
-            # p = 0.5*(1+coeffs[0])*ensemble[:, 0] + 0.5*coeffs[1]*net_out
-            p = coeffs[0] * ensemble[:, 0] + coeffs[1] * net_out
+            if not hasattr(self, "_printed_init_coeffs"):
+                print(f"Initial coeffs (c0, c1): {coeffs.detach().cpu().tolist()}")
+                self._printed_init_coeffs = True
+            #p = 0.5*(1+coeffs[0])*ensemble[:, 0] + 0.5*coeffs[1]*net_out
+            p = coeffs[0]*ensemble[:, 0] + coeffs[1]*net_out
             return torch.log(p).sum() + aux.sum()
         else:
             p = self.call(x)
             return torch.log(p).sum() + aux.sum()
             
     def loss(self, x):
-        x = x.float()
         aux = self.log_auxiliary_term()
         if self.train_net:
             ensemble, net_out = self.call(x)
             coeffs = self.softmax(self.coeffs)
-            # p = 0.5*(1+coeffs[0])*ensemble[:, 0] + 0.5*coeffs[1]*net_out 
-            p = self.relu(coeffs[0] * ensemble[:, 0] + coeffs[1] * net_out )
-            lambda_krl = 10  # tune in [1e-4, 1e-2]
-            k = self.network.softmax(self.network.coefficients)      # softmaxed kernel weights
-            pen_krl = lambda_krl * k.pow(2).mean()
-            return -torch.log(p).sum() - aux.sum() + self.lambda_regularizer * self.weights_constraint_term()+ pen_krl
+
+            #p = 0.5*(1+coeffs[0])*ensemble[:, 0] + 0.5*coeffs[1]*net_out 
+            p = self.relu(coeffs[0]*ensemble[:, 0] + coeffs[1]*net_out )
+            #print('mixture coeffs: c=', coeffs)
+            #print('amplitudes constraint: ', self.amplitudes_constraint_term())
+            #print('weights constraint: ', self.weights_constraint_term())
+            return -torch.log(p).sum() - aux.sum() + self.lambda_regularizer*self.weights_constraint_term() + self.lambda_net *self.amplitudes_constraint_term()
+            #+self.lambda_regularizer*torch.sum(self.relu(-p)*torch.exp(-p))
         else:
             p = self.relu(self.call(x))
-            return -torch.log(p).sum() - aux.sum() + self.lambda_regularizer * self.weights_constraint_term()
+            return -torch.log(p).sum() - aux.sum() + self.lambda_regularizer*self.weights_constraint_term()
+            #+self.lambda_regularizer*torch.sum(self.relu(-p)*torch.exp(-p))
+
+        

@@ -22,7 +22,7 @@ print("Using device:", device, flush=True)
 
 # give a name to each model and provide a path to where the model's prediction for bkg and signal classes are stored
 folders = {
-    'model': '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/N_100000_seeds_60_4_16_256_15/model_001',
+    'model': '/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/N_100000_dim_2_seeds_60_4_16_128_15',
 }
 
 parser = argparse.ArgumentParser()
@@ -107,9 +107,14 @@ flow = make_flow(num_layers, hidden_features, num_bins, num_blocks)
 
 print('Load data')
 
-model_path = os.path.join(folders[manifold], "model.pth")
+models_path = os.path.join(folders[manifold], "f_i.pth")
 
-flow.load_state_dict(torch.load(model_path, map_location=device))
+# load only to CPU first
+all_models = torch.load(models_path, map_location="cpu")
+
+# choose the index you want (e.g. 0)
+flow = make_flow(num_layers, hidden_features, num_bins, num_blocks)
+flow.load_state_dict(all_models[0])
 
 flow.to(device)
 
