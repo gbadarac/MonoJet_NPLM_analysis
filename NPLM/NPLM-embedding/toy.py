@@ -58,7 +58,7 @@ std_feat2 = 0.4
 bkg_feat2 = np.random.normal(loc=mean_feat2, scale=std_feat2, size=n_bkg)
 
 num_features=2 #dimensionality of the data being transformed.
-hidden_features=256
+hidden_features=128
 num_bins=15
 num_blocks=16
 num_layers=4
@@ -103,7 +103,7 @@ print(f"Output directory set to: {output_dir}", flush=True)
 
 # NORMALIZING FLOW GENERATED DISTRIBUTION
 # Define the function to recreate the flow
-flow = make_flow(num_layers, hidden_features, num_bins, num_blocks)
+flow = make_flow(num_layers, hidden_features, num_bins, num_blocks, num_features)
 
 print('Load data')
 
@@ -113,7 +113,6 @@ models_path = os.path.join(folders[manifold], "f_i.pth")
 all_models = torch.load(models_path, map_location="cpu")
 
 # choose the index you want (e.g. 0)
-flow = make_flow(num_layers, hidden_features, num_bins, num_blocks)
 flow.load_state_dict(all_models[0])
 
 flow.to(device)

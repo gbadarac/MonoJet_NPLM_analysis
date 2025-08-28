@@ -201,7 +201,7 @@ model_num = TAU(
     gaussian_coeffs=coeffs,
     gaussian_sigma=0.05,
     lambda_regularizer=1e6,
-    lambda_net=0,
+    lambda_net=1e5,
     train_net=True).to(device)
 
 # ------------------ Train Function ------------------
@@ -277,20 +277,6 @@ out_json = {
 }
 with open(os.path.join(out_dir, "lrt_outputs.json"), "w") as f:
     json.dump(out_json, f, indent=2)
-
-def data_loglik(model, x):
-        if model.train_net:
-            ensemble, net_out = model.call(x)
-            p = torch.clamp(ensemble[:, 0] + net_out, min=1e-12)   # positivity for eval
-        else:
-            p = torch.clamp(model.call(x).squeeze(-1), min=1e-12)
-        return torch.log(p).sum()
-
-# after fitting both models:
-LL_den = data_loglik(model_den, x_data).item()
-LL_num = data_loglik(model_num, x_data).item()
-t = 2.0 * (LL_num - LL_den)
-print(f"Final data log-likelihoods: den {LL_den:.6f} num {LL_num:.6f} 2ΔlogL {t:.6f}", flush=True)
 
 # =========================
 # Conditional line-slice plots for each axis
@@ -376,17 +362,10 @@ def plot_line(axis):
     y_ens = _evaluate_mixture_pdf_on_grid(sd, config, w_for_plot, z, batch=8192)
 
     # ensemble + extra DOF (numerator)
-    '''
     y_ens_num = _evaluate_mixture_pdf_on_grid(sd, config, model_num.weights.detach(), z, batch=8192)
     y_krl     = _evaluate_krl_on_grid(model_num.network, z)
     coeffs    = torch.softmax(model_num.get_coeffs().detach().cpu(), dim=0).numpy().astype(np.float32)  # (2,)
     y_num     = coeffs[0] * y_ens_num + coeffs[1] * y_krl
-    '''
-
-    y_ens_num = _evaluate_mixture_pdf_on_grid(sd, config, model_num.weights.detach(), z, batch=8192)
-    y_krl     = _evaluate_krl_on_grid(model_num.network, z)
-    # somma diretta: niente c0,c1
-    y_num     = y_ens_num + y_krl
 
     # draw
     fig, ax = plt.subplots(figsize=(6, 4.2))
@@ -417,14 +396,10 @@ plot_line(axis=1)
 
 from math import sqrt, pi
 
-'''
 def sample_mixture_of_flows(state_dicts, config, weights_tensor, n_samples, device):
     """Sample from mixture of flows with softmax-normalized weights."""
     n_samples = int(n_samples)  # <- ensure plain int
-    
     w = torch.softmax(weights_tensor.detach().cpu().float(), dim=0).numpy()
-    
-
     counts = np.random.multinomial(n_samples, w)
     out = []
     for sd, n_i in zip(state_dicts, counts):
@@ -451,59 +426,8 @@ def sample_mixture_of_flows(state_dicts, config, weights_tensor, n_samples, devi
             torch.cuda.empty_cache()
         gc.collect()
     return np.concatenate(out, axis=0).astype(np.float32) if out else np.empty((0, config["num_features"]), np.float32)
-'''
-def sample_mixture_of_flows(state_dicts, config, weights_tensor, n_samples, device):
-    """Sample from a signed-weight mixture of flows.
-    Usa quote di campionamento ∝ |w_i|, ma ritorna anche pesi per-campione = sign(w_i).
-    Ritorna: samples: (N, d) float32, sample_weights: (N,) float32 (±1 o 0 se nessun campione)
-    """
-    n_samples = int(n_samples)
-    w_raw = weights_tensor.detach().cpu().float().numpy()  # pesi grezzi, anche negativi
-    abs_sum = np.sum(np.abs(w_raw))
-    if n_samples <= 0 or len(state_dicts) == 0:
-        return np.empty((0, config["num_features"]), np.float32), np.empty((0,), np.float32)
 
-    # quote di campionamento (non-negative, somma 1); se tutti zero, usa uniforme
-    if abs_sum > 0:
-        probs = np.abs(w_raw) / abs_sum
-    else:
-        probs = np.ones_like(w_raw) / len(w_raw)
 
-    counts = np.random.multinomial(n_samples, probs)
-    out_samples, out_weights = [], []
-
-    for sd, n_i, w_i in zip(state_dicts, counts, w_raw):
-        n_i = int(n_i)
-        if n_i <= 0:
-            continue
-        f = make_flow(
-            num_layers=config["num_layers"],
-            hidden_features=config["hidden_features"],
-            num_bins=config["num_bins"],
-            num_blocks=config["num_blocks"],
-            num_features=config["num_features"],
-        )
-        f.load_state_dict(sd)
-        f = f.to(device).float().eval()
-        with torch.no_grad():
-            try:
-                s = f.sample(n_i)       # (n_i, d)
-            except TypeError:
-                s = f.sample((n_i,))    # (n_i, d)
-        s = s.detach().cpu().numpy().astype(np.float32)
-        out_samples.append(s)
-        out_weights.append(np.full((n_i,), np.sign(w_i), dtype=np.float32))
-        del f
-        if device.type == "cuda":
-            torch.cuda.empty_cache()
-        gc.collect()
-
-    if not out_samples:
-        return np.empty((0, config["num_features"]), np.float32), np.empty((0,), np.float32)
-
-    return np.concatenate(out_samples, axis=0), np.concatenate(out_weights, axis=0)
-
-'''
 def sample_kernel_mixture(layer, n_samples):
     """Sample from GaussianKernelLayer: N(center_i, sigma^2 I) with softmax coeffs."""
     n_samples = int(n_samples)  # <- ensure plain int
@@ -522,42 +446,6 @@ def sample_kernel_mixture(layer, n_samples):
             continue
         pieces.append(np.random.normal(loc=c_i, scale=sigma, size=(n_i, d)).astype(np.float32))
     return np.concatenate(pieces, axis=0).astype(np.float32) if pieces else np.empty((0, d), np.float32)
-'''
-def sample_kernel_mixture(layer, n_samples):
-    """Sample from GaussianKernelLayer con pesi firmati.
-    Quote ∝ |a_j| per assegnare il numero di campioni; per-campione peso = sign(a_j).
-    Ritorna: samples: (N, d) float32, sample_weights: (N,) float32
-    """
-    n_samples = int(n_samples)
-    if (layer is None) or (layer.centers.numel() == 0) or n_samples == 0:
-        return np.empty((0, 2), np.float32), np.empty((0,), np.float32)
-
-    with torch.no_grad():
-        centers = layer.centers.detach().cpu().numpy()            # (K, d)
-        a_raw   = layer.coefficients.detach().cpu().numpy()       # (K,)
-        sigma   = float(layer.sigma.detach().cpu())
-    K, d = centers.shape
-
-    abs_sum = np.sum(np.abs(a_raw))
-    if abs_sum > 0:
-        probs = np.abs(a_raw) / abs_sum
-    else:
-        probs = np.ones_like(a_raw) / len(a_raw)
-
-    counts = np.random.multinomial(n_samples, probs)
-    pieces, wpieces = [], []
-    for c_i, n_i, a_i in zip(centers, counts, a_raw):
-        n_i = int(n_i)
-        if n_i <= 0:
-            continue
-        samples_i = np.random.normal(loc=c_i, scale=sigma, size=(n_i, d)).astype(np.float32)
-        pieces.append(samples_i)
-        wpieces.append(np.full((n_i,), np.sign(a_i), dtype=np.float32))
-
-    if not pieces:
-        return np.empty((0, d), np.float32), np.empty((0,), np.float32)
-    return np.concatenate(pieces, axis=0), np.concatenate(wpieces, axis=0)
-
 
 
 def _analytic_conditional_curve(axis, fixed, bins):
@@ -593,19 +481,11 @@ def plot_line_binned(axis, band=0.03, nbins=60, n_samp=150_000):
     # --- sample models
     sd_for_sampling = torch.load(f_i_file, map_location="cpu")
 
-    '''
     # Ensemble-only (denominator)
     ens_samples = sample_mixture_of_flows(sd_for_sampling, config, model_den.weights, n_samp, device)
     mask_ens = np.abs(ens_samples[:, other] - fixed) <= band
     ens_strip = ens_samples[mask_ens, axis]
-    '''
 
-    ens_samples, ens_w = sample_mixture_of_flows(sd_for_sampling, config, model_den.weights, n_samp, device)
-    mask_ens = np.abs(ens_samples[:, other] - fixed) <= band
-    ens_strip = ens_samples[mask_ens, axis]
-    ens_w_strip = ens_w[mask_ens]
-
-    '''
     # Numerator: mixture of flows + kernels with top-level coeffs
     with torch.no_grad():
         top = torch.softmax(model_num.get_coeffs().detach().cpu(), dim=0).numpy()  # [w_ens, w_krl]
@@ -616,55 +496,16 @@ def plot_line_binned(axis, band=0.03, nbins=60, n_samp=150_000):
     num_samples = np.concatenate([num_ens, num_krl], axis=0) if (len(num_ens)+len(num_krl)) else np.empty((0,2),np.float32)
     mask_num = np.abs(num_samples[:, other] - fixed) <= band
     num_strip = num_samples[mask_num, axis]
-    '''
-    with torch.no_grad():
-        sum_w = model_num.weights.detach().cpu().numpy().sum()
-        sum_a = model_num.network.get_coefficients().detach().cpu().numpy().sum() if model_num.train_net else 0.0
-        # quote al top level ∝ masse assolute
-        top_abs = np.abs([sum_w, sum_a])
-        tot_abs = top_abs.sum() if top_abs.sum() > 0 else 1.0
-        p_ens = float(top_abs[0] / tot_abs)
-
-    n_ens = int(np.random.binomial(int(n_samp), p_ens))
-    n_krl = int(n_samp) - n_ens
-
-    num_ens_samp, num_ens_w = (sample_mixture_of_flows(sd_for_sampling, config, model_num.weights, n_ens, device)
-                            if n_ens > 0 else (np.empty((0,2),np.float32), np.empty((0,),np.float32)))
-    num_krl_samp, num_krl_w = (sample_kernel_mixture(model_num.network, n_krl)
-                            if n_krl > 0 else (np.empty((0,2),np.float32), np.empty((0,),np.float32)))
-
-    if len(num_ens_samp) or len(num_krl_samp):
-        num_samples = np.concatenate([num_ens_samp, num_krl_samp], axis=0)
-        num_weights = np.concatenate([num_ens_w,    num_krl_w],    axis=0)
-    else:
-        num_samples = np.empty((0,2), np.float32)
-        num_weights = np.empty((0,),  np.float32)
-
-    mask_num = np.abs(num_samples[:, other] - fixed) <= band
-    num_strip = num_samples[mask_num, axis]
-    num_w_strip = num_weights[mask_num]
-
 
     # --- plot
     fig, ax = plt.subplots(figsize=(6, 4.2))
 
-    ''''
     # histograms (density=True makes area = 1 over the plotted range)
     ax.hist(data_strip, bins=bins, density=True, histtype="step", linewidth=1.8, label="Ground truth")
     if len(ens_strip):
         ax.hist(ens_strip,  bins=bins, density=True, histtype="step", linewidth=1.8, label="Ensemble")
     if len(num_strip):
         ax.hist(num_strip,  bins=bins, density=True, histtype="step", linewidth=1.8, label="Ensemble + extra DOF")
-    '''
-    ax.hist(data_strip, bins=bins, density=True, histtype="step", linewidth=1.8, label="Ground truth")
-
-    if len(ens_strip):
-        ax.hist(ens_strip, bins=bins, density=True, histtype="step", linewidth=1.8,
-                weights=ens_w_strip, label="Ensemble")
-
-    if len(num_strip):
-        ax.hist(num_strip, bins=bins, density=True, histtype="step", linewidth=1.8,
-                weights=num_w_strip, label="Ensemble + extra DOF")
 
     # optional smooth reference curve on top (same label as your line plot)
     if not calibration:

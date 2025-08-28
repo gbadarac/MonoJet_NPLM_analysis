@@ -32,19 +32,11 @@ class GaussianKernelLayer(nn.Module):
         """
         x = x.float()
         # (N, 1, d) - (1, m, d) -> (N, m, d)
-        '''
         diff = x.unsqueeze(1) - self.centers.unsqueeze(0)
         dist_sq = (diff ** 2).sum(dim=2)
         coeffs = self.softmax(self.coefficients)  # / self.coefficients.sum()
         # Gaussian kernel with proper normalization
         return torch.einsum("a, ba -> b", coeffs, self.norm_const * torch.exp(-0.5 * dist_sq / (self.sigma ** 2)))
-        '''
-        diff = x.unsqueeze(1) - self.centers.unsqueeze(0)
-        dist_sq = (diff ** 2).sum(dim=2)
-        kern = self.norm_const * torch.exp(-0.5 * dist_sq / (self.sigma ** 2))  # (N, m)
-        # Usa i coefficienti grezzi a_j (niente softmax), così la somma non è forzata a 1
-        return torch.einsum("m,Nm->N", self.get_coefficients(), kern)
-
 
 class TAU(nn.Module):
     """ 
@@ -111,9 +103,7 @@ class TAU(nn.Module):
         self.relu = nn.ReLU()
         self.train_net = train_net
         if self.train_net:
-            '''
             self.coeffs = nn.Parameter(torch.tensor([1, 0.], dtype=torch.float32), requires_grad=True)
-            '''
             self.network = GaussianKernelLayer(gaussian_center, gaussian_coeffs, gaussian_sigma, train_centers=train_centers)
             # self.network = nn.Sequential(nn.Linear(self.x_dim, 1000), nn.Sigmoid(),
             #                              nn.Linear(1000, 1), nn.Sigmoid())  # flow
@@ -149,45 +139,38 @@ class TAU(nn.Module):
     
     def log_auxiliary_term(self):
         return self.aux_model.log_prob(self.weights) 
-    
-    def normalization_constraint_term(self):
-        # somma pesi w_i
-        sum_w = torch.sum(self.weights)
-        # somma ampiezze a_j se la rete esiste, altrimenti 0
-        if self.train_net:
-            sum_a = torch.sum(self.network.get_coefficients())
-            denom = self.weights.shape[0] + self.network.get_coefficients().shape[0]
-        else:
-            sum_a = torch.tensor(0.0, dtype=self.weights.dtype, device=self.weights.device)
-            denom = self.weights.shape[0]
-        if denom <= 0:
-            denom = 1
-        return ((sum_w + sum_a - 1.0) ** 2) / denom
-
 
     def loglik(self, x):
         aux = self.log_auxiliary_term()
         if self.train_net:
-            ensemble, net_out = self.call(x)          # ensemble: (N,1) ; net_out: (N,)
-            p = ensemble[:, 0] + net_out
+            ensemble, net_out = self.call(x)
+            coeffs = self.softmax(self.coeffs)
+            if not hasattr(self, "_printed_init_coeffs"):
+                print(f"Initial coeffs (c0, c1): {coeffs.detach().cpu().tolist()}")
+                self._printed_init_coeffs = True
+            #p = 0.5*(1+coeffs[0])*ensemble[:, 0] + 0.5*coeffs[1]*net_out
+            p = coeffs[0]*ensemble[:, 0] + coeffs[1]*net_out
             return torch.log(p).sum() + aux.sum()
         else:
-            p = self.call(x)                           # (N,1)
+            p = self.call(x)
             return torch.log(p).sum() + aux.sum()
-
-        
+            
     def loss(self, x):
         aux = self.log_auxiliary_term()
         if self.train_net:
             ensemble, net_out = self.call(x)
-            p = self.relu(ensemble[:, 0] + net_out)
-            return -torch.log(p).sum() - aux.sum() \
-                + self.lambda_regularizer * self.normalization_constraint_term() \
-                + self.lambda_net * self.net_constraint_term()
+            coeffs = self.softmax(self.coeffs)
+
+            #p = 0.5*(1+coeffs[0])*ensemble[:, 0] + 0.5*coeffs[1]*net_out 
+            p = self.relu(coeffs[0]*ensemble[:, 0] + coeffs[1]*net_out )
+            #print('mixture coeffs: c=', coeffs)
+            #print('amplitudes constraint: ', self.amplitudes_constraint_term())
+            #print('weights constraint: ', self.weights_constraint_term())
+            return -torch.log(p).sum() - aux.sum() + self.lambda_regularizer*self.weights_constraint_term() + self.lambda_net *self.amplitudes_constraint_term()
+            #+self.lambda_regularizer*torch.sum(self.relu(-p)*torch.exp(-p))
         else:
             p = self.relu(self.call(x))
-            return -torch.log(p).sum() - aux.sum() \
-                + self.lambda_regularizer * self.normalization_constraint_term()
-
+            return -torch.log(p).sum() - aux.sum() + self.lambda_regularizer*self.weights_constraint_term()
+            #+self.lambda_regularizer*torch.sum(self.relu(-p)*torch.exp(-p))
 
         
