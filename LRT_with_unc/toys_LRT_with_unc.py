@@ -286,12 +286,6 @@ def data_loglik(model, x):
             p = torch.clamp(model.call(x).squeeze(-1), min=1e-12)
         return torch.log(p).sum()
 
-# after fitting both models:
-LL_den = data_loglik(model_den, x_data).item()
-LL_num = data_loglik(model_num, x_data).item()
-t = 2.0 * (LL_num - LL_den)
-print(f"Final data log-likelihoods: den {LL_den:.6f} num {LL_num:.6f} 2ΔlogL {t:.6f}", flush=True)
-
 # =========================
 # Conditional line-slice plots for each axis
 # =========================

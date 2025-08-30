@@ -2,7 +2,7 @@
 #SBATCH -c 1                 # Number of cores (-c)
 #SBATCH --gpus 1
 #SBATCH -t 0-01:00           # Runtime in D-HH:MM, minimum of 10 minutes
-#SBATCH -p gpu               # Partition to submit to     
+#SBATCH -p gpu,qgpu            # Partition to submit to     
 #SBATCH --account=gpu_gres   # Account to access GPU resources
 #SBATCH --mem=20000          # Memory pool for all cores (see also --mem-per-cpu)
 #SBATCH -o /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM_NF_ensemble/logs/%x-%j.out  # Keep logs in 'logs'

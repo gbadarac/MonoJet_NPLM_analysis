@@ -26,7 +26,6 @@ mpl.rcParams['savefig.format'] = 'pdf'
 mpl.rcParams['pdf.fonttype'] = 42   # keep fonts editable / display nicely
 mpl.rcParams['ps.fonttype']  = 42
 
-
 def candidate_sigma(data, perc=90):
     # this function estimates the width of the gaussian kernel.                          
     # use on a (small) sample of reference data (standardize first if necessary)         
@@ -146,6 +145,8 @@ def ratio_with_error(a, b, a_err, b_err):
     ratio_err = ratio * np.sqrt((a_err / a)**2 + (b_err / b)**2)
     return ratio, ratio_err
 
+'''
+
 def plot_reconstruction(data, # 
                         weight_data, ref, weight_ref, ref_preds, 
                         xlabels=[], #[D]
@@ -154,23 +155,7 @@ def plot_reconstruction(data, #
                         ferr_bins_centroids = [], #[Nb, D]
                         yrange=None,
                         save=False, save_path='', file_name=''):
-    '''
-    Reconstruction of the data distribution learnt by the model.
-    df:              (int) chi2 degrees of freedom                                                                         
-    data:            (numpy array, shape (None, n_dimensions)) data training sample (label=1)                                      
-    ref:             (numpy array, shape (None, n_dimensions)) reference training sample (label=0)
-    weight_ref:      (numpy array, shape (None,)) weights of the reference sample                                                  
-    tau_OBS:         (float) value of the tau term after training
-    output_tau_ref:  (numpy array, shape (None, 1)) tau prediction of the reference training sample after training
-    feature_labels:  (list of string) list of names of the training variables 
-    bins_code:       (dict) dictionary of bins edge for each training variable (bins_code.keys()=feature_labels)
-    xlabel_code:     (dict) dictionary of xlabel for each training variable (xlabel.keys()=feature_labels)   
-    ymax_code:       (dict) dictionary of maximum value for the y axis in the ratio panel 
-                     for each training variable (ymax_code.keys()=feature_labels) 
-    delta_OBS:       (float) value of the delta term after training (if not given, only tau reconstruction is plotted) 
-    output_delta_ref:(numpy array, shape (None, 1)) delta prediction of the reference training sample after training 
-                     (if not given, only tau reconstruction is plotted)     
-    '''
+
     eps = 1e-10
 
     weight_ref = np.ones(len(ref))*weight_ref
@@ -274,5 +259,196 @@ def plot_reconstruction(data, #
         # plt.show()
         plt.close()
     return
+'''
 
+from matplotlib.gridspec import GridSpec
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
+
+def plot_reconstruction(
+    data, weight_data, ref, weight_ref, ref_preds,
+    xlabels=[],                     # ["Feature 1","Feature 2"] recommended
+    bins_centroids=None,            # shape [Nb, D]
+    f_bins_centroids=None,          # shape [Nb, D]
+    ferr_bins_centroids=None,       # shape [Nb, D]
+    yrange=None,
+    save=False, save_path='', file_name=''
+):
+    """
+    Makes ONE figure with 2 columns (Feature 1 | Feature 2), each with
+    a top 'events' panel and a bottom 'ratio' panel. Legends live in the
+    middle white column so the plots are bigger.
+    """
+    assert data.shape[1] >= 2, "This combined plot expects at least 2 features."
+
+    eps = 1e-10
+    weight_ref = np.ones(len(ref)) * weight_ref
+    weight_data = np.ones(len(data)) * weight_data
+
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.size": 28,        # base
+        "axes.labelsize": 44,   # axis labels
+        "xtick.labelsize": 32,
+        "ytick.labelsize": 32,
+        "legend.fontsize": 30,
+    })
+
+    # ---- figure layout: 2 rows x 3 columns (left plots | legend column | right plots)
+    # widen plots, keep a slim center column for legends
+    fig = plt.figure(figsize=(32, 12))   # was (24, 12) → make figure wider
+    gs = GridSpec(
+        2, 3, figure=fig,
+        width_ratios=[1.0, 0.60, 1.0],   # widen legend column a lot
+        height_ratios=[1.3, 0.7],
+        left=0.055, right=0.985, bottom=0.10, top=0.95,
+        wspace=0.05, hspace=0.10         # a little more spacing
+    )
+
+
+
+    ax1L = fig.add_subplot(gs[0, 0])  # top left (events, feat 1)
+    ax2L = fig.add_subplot(gs[1, 0])  # bottom left (ratio, feat 1)
+    axC  = fig.add_subplot(gs[:, 1])  # center legend column
+    ax1R = fig.add_subplot(gs[0, 2])  # top right (events, feat 2)
+    ax2R = fig.add_subplot(gs[1, 2])  # bottom right (ratio, feat 2)
+    axC.axis("off")
+
+    def centroids_to_edges(centroids):
+        c = np.asarray(centroids)
+        mid = (c[:-1] + c[1:]) / 2
+        first = c[0] - (mid[0] - c[0])
+        last  = c[-1] + (c[-1] - mid[-1])
+        return np.concatenate([[first], mid, [last]])
+
+    def ratio_with_error(a, b, a_err, b_err):
+        a, b, a_err, b_err = map(np.asarray, (a, b, a_err, b_err))
+        ratio = a / b
+        ratio_err = ratio * np.sqrt((a_err / a)**2 + (b_err / b)**2)
+        return ratio, ratio_err
+
+    # --------- helper: draw one feature into (ax_top, ax_bot)
+    def draw_feature(i, ax_top, ax_bot):
+        bins = centroids_to_edges(bins_centroids[:, i])
+        N = np.sum(weight_ref)
+        bin_lengths = (bins[1:] - bins[:-1]) * N
+
+        # --- top panel (events)
+        hD = ax_top.hist(
+            data[:, i], weights=weight_data, bins=bins,
+            label="DATA", color="black", lw=1.0, histtype="step", zorder=2
+        )
+        hR = ax_top.hist(
+            ref[:, i], weights=weight_ref, bins=bins,
+            color="green", ec="green", alpha=0.25, lw=1, label="REFERENCE", zorder=1
+        )
+        hN = ax_top.hist(
+            ref[:, i], weights=np.exp(ref_preds[:, 0]) * weight_ref,
+            bins=bins, histtype="step", lw=0
+        )
+
+        # data error bars & red LRT dots
+        centers = 0.5 * (bins[1:] + bins[:-1])
+        ax_top.errorbar(
+            centers, hD[0], yerr=np.sqrt(hD[0]),
+            color="black", ls="", marker="o", ms=6, zorder=3,
+            elinewidth=0.8, markeredgewidth=0.6, capsize=2
+        )
+        ax_top.scatter(
+            centers, hN[0],
+            label="LRT RECO", color="#e41a1c",
+            edgecolors="white", linewidths=0.6, s=100, zorder=5
+        )
+
+        ax_top.set_yscale("log")
+        ax_top.set_xlim(bins[0], bins[-1])
+        ax_top.set_ylabel("events")
+        ax_top.tick_params(axis="x", labelbottom=False)
+
+        # --- bottom panel (ratio)
+        x = bins_centroids[:, i]
+        area = np.sum(bin_lengths * f_bins_centroids[:, i])
+        # GEN/REF with uncertainty from f and ferr
+        ratio, ratio_err = ratio_with_error(
+            N / area * bin_lengths * f_bins_centroids[:, i],
+            hR[0],
+            N / area * bin_lengths * ferr_bins_centroids[:, i],
+            np.sqrt(hR[0])
+        )
+        # LRT/REF
+        ratio_nplm = hN[0] / (hR[0] + eps)
+        mask = ratio_nplm > 0
+        ax_bot.errorbar(
+            x, hD[0] / (hR[0] + eps),
+            yerr=np.sqrt(hD[0]) / (hR[0] + eps),
+            ls="", marker="o", label="DATA/REF",
+            color="black", zorder=1, ms=6, elinewidth=0.8, markeredgewidth=0.6, capsize=2
+        )
+        ax_bot.plot(x[mask], ratio_nplm[mask], label="LRT RECO/REF", color="#e41a1c", lw=2)
+        ax_bot.plot(x, ratio, label="GEN/REF", color="blue", lw=2)
+        ax_bot.fill_between(x, ratio - ratio_err, ratio + ratio_err, color="blue", alpha=0.30, label=r"$\pm 1\sigma$")
+        ax_bot.fill_between(x, ratio - 2 * ratio_err, ratio + 2 * ratio_err, color="blue", alpha=0.15, label=r"$\pm 2\sigma$")
+
+        # faint grid
+        ax_bot.set_axisbelow(True)
+        ax_bot.grid(True, which="major", axis="both", linestyle=":", linewidth=0.8, alpha=0.25)
+
+        ax_bot.set_xlim(bins[0], bins[-1])
+        ax_bot.set_ylim(0.05, 2.0)
+        ax_bot.set_ylabel("ratio")
+        xlabel = xlabels[i] if (len(xlabels) > i) else f"Feature {i+1}"
+        ax_bot.set_xlabel(xlabel)
+
+        if yrange is not None and isinstance(yrange, dict) and (xlabel in yrange):
+            ax_bot.set_ylim(yrange[xlabel][0], yrange[xlabel][1])
+
+    # draw left (feature 1) and right (feature 2)
+    draw_feature(0, ax1L, ax2L)
+    draw_feature(1, ax1R, ax2R)
+
+    # ---- centered legends in the middle column (two stacks)
+    # ---- centered legends in the middle column (split into two blocks)
+
+    # ---- two figure-level legends, truly centered horizontally
+    top_handles = [
+        Line2D([0], [0], color="black", lw=1.0, label="DATA"),
+        Patch(facecolor="green", edgecolor="green", alpha=0.25, label="REFERENCE"),
+        Line2D([0], [0], marker="o", linestyle="None", markersize=10,
+            markerfacecolor="#e41a1c", markeredgecolor="white", label="LRT RECO"),
+    ]
+    bottom_handles = [
+        Line2D([0], [0], color="#e41a1c", lw=2, label="LRT RECO/REF"),
+        Line2D([0], [0], color="blue", lw=2, label="GEN/REF"),
+        Patch(facecolor="blue", alpha=0.30, label=r"$\pm1\sigma$"),
+        Patch(facecolor="blue", alpha=0.15, label=r"$\pm2\sigma$"),
+        Line2D([0], [0], marker="o", linestyle="None", color="black", label="DATA/REF"),
+    ]
+
+    # keep axC just as a spacer
+    axC.axis("off")
+
+    leg_top = fig.legend(
+        handles=top_handles, loc="center",
+        bbox_to_anchor=(0.50, 0.62),   # dead-center in the figure horizontally
+        bbox_transform=fig.transFigure,
+        frameon=False, ncol=1,
+        handlelength=1.8, handletextpad=0.6, borderaxespad=0.0
+    )
+    leg_bot = fig.legend(
+        handles=bottom_handles, loc="center",
+        bbox_to_anchor=(0.50, 0.38),   # second block below the first
+        bbox_transform=fig.transFigure,
+        frameon=False, ncol=1,
+        handlelength=1.8, handletextpad=0.6, borderaxespad=0.0
+    )
+
+
+    if save:
+        os.makedirs(save_path, exist_ok=True)
+        out_path = os.path.join(save_path, file_name if file_name.endswith(".pdf")
+                                else file_name.replace(".png", ".pdf"))
+        if not out_path.endswith(".pdf"):
+            out_path = out_path + ".pdf"
+        fig.savefig(out_path, bbox_inches="tight", pad_inches=0.10)  # vector PDF
+    plt.close(fig)
 
