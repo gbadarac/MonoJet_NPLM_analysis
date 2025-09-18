@@ -45,7 +45,7 @@ calibration = args.calibration.lower() == "true"
 
 #GROUND TRUTH DISTRIBTION
 # Generate background 
-n_bkg = 2000000
+n_bkg = 200000
 
 # Energy: single Gaussian
 mean_feat1 = -0.5  # adjust as needed
