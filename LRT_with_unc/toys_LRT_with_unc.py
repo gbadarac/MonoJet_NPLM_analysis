@@ -686,6 +686,6 @@ def plot_line_binned(axis, band=0.03, nbins=60, n_samp=150_000):
 
 
 # make both binned slices to match your existing line plots
-plot_line_binned(axis=0, band=0.03, nbins=60, n_samp=150_000)
-plot_line_binned(axis=1, band=0.03, nbins=60, n_samp=150_000)
+plot_line_binned(axis=0, band=0.03, nbins=60, n_samp=150000)
+plot_line_binned(axis=1, band=0.03, nbins=60, n_samp=150000)
 
