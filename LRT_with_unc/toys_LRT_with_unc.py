@@ -411,41 +411,6 @@ plot_line(axis=1)
 
 from math import sqrt, pi
 
-'''
-def sample_mixture_of_flows(state_dicts, config, weights_tensor, n_samples, device):
-    """Sample from mixture of flows with softmax-normalized weights."""
-    n_samples = int(n_samples)  # <- ensure plain int
-    
-    w = torch.softmax(weights_tensor.detach().cpu().float(), dim=0).numpy()
-    
-
-    counts = np.random.multinomial(n_samples, w)
-    out = []
-    for sd, n_i in zip(state_dicts, counts):
-        n_i = int(n_i)          # <- ensure plain int
-        if n_i <= 0:
-            continue
-        f = make_flow(
-            num_layers=config["num_layers"],
-            hidden_features=config["hidden_features"],
-            num_bins=config["num_bins"],
-            num_blocks=config["num_blocks"],
-            num_features=config["num_features"],
-        )
-        f.load_state_dict(sd)
-        f = f.to(device).float().eval()
-        with torch.no_grad():
-            try:
-                s = f.sample(n_i)          # (n_i, d)
-            except TypeError:
-                s = f.sample((n_i,))       # (n_i, d)
-        out.append(s.detach().cpu().numpy())
-        del f
-        if device.type == "cuda":
-            torch.cuda.empty_cache()
-        gc.collect()
-    return np.concatenate(out, axis=0).astype(np.float32) if out else np.empty((0, config["num_features"]), np.float32)
-'''
 def sample_mixture_of_flows(state_dicts, config, weights_tensor, n_samples, device):
     """Sample from a signed-weight mixture of flows.
     Usa quote di campionamento ∝ |w_i|, ma ritorna anche pesi per-campione = sign(w_i).
@@ -497,26 +462,7 @@ def sample_mixture_of_flows(state_dicts, config, weights_tensor, n_samples, devi
 
     return np.concatenate(out_samples, axis=0), np.concatenate(out_weights, axis=0)
 
-'''
-def sample_kernel_mixture(layer, n_samples):
-    """Sample from GaussianKernelLayer: N(center_i, sigma^2 I) with softmax coeffs."""
-    n_samples = int(n_samples)  # <- ensure plain int
-    if (layer is None) or (layer.centers.numel() == 0) or n_samples == 0:
-        return np.empty((0, 2), dtype=np.float32)
-    with torch.no_grad():
-        centers = layer.centers.detach().cpu().numpy()                         # (K, d)
-        coeffs  = torch.softmax(layer.coefficients.detach().cpu(), 0).numpy()  # (K,)
-        sigma   = float(layer.sigma.detach().cpu())
-    K, d = centers.shape
-    counts = np.random.multinomial(n_samples, coeffs)
-    pieces = []
-    for c_i, n_i in zip(centers, counts):
-        n_i = int(n_i)   # <- ensure plain int
-        if n_i <= 0:
-            continue
-        pieces.append(np.random.normal(loc=c_i, scale=sigma, size=(n_i, d)).astype(np.float32))
-    return np.concatenate(pieces, axis=0).astype(np.float32) if pieces else np.empty((0, d), np.float32)
-'''
+
 def sample_kernel_mixture(layer, n_samples):
     """Sample from GaussianKernelLayer con pesi firmati.
     Quote ∝ |a_j| per assegnare il numero di campioni; per-campione peso = sign(a_j).
@@ -553,7 +499,6 @@ def sample_kernel_mixture(layer, n_samples):
     return np.concatenate(pieces, axis=0), np.concatenate(wpieces, axis=0)
 
 
-
 def _analytic_conditional_curve(axis, fixed, bins):
     """Analytic p(x_axis | x_other=fixed) for the Gaussian ground truth (non-calibration)."""
     centers = 0.5*(bins[1:]+bins[:-1])
@@ -570,7 +515,7 @@ def _kde_conditional_curve(samples_1d, bins):
     kde = gaussian_kde(samples_1d)
     return centers, kde(centers)
 
-def plot_line_binned(axis, band=0.03, nbins=60, n_samp=150_000):
+def plot_line_binned(axis, band=0.03, nbins=60, n_samp=150000):
     """
     axis: which axis to vary (0 or 1)
     band: half-width of the strip around the fixed coordinate (in data units)
