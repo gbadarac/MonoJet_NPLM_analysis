@@ -45,7 +45,6 @@ class GaussianKernelLayer(nn.Module):
         # Usa i coefficienti grezzi a_j (niente softmax), così la somma non è forzata a 1
         return torch.einsum("m,Nm->N", self.get_coefficients(), kern)
 
-
 class TAU(nn.Module):
     """ 
     N= input_shape[0]
@@ -66,6 +65,7 @@ class TAU(nn.Module):
         # store priors as float32 (if provided as tensors)
         self.weights_cov  = weights_cov.float()  if isinstance(weights_cov,  torch.Tensor) else weights_cov
         self.weights_mean = weights_mean.float() if isinstance(weights_mean, torch.Tensor) else weights_mean
+        self.train_weights = train_weights
 
         self.lambda_regularizer = lambda_regularizer
         if (self.weights_mean is not None) and (self.weights_cov is not None):
@@ -156,14 +156,21 @@ class TAU(nn.Module):
         # somma ampiezze a_j se la rete esiste, altrimenti 0
         if self.train_net:
             sum_a = torch.sum(self.network.get_coefficients())
-            denom = self.weights.shape[0] + self.network.get_coefficients().shape[0]
+            if self.train_weights:
+                denom = self.weights.shape[0] + self.network.get_coefficients().shape[0]
+            else:
+                denom = self.network.get_coefficients().shape[0] 
         else:
             sum_a = torch.tensor(0.0, dtype=self.weights.dtype, device=self.weights.device)
             denom = self.weights.shape[0]
-        if denom <= 0:
-            denom = 1
-        return ((sum_w + sum_a - 1.0) ** 2) / denom
+        denom = max(1, int(denom))
+        print("denom=", denom)
+        total = sum_w + sum_a
 
+        # <<< simple debug print >>>
+        print(f"[norm] sum_w={sum_w.item():.6f}, sum_a={sum_a.item():.6f}, total={total.item():.6f}", flush=True)
+
+        return ((total - 1.0) ** 2) / denom
 
     def loglik(self, x):
         aux = self.log_auxiliary_term()
@@ -173,21 +180,27 @@ class TAU(nn.Module):
             return torch.log(p).sum() + aux.sum()
         else:
             p = self.call(x)                           # (N,1)
-            return torch.log(p).sum() + aux.sum()
+        out = torch.log(p).sum() 
+        if self.train_weights:
+            out = out + aux.sum()
+        return out 
 
-        
     def loss(self, x):
         aux = self.log_auxiliary_term()
         if self.train_net:
             ensemble, net_out = self.call(x)
             p = self.relu(ensemble[:, 0] + net_out)
-            return -torch.log(p).sum() - aux.sum() \
-                + self.lambda_regularizer * self.normalization_constraint_term() \
+            out = -torch.log(p).sum() + self.lambda_regularizer * self.normalization_constraint_term() \
                 + self.lambda_net * self.net_constraint_term()
+            if self.train_weights:
+                out = out - aux.sum()
+            return out 
         else:
             p = self.relu(self.call(x))
-            return -torch.log(p).sum() - aux.sum() \
-                + self.lambda_regularizer * self.normalization_constraint_term()
+            out = -torch.log(p).sum() + self.lambda_regularizer * self.normalization_constraint_term()
+            if self.train_weights:
+                out = out - aux.sum() 
+            return out 
 
 
         

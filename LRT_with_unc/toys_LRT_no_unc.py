@@ -151,6 +151,7 @@ def probs(weights, model_probs):
     # weights: (M,), model_probs: (N, M)
     return (model_probs * weights).sum(dim=1)  # (N,)
 
+'''
 def aux(weights, weights_0, weights_cov):
     d = torch.distributions.MultivariateNormal(weights_0, covariance_matrix=weights_cov)
     return d.log_prob(weights)
@@ -161,6 +162,7 @@ def nll_aux(weights, weights_0, weights_cov):
         return weights.sum() * float("inf")
     loss = -torch.log(p + 1e-8).sum() - aux(weights, weights_0, weights_cov).sum()
     return loss
+'''
 
 # ------------------ TAU models (float32 everywhere) ------------------
 epochs = 20000
@@ -184,7 +186,8 @@ model_den = TAU(
     gaussian_coeffs=[],
     gaussian_sigma=None,
     lambda_regularizer=1e6,
-    train_net=False).to(device)
+    train_net=False,
+    train_weights=False).to(device)
 
 # Numerator: pass ensemble_probs=model_probs (NOT None)
 n_kernels = 20
@@ -202,7 +205,8 @@ model_num = TAU(
     gaussian_sigma=0.05,
     lambda_regularizer=1e6,
     lambda_net=0,
-    train_net=True).to(device)
+    train_net=True,
+    train_weights=False).to(device)
 
 # ------------------ Train Function ------------------
 def train_loop(model, name, lr=1e-4):
@@ -243,6 +247,7 @@ def train_loop(model, name, lr=1e-4):
 model_den.ensemble_probs = model_probs
 model_num.ensemble_probs = model_probs
 
+'''
 den_epochs, den_losses = train_loop(model_den, "DEN")
 
 # Save loss curve
@@ -251,6 +256,7 @@ ax.plot(den_epochs, den_losses)
 ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.set_title("Denominator loss")
 fig.savefig(os.path.join(out_dir, "denominator_loss.png"), dpi=180, bbox_inches="tight")
 plt.close(fig)
+'''
 
 # Save log-likelihood values
 denominator = model_den.loglik(x_data).detach().cpu().numpy()
@@ -408,7 +414,6 @@ plot_line(axis=1)
 # =========================
 # Binned conditional line-slice overlays (same labels)
 # =========================
-
 from math import sqrt, pi
 
 def sample_mixture_of_flows(state_dicts, config, weights_tensor, n_samples, device):
@@ -628,6 +633,7 @@ def plot_line_binned(axis, band=0.03, nbins=60, n_samp=150000):
 
     del sd_for_sampling
     gc.collect()
+
 
 # make both binned slices to match your existing line plots
 plot_line_binned(axis=0, band=0.03, nbins=60, n_samp=150000)
