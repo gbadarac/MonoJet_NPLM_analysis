@@ -175,6 +175,8 @@ t0 = time.time()
 w_init_dev = w_init.to(device) if isinstance(w_init, torch.Tensor) else w_init
 w_cov_dev  = w_cov.to(device)  if isinstance(w_cov,  torch.Tensor)  else w_cov
 
+lambda_reg = 1e6
+
 # Denominator: no extra kernels
 model_den = TAU(
     (None, 2),
@@ -185,14 +187,14 @@ model_den = TAU(
     gaussian_center=[],
     gaussian_coeffs=[],
     gaussian_sigma=None,
-    lambda_regularizer=1e6,
+    lambda_regularizer=lambda_reg,
     train_net=False,
     train_weights=False).to(device)
 
 # Numerator: pass ensemble_probs=model_probs (NOT None)
 n_kernels = 20
 centers = x_data[:n_kernels].clone()  # already on device
-coeffs  = torch.ones((n_kernels,), dtype=torch.float32, device=device) / n_kernels
+coeffs = torch.zeros((n_kernels,), dtype=torch.float32, device=device)
 
 model_num = TAU(
     (None, 2),
@@ -203,13 +205,13 @@ model_num = TAU(
     gaussian_center=centers,
     gaussian_coeffs=coeffs,
     gaussian_sigma=0.05,
-    lambda_regularizer=1e6,
+    lambda_regularizer=lambda_reg,
     lambda_net=0,
     train_net=True,
     train_weights=False).to(device)
 
 # ------------------ Train Function ------------------
-def train_loop(model, name, lr=1e-4):
+def train_loop(model, name, lr=1e-3):
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     loss_hist, epoch_hist = [], []
     best = float("inf")

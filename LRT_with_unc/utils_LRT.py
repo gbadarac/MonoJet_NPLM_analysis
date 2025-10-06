@@ -7,43 +7,54 @@ from torch import nn
 from torch.autograd import Variable
 import math 
 
+import math, torch
+from torch import nn
+
 class GaussianKernelLayer(nn.Module):
     def __init__(self, centers_init, coefficients_init, sigma, train_centers=False):
-        """
-        centers: torch.Tensor of shape (m, d)  -> Gaussian centers
-        sigma: float or torch scalar           -> fixed std deviation
-        """
         super().__init__()
-        self.centers = nn.Parameter(centers_init.float(), requires_grad=train_centers)   # trainable centers
-        self.register_buffer('sigma', torch.tensor(sigma, dtype=torch.float32)) # non-trainable sigma (float32)
-        self.coefficients = nn.Parameter(coefficients_init.float(), requires_grad=True) # trainable coefficients
+        self.centers = nn.Parameter(centers_init.float(), requires_grad=train_centers)
+        self.register_buffer('sigma', torch.tensor(float(sigma), dtype=torch.float32))
+        self.coefficients = nn.Parameter(coefficients_init.float(), requires_grad=True)
+
+        # --- auto mode detection from init ---
+        with torch.no_grad():
+            s = coefficients_init.float().sum()
+            L1 = coefficients_init.float().abs().sum()
+        tol = 1e-7
+        if L1 < tol:                 # all zeros -> zero-sum correction
+            self._mode = "zero_sum"
+        elif abs(float(s) - 1.0) < 1e-6:
+            self._mode = "sum1"      # sums to 1 -> mixture weights
+        else:
+            self._mode = "raw"       # leave as-is
+
         d = centers_init.shape[1]
-        self.softmax = nn.Softmax(dim=0)
-        self.norm_const = (1.0 / ((2 * math.pi) ** (d / 2) * (self.sigma ** d)))
+        self.norm_const = (1.0 / ((2*math.pi)**(d/2) * (self.sigma**d)))
 
     def get_coefficients(self):
-        #return self.softmax(self.coefficients)
-        return self.coefficients
+        a = self.coefficients
+        if self._mode == "zero_sum":
+            # keep sum(a)=0 at all times
+            return a - a.mean()
+        elif self._mode == "sum1":
+            # keep sum(a)=1 despite updates (allow negatives)
+            return a / (a.sum() + 1e-12)
+        else:
+            return a
 
     def forward(self, x):
-        """
-        x: shape (N, d) -> batch of N points
-        returns: shape (N, m) -> Gaussian kernel activations
-        """
         x = x.float()
-        # (N, 1, d) - (1, m, d) -> (N, m, d)
-        '''
-        diff = x.unsqueeze(1) - self.centers.unsqueeze(0)
-        dist_sq = (diff ** 2).sum(dim=2)
-        coeffs = self.softmax(self.coefficients)  # / self.coefficients.sum()
-        # Gaussian kernel with proper normalization
-        return torch.einsum("a, ba -> b", coeffs, self.norm_const * torch.exp(-0.5 * dist_sq / (self.sigma ** 2)))
-        '''
         diff = x.unsqueeze(1) - self.centers.unsqueeze(0)
         dist_sq = (diff ** 2).sum(dim=2)
         kern = self.norm_const * torch.exp(-0.5 * dist_sq / (self.sigma ** 2))  # (N, m)
-        # Usa i coefficienti grezzi a_j (niente softmax), così la somma non è forzata a 1
+
+        # remove the per-sample DC component so gradients aren’t washed out
+        kern = kern - kern.mean(dim=1, keepdim=True)
+
         return torch.einsum("m,Nm->N", self.get_coefficients(), kern)
+
+
 
 class TAU(nn.Module):
     """ 
@@ -110,6 +121,7 @@ class TAU(nn.Module):
         self.softmax = nn.Softmax(dim=0)
         self.relu = nn.ReLU()
         self.train_net = train_net
+
         if self.train_net:
             '''
             self.coeffs = nn.Parameter(torch.tensor([1, 0.], dtype=torch.float32), requires_grad=True)
