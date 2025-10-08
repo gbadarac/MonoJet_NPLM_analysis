@@ -18,28 +18,33 @@ import sys
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") #sets device to GPU if available 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-g', '--generated', type=int, help="generated distribution (number of generated events)", required=True) #generated distribution (signal e bkg insieme)
-parser.add_argument('-r', '--reference', type=int, help="reference (number of reference events, must be larger than background)", required=True) #target distribution 
+parser.add_argument('-d', '--data', type=int, help="number of data events", required=True) #generated distribution (signal e bkg insieme)
+parser.add_argument('-r', '--reference', type=int, help="reference (number of reference events, must be larger than data)", required=True) #target distribution 
 parser.add_argument('-t', '--toys', type=int, help="toys", required=True)
 parser.add_argument("-c", "--calibration", type=str, default="True", help="Enable calibration mode (True/False)")
 parser.add_argument('-M', '--M', type=int, help="Effective number of samples used for configuring the log-likelihood estimation (should be selected based on the dataset size to optimize performance)", required=True)
 args = parser.parse_args()
 
 N_ref = args.reference
-N_generated = args.generated
+N_data = args.data
 
 # Convert string to boolean
 calibration = args.calibration.lower() == "true"
 
 # Load real reference and data
+'''
 reference_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/500k_target_training_set.npy"
-generated_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/N_100000_dim_2_seeds_60_4_16_128_15/concatenated_ensemble_generated_samples_4_16_128_15.npy"
+data_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/N_100000_dim_2_seeds_60_4_16_128_15/concatenated_ensemble_generated_samples_4_16_128_15.npy"
 #generated_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/generated_samples/generated_samples_1_models_4_16_128_15.npy"
+'''
 
-reference_data = np.load(reference_path).astype('float32')
-generated_data = np.load(generated_path).astype('float32')
+data_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/500k_target_training_set.npy"
+reference_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/N_100000_dim_2_seeds_60_4_16_128_15/concatenated_ensemble_generated_samples_4_16_128_15_N_1000000.npy"
 
-reference = torch.as_tensor(reference_data[:N_ref], dtype=torch.float32)
+reference_dataset = np.load(reference_path).astype('float32')
+data_dataset = np.load(data_path).astype('float32')
+
+reference = torch.as_tensor(reference_dataset[:N_ref], dtype=torch.float32)
 
 # hyper parameters of the model
 M=args.M
@@ -59,7 +64,7 @@ else:
 
 # Create unique job directory
 job_id = os.getenv('SLURM_JOB_ID', 'local')
-job_dir = f"nplm_ensemble_NR{args.reference}_NG{args.generated}_M{M}_lam1e-6_iter1000000_job{job_id}/"
+job_dir = f"nplm_ensemble_NR{args.reference}_NG{args.data}_M{M}_lam1e-6_iter1000000_job{job_id}/"
 output_dir = os.path.join(folder_out, job_dir)
 os.makedirs(output_dir, exist_ok=True)
 
@@ -73,7 +78,7 @@ print(f"Output directory set to: {output_dir}")
 ######## standardizes data
 #### compute sigma hyper parameter from data
 
-flk_sigma = candidate_sigma(reference_data[:2000, :], perc=flk_sigma_perc)
+flk_sigma = candidate_sigma(reference_dataset[:2000, :], perc=flk_sigma_perc)
 print('flk_sigma', flk_sigma)
 
 # run toys
@@ -87,35 +92,35 @@ seeds = base_seed + np.arange(Ntoys)
 for i in range(Ntoys):
     seed = int(seeds[i])
     rng = np.random.default_rng(seed=seed)
-    N_generated_p = int(rng.poisson(lam=N_generated, size=1)[0])
-    num_samples = int(N_generated_p + N_ref)
+    N_data_p = int(rng.poisson(lam=N_data, size=1)[0])
+    num_samples = int(N_data_p + N_ref)
 
     # Shuffle background data at the beginning of each iteration (if needed)
-    np.random.shuffle(reference_data)
-    np.random.shuffle(generated_data)
+    np.random.shuffle(reference_dataset)
+    np.random.shuffle(data_dataset)
 
     if calibration:
-        data = torch.from_numpy(reference_data[:num_samples])
-        label_D = np.ones(N_generated_p, dtype=np.float32)
+        data = torch.from_numpy(reference_dataset[:num_samples])
+        label_D = np.ones(N_data_p, dtype=np.float32)
         label_R = np.zeros(N_ref, dtype=np.float32)
-        w_ref = N_generated_p / N_ref  # Reference weight
+        w_ref = N_data_p / N_ref  # Reference weight
     else:
         # Sample points from the trained flow
-        ref = reference_data[:N_ref]
-        data_gen = generated_data[:N_generated_p]
+        ref = reference_dataset[:N_ref]
+        data_gen = data_dataset[:N_data_p]
 
-        num_gen = data_gen.shape[0]
+        num_data = data_gen.shape[0]
         num_ref = ref.shape[0]
 
         # Combine the filtered generated data with the filtered reference data
         data = np.concatenate((data_gen, ref), axis=0)
 
         # Create labels corresponding to the filtered generated data and reference data
-        label_D = np.ones(num_gen, dtype=np.float32)  # "Generated" labels
+        label_D = np.ones(num_data, dtype=np.float32)  # "Generated" labels
         label_R = np.zeros(num_ref, dtype=np.float32)
 
         # Recalculate the reference weight based on the filtered reference samples
-        w_ref = num_gen / num_ref if num_ref > 0 else 1.0  # Avoid division by zero
+        w_ref = num_data / num_ref if num_ref > 0 else 1.0  # Avoid division by zero
   
 
     # Convert to float32
