@@ -151,17 +151,6 @@ def probs(weights, model_probs):
     # weights: (M,), model_probs: (N, M)
     return (model_probs * weights).sum(dim=1)  # (N,)
 
-def aux(weights, weights_0, weights_cov):
-    d = torch.distributions.MultivariateNormal(weights_0, covariance_matrix=weights_cov)
-    return d.log_prob(weights)
-
-def nll_aux(weights, weights_0, weights_cov):
-    p = probs(weights, model_probs)
-    if not torch.all(p > 0):
-        return weights.sum() * float("inf")
-    loss = -torch.log(p + 1e-8).sum() - aux(weights, weights_0, weights_cov).sum()
-    return loss
-
 # ------------------ TAU models (float32 everywhere) ------------------
 epochs = 20000
 patience = 1000
@@ -277,14 +266,6 @@ out_json = {
 }
 with open(os.path.join(out_dir, "lrt_outputs.json"), "w") as f:
     json.dump(out_json, f, indent=2)
-
-def data_loglik(model, x):
-        if model.train_net:
-            ensemble, net_out = model.call(x)
-            p = torch.clamp(ensemble[:, 0] + net_out, min=1e-12)   # positivity for eval
-        else:
-            p = torch.clamp(model.call(x).squeeze(-1), min=1e-12)
-        return torch.log(p).sum()
 
 # =========================
 # Conditional line-slice plots for each axis
