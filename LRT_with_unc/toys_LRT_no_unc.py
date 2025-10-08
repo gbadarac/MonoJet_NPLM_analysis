@@ -194,7 +194,20 @@ model_den = TAU(
 # Numerator: pass ensemble_probs=model_probs (NOT None)
 n_kernels = 20
 centers = x_data[:n_kernels].clone()  # already on device
-coeffs = torch.zeros((n_kernels,), dtype=torch.float32, device=device)
+
+sigma_krl = 0.05  # match gaussian_sigma
+d = x_data.shape[1]
+
+with torch.no_grad():
+    typical = model_probs.mean(dim=1).median().item()
+
+norm_const = 1.0 / ((2 * np.pi) ** (d / 2) * (sigma_krl ** d))
+eps = 0.05  # target ~5% of typical ensemble density
+std0 = eps * typical / (norm_const * (n_kernels ** 0.5) + 1e-12)
+
+coeffs = torch.randn(n_kernels, device=device, dtype=torch.float32)
+coeffs -= coeffs.mean()
+coeffs *= float(std0) / (coeffs.std() + 1e-12)
 
 model_num = TAU(
     (None, 2),
@@ -211,7 +224,7 @@ model_num = TAU(
     train_weights=False).to(device)
 
 # ------------------ Train Function ------------------
-def train_loop(model, name, lr=1e-3):
+def train_loop(model, name, lr=1e-4):
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     loss_hist, epoch_hist = [], []
     best = float("inf")
@@ -249,16 +262,6 @@ def train_loop(model, name, lr=1e-3):
 model_den.ensemble_probs = model_probs
 model_num.ensemble_probs = model_probs
 
-'''
-den_epochs, den_losses = train_loop(model_den, "DEN")
-
-# Save loss curve
-fig, ax = plt.subplots()
-ax.plot(den_epochs, den_losses)
-ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.set_title("Denominator loss")
-fig.savefig(os.path.join(out_dir, "denominator_loss.png"), dpi=180, bbox_inches="tight")
-plt.close(fig)
-'''
 
 # Save log-likelihood values
 denominator = model_den.loglik(x_data).detach().cpu().numpy()
@@ -286,6 +289,7 @@ out_json = {
 with open(os.path.join(out_dir, "lrt_outputs.json"), "w") as f:
     json.dump(out_json, f, indent=2)
 
+'''
 def data_loglik(model, x):
         if model.train_net:
             ensemble, net_out = model.call(x)
@@ -293,6 +297,7 @@ def data_loglik(model, x):
         else:
             p = torch.clamp(model.call(x).squeeze(-1), min=1e-12)
         return torch.log(p).sum()
+'''
 
 # =========================
 # Conditional line-slice plots for each axis

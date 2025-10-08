@@ -48,13 +48,9 @@ class GaussianKernelLayer(nn.Module):
         diff = x.unsqueeze(1) - self.centers.unsqueeze(0)
         dist_sq = (diff ** 2).sum(dim=2)
         kern = self.norm_const * torch.exp(-0.5 * dist_sq / (self.sigma ** 2))  # (N, m)
-
         # remove the per-sample DC component so gradients aren’t washed out
         kern = kern - kern.mean(dim=1, keepdim=True)
-
         return torch.einsum("m,Nm->N", self.get_coefficients(), kern)
-
-
 
 class TAU(nn.Module):
     """ 

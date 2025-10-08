@@ -28,6 +28,8 @@ CALIBRATION=False # Change this if needed
 
 # Run the Python script and capture its output
 TEMP_LOG=/tmp/py_output_$SLURM_JOB_ID.log
+#g=generated=data=ensemble 
+#r=reference=ground truth
 python -u /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM-embedding/toy_ensemble.py -g 20000 -r 100000 -t 100 -c $CALIBRATION -M 1400 | tee $TEMP_LOG
 PYTHON_OUTPUT=$(cat $TEMP_LOG)
 
