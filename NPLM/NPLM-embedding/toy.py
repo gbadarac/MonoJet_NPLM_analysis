@@ -27,8 +27,8 @@ folders = {
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-m', '--manifold', type=str, help="manifold type (must be in folders.keys())", required=True)
-parser.add_argument('-g', '--generated', type=int, help="generated distribution (number of generated events)", required=True) #generated distribution (signal e bkg insieme)
-parser.add_argument('-r', '--reference', type=int, help="reference (number of reference events, must be larger than background)", required=True) #target distribution 
+parser.add_argument('-d', '--data', type=int, help="data distribution (number of data events)", required=True) 
+parser.add_argument('-r', '--reference', type=int, help="reference (number of reference events, must be larger than background)", required=True) 
 parser.add_argument('-t', '--toys', type=int, help="toys", required=True)
 parser.add_argument("-c", "--calibration", type=str, default="True", help="Enable calibration mode (True/False)")
 parser.add_argument('-M', '--M', type=int, help="Effective number of samples used for configuring the log-likelihood estimation (should be selected based on the dataset size to optimize performance)", required=True)
@@ -38,13 +38,31 @@ args = parser.parse_args()
 manifold = args.manifold
 
 N_ref = args.reference
-N_generated = args.generated
+N_data = args.data
 
 # Convert string to boolean
 calibration = args.calibration.lower() == "true"
 
+def sample_flow_gpu(flow, n, batch=50000):
+    if n == 0:
+        # return an empty array with the right number of columns
+        d = next(flow.parameters()).shape[0] if False else None  # placeholder
+    outs = []
+    with torch.inference_mode():
+        for k in range(0, n, batch):
+            m = min(batch, n - k)
+            x = flow.sample(m)           # on GPU
+            outs.append(x.cpu().numpy()) # move chunk to CPU
+    if len(outs) == 0:
+        # infer dimensionality safely from a tiny sample
+        with torch.inference_mode():
+            x0 = flow.sample(1).cpu().numpy()
+        return x0[:0]  # shape (0, dim)
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    return np.concatenate(outs, axis=0)
+
 #GROUND TRUTH DISTRIBTION
-# Generate background 
 n_bkg = 200000
 
 # Energy: single Gaussian
@@ -63,14 +81,12 @@ num_bins=15
 num_blocks=16
 num_layers=4
 
-# In this case: b-tagging score and background energy
-
 # Note: the bkg distribution is the posterior/target distribution which the Normalizing Flow should learn to approximate.
 
 # Combining energy and b-tagging score for both bkg and signal 
 bkg_coord = np.column_stack((bkg_feat1, bkg_feat2)).astype('float32')  # Combine btag and bkg for training
 
-reference = torch.as_tensor(bkg_coord[:N_ref], dtype=torch.float32)
+#reference = torch.as_tensor(bkg_coord[:N_ref], dtype=torch.float32)
 
 # hyper parameters of the model
 M=args.M
@@ -90,7 +106,7 @@ else:
 
 # Create unique job directory
 job_id = os.getenv('SLURM_JOB_ID', 'local')
-job_dir = f"{args.manifold}_NR{args.reference}_NG{args.generated}_M{M}_lam1e-6_iter1000000_job{job_id}/"
+job_dir = f"{args.manifold}_NR{args.reference}_NG{args.data}_M{M}_lam1e-6_iter1000000_job{job_id}/"
 output_dir = os.path.join(folder_out, job_dir)
 os.makedirs(output_dir, exist_ok=True)
 
@@ -142,33 +158,66 @@ for i in range(Ntoys):
     print(f"Seed: {seed}", flush=True)
 
     rng = np.random.default_rng(seed=seed)
-    N_generated_p = int(rng.poisson(lam=N_generated, size=1)[0])
-    num_samples = int(N_generated_p + N_ref)
-    print(f"N_generated_p: {N_generated_p} | num_samples (gen + ref): {num_samples}", flush=True)
+    N_data_p = int(rng.poisson(lam=N_data, size=1)[0])
+    num_samples = int(N_data_p + N_ref)
+    print(f"N_data_p: {N_data_p} | num_samples (gen + ref): {num_samples}", flush=True)
 
     np.random.shuffle(bkg_coord)
     print("Shuffled background", flush=True)
 
     if calibration:
+        # Both draws from the NF so the null is true under the new convention
+        data_D = sample_flow_gpu(flow, N_data_p)
+        ref_R  = sample_flow_gpu(flow, N_ref)
+
+
+        num_data = data_D.shape[0]
+        num_ref  = ref_R.shape[0]
+
+        data = np.concatenate([data_D, ref_R], axis=0).astype(np.float32)
+
+        label_D = np.ones(num_data, dtype=np.float32)
+        label_R = np.zeros(num_ref,  dtype=np.float32)
+
+        w_ref = num_data / num_ref if num_ref > 0 else 1.0
+
+    else:
+        # Data from ground truth (bkg), reference from NF
+        ref_R = sample_flow_gpu(flow, N_ref)
+        data_D = bkg_coord[:N_data_p]  # GT slice
+
+        num_data = data_D.shape[0]
+        num_ref  = ref_R.shape[0]
+
+        data = np.concatenate([data_D, ref_R], axis=0).astype(np.float32)
+
+        label_D = np.ones(num_data, dtype=np.float32)
+        label_R = np.zeros(num_ref,  dtype=np.float32)
+
+        w_ref = num_data / num_ref if num_ref > 0 else 1.0
+
+    '''
+    if calibration:
         data = torch.from_numpy(bkg_coord[:num_samples])
-        label_D = np.ones(N_generated_p, dtype=np.float32)
+        label_D = np.ones(N_data_p, dtype=np.float32)
         label_R = np.zeros(N_ref, dtype=np.float32)
-        w_ref = N_generated_p / N_ref
+        w_ref = N_data_p / N_ref
     else:
         ref = torch.from_numpy(bkg_coord[:N_ref])
-        data_gen = flow.sample(N_generated_p).detach().cpu().numpy()
+        data_gen = flow.sample(N_data_p).detach().cpu().numpy()
         print(f"Generated {data_gen.shape[0]} samples from NF", flush=True)
         # Free up memory: delete flow after sampling
 
-        num_gen = data_gen.shape[0]
+        num_data = data_gen.shape[0]
         num_ref = ref.shape[0]
         data = np.concatenate((data_gen, ref), axis=0)
 
-        label_D = np.ones(num_gen, dtype=np.float32)
+        label_D = np.ones(num_data, dtype=np.float32)
         label_R = np.zeros(num_ref, dtype=np.float32)
 
-        w_ref = num_gen / num_ref if num_ref > 0 else 1.0
+        w_ref = num_data / num_ref if num_ref > 0 else 1.0
         print(f"Weight w_ref: {w_ref}", flush=True)
+    '''
 
     labels = np.concatenate((label_D, label_R), axis=0).astype(np.float32)
     data = np.float32(data)

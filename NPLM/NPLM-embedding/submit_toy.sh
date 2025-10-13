@@ -23,13 +23,14 @@ export CUDA_HOME=/usr/local/cuda-$CUDA_PATH  # Dynamically set CUDA path based o
 export PATH=$CUDA_HOME/bin:$PATH
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles:$PYTHONPATH
+export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:64
 
 # Define the output directory for results
 CALIBRATION=False # Change this if needed
 
 # Run the Python script and capture its output
 TEMP_LOG=/tmp/py_output_$SLURM_JOB_ID.log
-python -u /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM-embedding/toy.py -m model -g 2000 -r 10000 -t 100 -c $CALIBRATION -M 500 | tee $TEMP_LOG
+python -u /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/NPLM/NPLM-embedding/toy.py -m model -d 100000 -r 500000 -t 100 -c $CALIBRATION -M 2400 | tee $TEMP_LOG
 PYTHON_OUTPUT=$(cat $TEMP_LOG)
 
 # Extract the SLURM_OUTPUT_DIR from the Python script output
