@@ -7,7 +7,7 @@ np.random.seed(1234)
 
 # Output file paths
 output_dir = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim"
-training_file = os.path.join(output_dir, "500k_target_training_set.npy")
+training_file = os.path.join(output_dir, "500k_2d_gaussian_target_set.npy")
 
 # Parameters
 n_bkg = 500000
@@ -21,7 +21,7 @@ bkg_coord = np.column_stack((bkg_feat1, bkg_feat2)).astype('float32')
 
 #save target moment for coverage 
 mu_target = np.array([mean_feat1, mean_feat2], dtype=np.float32)
-np.save(os.path.join(output_dir, "mu_target.npy"), mu_target)
+np.save(os.path.join(output_dir, "mu_2d_gaussian_target.npy"), mu_target)
 
 
 # Save to files
