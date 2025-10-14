@@ -67,19 +67,23 @@ MonoJet_NPLM_analysis/
 └─ README.md
 
 ---
+
 ## 3. Environment
 
-Create the environments with:
+Create the environments:
 ```bash
 conda env create -f envs/nf_env.yml
 conda env create -f envs/nplm_env.yml
 ```
 Activate the right one for each step:
-# Steps 1, 2, 3: training, weight fitting, coverage
+- Steps 1, 2, 3: training, weight fitting, coverage
+```bash
 conda activate nf_env
-
-# Learned likelihood–ratio test
+```
+- Learned likelihood–ratio test
+```bash
 conda activate nplm_env
+```
 
 ---
 
