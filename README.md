@@ -44,24 +44,26 @@ The pipeline has four components.
 ---
 
 ## 2. Repository layout
+
+```text
 MonoJet_NPLM_analysis/
-├─ (Generate_Gaussian_Toy/ # 2D Gaussian toy as a controlled example to cross check the pipeline)
-├─ Generate_Ensemble_Data_Hit_or_Miss_MC/ # Accept–reject sampling utils for toys/reference draws
-├─ (Normalizing_Flows/ # Flow experiments)
-├├─ Train_Ensembles/ # Training orchestration for NF ensembles (arrays, logs)
-│ ├─ Generate_Data/ # Prepare training splits and ensemble datasets
-│ └─ Train_Models/ # Train individual ensemble members
-│ ├─ nflows/ # nflows-based NF training
-│ └─ zuko/ # zuko-based (Bayesian) flow training
-├─ Uncertainty_Modeling/ # Weight fitting (w_i), sandwich covariance, propagation
-│ ├─ BayesianFlows/ # Bayesian-flow UQ utilities and experiments
-│ └─ wifi/ # w_i f_i frequentist ensembles and covariance
-│ ├─ Coverage_Check/ # Coverage studies on observables (e.g., first moment)
-│ └─ Fit_Weights/ # Penalized MLE for w, sandwich covariance, propagation
-├─ LRT_with_unc/ # One-sample learned LRT with uncertainty-aware reference
-├─ NPLM/ # Two-sample LRT helpers (if needed)
-├─ (Grid_Search/ # Architecture experiments)
-├─ envs/ # Conda/pip environment files
+├─ Generate_Gaussian_Toy/                 # 2D Gaussian toy (controlled cross-check dataset)
+├─ Generate_Ensemble_Data_Hit_or_Miss_MC/ # Accept–reject sampling for toys/reference draws
+├─ Normalizing_Flows/                     # Flow components, transforms, model builders
+├─ Train_Ensembles/                       # Orchestration for NF ensembles (arrays, logs)
+│  ├─ Generate_Data/                      # Prepare training splits and ensemble datasets
+│  └─ Train_Models/                       # Train individual ensemble members
+│     ├─ nflows/                          # nflows-based NF training
+│     └─ zuko/                            # zuko-based (Bayesian) flow training
+├─ Uncertainty_Modeling/                  # Weight fitting (w_i), sandwich covariance, propagation
+│  ├─ BayesianFlows/                      # Bayesian-flow UQ utilities and experiments
+│  └─ wifi/                               # w_i f_i frequentist ensembles and covariance
+│     ├─ Coverage_Check/                  # Coverage studies on observables (e.g., first moment)
+│     └─ Fit_Weights/                     # Penalized MLE for w, sandwich covariance, propagation
+├─ LRT_with_unc/                          # One-sample learned LRT with uncertainty-aware reference
+├─ NPLM/                                  # Two-sample LRT helpers (if needed)
+├─ Grid_Search/                           # Architecture experiments
+├─ envs/                                  # Conda/pip environment files
 └─ README.md
 
 ---

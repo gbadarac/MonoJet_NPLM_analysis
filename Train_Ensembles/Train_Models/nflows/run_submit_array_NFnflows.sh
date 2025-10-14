@@ -18,22 +18,22 @@ conda activate nf_env
 # USER PARAMETERS
 # ======================================
 # setup
-model_seeds=60
+model_seeds=1
 num_features=2
 
 # Model hyperparameters
 n_epochs=1001
 learning_rate=5e-6
 batch_size=512
-hidden_features=64
-num_blocks=8
-num_bins=8
+hidden_features=128
+num_blocks=16
+num_bins=15
 num_layers=4
 
 # Base directory
-base_dir="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim"
+base_dir="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail"
 #Get dataset size 
-dataset_path="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_target_training_set.npy"
+dataset_path="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_heavy_tail_target_set.npy"
 num_events=$(python -c "import numpy as np; print(np.load('${dataset_path}').shape[0])")
 
 # ======================================
@@ -55,7 +55,7 @@ array_job_id=$(sbatch \
 sbatch --job-name=NF_collect \
   --dependency=afterok:${array_job_id} \
   --output=${base_dir}/logs/collect_output_%j.out \
-  --error=${base_dir}/logs/collect_error_%j.err \
+  --error=${base_dir}/logs/collect_error_%j.err \2
   --time=00:10:00 \
   --mem=4G \
   --partition=standard \
