@@ -65,6 +65,7 @@ MonoJet_NPLM_analysis/
 ├─ Grid_Search/                           # Architecture experiments
 ├─ envs/                                  # Conda/pip environment files
 └─ README.md
+```
 
 ---
 
