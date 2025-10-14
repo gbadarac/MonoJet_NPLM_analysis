@@ -18,7 +18,7 @@ conda activate nf_env
 # USER PARAMETERS
 # ======================================
 # setup
-model_seeds=1
+model_seeds=60
 num_features=2
 
 # Model hyperparameters

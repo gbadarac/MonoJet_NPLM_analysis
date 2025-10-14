@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=NF_job
-#SBATCH --array=0-0
+#SBATCH --array=0-59
 # #SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/logs/job_output_%j.out
 # #SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/logs/job_error_%j.err
 #SBATCH --output=/dev/null

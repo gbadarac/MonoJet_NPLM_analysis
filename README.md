@@ -47,9 +47,9 @@ The pipeline has four components.
 
 ```text
 MonoJet_NPLM_analysis/
-├─ Generate_Gaussian_Toy/                 # 2D Gaussian toy (controlled cross-check dataset)
+├─ Generate_Gaussian_Controlled_Toy/      # 2D Gaussian toy (controlled cross-check dataset)
 ├─ Generate_Ensemble_Data_Hit_or_Miss_MC/ # Accept–reject sampling for toys/reference draws
-├─ Normalizing_Flows/                     # Flow components, transforms, model builders
+├─ Normalizing_Flows/                     # Experiments with NFs
 ├─ Train_Ensembles/                       # Orchestration for NF ensembles (arrays, logs)
 │  ├─ Generate_Data/                      # Prepare training splits and ensemble datasets
 │  └─ Train_Models/                       # Train individual ensemble members
@@ -62,7 +62,7 @@ MonoJet_NPLM_analysis/
 │     └─ Fit_Weights/                     # Penalized MLE for w, sandwich covariance, propagation
 ├─ LRT_with_unc/                          # One-sample learned LRT with uncertainty-aware reference
 ├─ NPLM/                                  # Two-sample LRT helpers (if needed)
-├─ Grid_Search/                           # Architecture experiments
+├─ Grid_Search/                           # NF architecture experiments
 ├─ envs/                                  # Conda/pip environment files
 └─ README.md
 ```
@@ -111,9 +111,76 @@ python generate_2d_gaussian_heavy_tail_target_data.py
 ```
 
 This will create outputs under something like:
+```text
 Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/
 ├── 100k_2d_gaussian_heavy_tail_target_set.npy
 ├── 500k_2d_gaussian_heavy_tail_target_set.npy
 └── <file with analytic first moment used for coverage>
+```
+
+---
+
+### 5.1 Step 1 — Train NF ensemble
+
+You can train with two backends:
+
+- `nflows/`
+- `zuko/` — same interface as `nflows`, plus **Bayesian Flows** support (set `bayesian=True` in the launcher arguments).
+
+Each backend folder contains:
+- Training script, e.g. `EstimationNFnflows.py`
+- SLURM submission script, e.g. `submit_array_NFnflows.sh`
+- Launcher script, e.g. `run_submit_array_NFnflows.sh`
+- `utils_flows.py` with shared helpers for model building, sampling, plotting
+
+#### Configure
+
+1) **How many models to train (ensemble size)**  
+Edit the SLURM array in the submission script:
+```bash
+#SBATCH --array=0-59   # trains 60 models: indices [0, 59]
+```
+
+2) **Architecture, data paths, output, seeds**  
+Edit the launcher script to set:
+- architecture: layers, blocks, hidden features, bins
+- data paths: where Step 4 saved the target dataset
+- ensemble size and seeds
+- output directory for logs and checkpoints
+
+3) **Bayesian Flows (zuko only)**  
+Enable in the launcher arguments (use the exact flag name you defined), e.g.:
+```bash
+bayesian=True
+```
+
+#### Run
+Activate the environment for Steps 1–3, move into your backend, and submit:
+```bash
+conda activate nf_env
+cd Train_Ensembles/Train_Models/nflows
+sbatch run_submit_array_NFnflows.sh
+```
+Replace nflows with zuko if you use the zuko backend.
+
+#### Outputs
+After jobs finish you will find:
+```text
+Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/
+├── <one folder per trained member>   # checkpoints 
+└── f_i.pth                           # collects all members for downstream steps
+```
+
+#### Quick visual check
+Plot model vs target marginals with the notebook:
+```bash
+Train_Ensembles/Train_Models/nflows/test_NFs_marginals.ipynb
+```
+Plotting utilities live in utils_flows.py in both backends.
+
+#### Typical settings (used in the paper)
+- architecture: layers 4, blocks 16, hidden 128, bins 15
+- batch size 512, learning rate 5e-6, early stopping patience 10
+- ensemble size ~60 models
 
 ---

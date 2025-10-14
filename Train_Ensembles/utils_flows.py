@@ -75,7 +75,8 @@ def plot_individual_marginals(models, x_data, feature_names, outdir, num_samples
     """
     os.makedirs(outdir, exist_ok=True)
 
-    x_data_small = x_data[:num_samples].cpu().numpy()
+    idx = torch.randperm(x_data.shape[0], device=x_data.device)[:num_samples]
+    x_data_small = x_data[idx].cpu().numpy()
     num_features = x_data_small.shape[1]
 
     for idx, model in enumerate(models):
