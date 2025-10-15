@@ -17,7 +17,7 @@ End-to-end pipeline for
 4. Generate Data
 5. Step-by-step usage
    1. Step 1 — Train NF ensemble
-   2. Step 2 — Fit \(w\) and propagate uncertainty
+   2. Step 2 — Fit $w$ and propagate uncertainty
    3. Step 3 — Coverage test
    4. Step 4 — One-sample GoF (learned LRT)
 
@@ -91,7 +91,7 @@ conda activate nplm_env
 ## 4. Generate Data
 
 This step creates the **2D target distribution** used across the pipeline: a mixture where
-- **Feature 1** is a bi-modal Gaussian mixture, and  
+- **Feature 1** is a bimodal Gaussian mixture, and  
 - **Feature 2** is skewed with heavy tails.
 
 The script also **saves the analytic first moment** of the target, which is required later for the coverage test.
@@ -169,7 +169,7 @@ Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/
 ├── <one folder per trained member>   # checkpoints 
 └── f_i.pth                           # collects all members for downstream steps
 ```
-If f_i.pth is missing but all single-model .pth files exist, then use the notebook below to gather the trained members into a single ensemble file:
+If `f_i.pth` is missing but all single-model .pth files exist, then use the notebook below to gather the trained members into a single ensemble file:
 ```bash
 Train_Ensembles/Train_Models/<backend>/collect_all_models_into_ensemble.ipynb
 ```
@@ -179,7 +179,7 @@ Plot model vs target marginals with the notebook:
 ```bash
 Train_Ensembles/Train_Models/nflows/test_NFs_marginals.ipynb
 ```
-Plotting utilities live in utils_flows.py in both backends.
+Plotting utilities live in `utils_flows.py` in both backends.
 
 #### Typical settings
 - architecture: layers 4, blocks 16, hidden 128, bins 15
@@ -200,29 +200,29 @@ to a pointwise predictive band $\hat f \pm \sigma_{\hat f}$.
 MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/
 ```
 #### Python scripts
-- fit_NF_ensemble_weights_2d.py
-- fit_NF_ensemble_weights_4d.py
-- fit_toy_weights.py
+- `fit_NF_ensemble_weights_2d.py`
+- `fit_NF_ensemble_weights_4d.py`
+- `fit_toy_weights.py`
 
 #### Utilities
-utils_wifi.py — shared helpers used by all weight-fitting scripts
+`utils_wifi.py` — shared helpers used by all weight-fitting scripts
 
 #### Submission scripts
-- submit_fit_NF_ensemble_weights.sh
-- submit_fit_toy_weights.sh
+- `submit_fit_NF_ensemble_weights.sh`
+- `submit_fit_toy_weights.sh`
 
 #### Outputs 
-- results_fit_weights_NF/
-- results_fit_weights_gaussian_toy/
+- `results_fit_weights_NF/`
+- `results_fit_weights_gaussian_toy/`
 
-These folders contain the fitted weights, logs, and diagnostics. 
+These folders contain the fitted weights `w_i_fitted.npy`, covariance matrix `cov_w.npy`, logs, and diagnostics. 
 
 #### Configure
 
 1. Edit the submission script
-Open submit_fit_NF_ensemble_weights.sh and set:
-- trial_dir — directory that contains your f_i.pth from Step 5.1
-- data_path — path to the 100k target events file from Step 4
+Open `submit_fit_NF_ensemble_weights.sh` and set:
+- `trial_dir` — directory that contains your `f_i.pth` from Step 5.1
+- `data_path` — path to the 100k target events file from Step 4
 
 2. Submit
 ```bash 
@@ -235,9 +235,10 @@ sbatch submit_fit_NF_ensemble_weights.sh
 The fitted weights are later used to perform hit-or-miss Monte Carlo over the ensemble for the learned likelihood-ratio GoF test.
 
 You can obtain the final fitted weights in two ways:
-- From the output files saved in results_fit_weights_*
-- With the notebook: Uncertainty_Modeling/wifi/Fit_Weights/w_i_final_file.ipynb
+- From the output files saved in `results_fit_weights_*`
+- With the notebook: `Uncertainty_Modeling/wifi/Fit_Weights/w_i_final_file.ipynb`
 
+Note: If optimization fails on some runs, check logs for non-finite losses and retry.
 ---
 
 ### 5.3 Step 3 — Coverage test
@@ -274,13 +275,13 @@ You need the following artifacts from previous steps:
 MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/generate_sampled_means/
 ```
 ##### Scripts
-- generate_sampled_means.py
-- submit_generate_sampled_means.sh
+- `generate_sampled_means.py`
+- `submit_generate_sampled_means.sh`
 
 ##### Configure
 In submit_generate_sampled_means.sh edit: 
-- TRIAL_DIR — the directory where the Step 5.2 weight-fitting results are stored
-- ARCH_CONFIG_DIR — the directory where the Step 5.1 ensemble models (and architecture config) are stored
+- `TRIAL_DIR` — the directory where the Step 5.2 weight-fitting results are stored
+- `ARCH_CONFIG_DIR` — the directory where the Step 5.1 ensemble models (and architecture config) are stored
 
 ##### Run
 ```bash
@@ -303,15 +304,15 @@ MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/
 ```
 
 ##### Scripts
-- e.g. coverage_check_2d.py (for a 2d target distribution)
-- submit_coverage_check.sh
+- e.g. `coverage_check_2d.py` (for a 2d target distribution)
+- `submit_coverage_check.sh`
 
 ##### Configure
-Open submit_coverage_check.sh and set:
-- TRIAL_DIR — directory that contains your f_i.pth from Step 5.1
-- N_SAMPLED — number of target events to sample inside the coverage script (e.g., 200000 for a 2× oversampling relative to the 100k used to train the NFs)
-- MU_TARGET_PATH — path to the file saved in Step 4 with the analytic first moment
-- MU_I_FILE — — path to the <means_file.npy> produced in step A (this must point to .../Coverage_Check/generate_sampled_means/results_generated_sampled_means/<means_file.npy>)
+Open `submit_coverage_check.sh` and set:
+- `TRIAL_DIR` — directory that contains your `f_i.pth` from Step 5.1
+- `N_SAMPLED` — number of target events to sample inside the coverage script (e.g., 200000 for a 2× oversampling relative to the 100k used to train the NFs)
+- `MU_TARGET_PATH` — path to the file saved in Step 4 with the analytic first moment
+- `MU_I_FILE` — path to the <means_file.npy> produced in step A (this must point to .../Coverage_Check/generate_sampled_means/results_generated_sampled_means/<means_file.npy>)
 
 ##### Run
 ```bash
