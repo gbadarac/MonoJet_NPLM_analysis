@@ -222,7 +222,7 @@ gc.collect()
 if args.plot.lower() == "true":
     model_probs = model_probs.cpu()  # Before passing into plotting
     #feature_names = ["Feature 1", "Feature 2"]
-    feature_names = ["Feature 1", "Feature 2", "Feature 3", "Feature 4"]
+    feature_names = ["Feature 1", "Feature 2"]
 
     # ------------------
     # Likelihood profile scan

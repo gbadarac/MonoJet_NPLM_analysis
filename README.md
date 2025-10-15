@@ -170,12 +170,10 @@ Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/
 ├── <one folder per trained member>   # checkpoints 
 └── f_i.pth                           # collects all members for downstream steps
 ```
-If f_i.pth is missing but all single-model .pth files exist:
-use the notebook below to gather the trained members into a single ensemble file:
+If f_i.pth is missing but all single-model .pth files exist, then use the notebook below to gather the trained members into a single ensemble file:
 ```bash
 Train_Ensembles/Train_Models/<backend>/collect_all_models_into_ensemble.ipynb
 ```
-Open it, point it to the directory with the per-member folders, and run the cells to create f_i.pth.
 
 #### Quick visual check
 Plot model vs target marginals with the notebook:
@@ -187,6 +185,6 @@ Plotting utilities live in utils_flows.py in both backends.
 #### Typical settings
 - architecture: layers 4, blocks 16, hidden 128, bins 15
 - batch size 512, learning rate 5e-6, early stopping patience 10
-- ensemble size ~60 models
+- ensemble size: 60 models
 
 ---
