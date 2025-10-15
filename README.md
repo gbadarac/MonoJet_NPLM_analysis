@@ -2,7 +2,7 @@
 
 End-to-end pipeline for
 1) distributional modeling with Normalizing Flows,
-2) frequentist uncertainty with \(w_i f_i\) ensembles
+2) frequentist uncertainty with $w_i f_i$ ensembles
    ([Benevedes & Thaler, 2025](https://arxiv.org/abs/2506.00113)),
 3) coverage validation on observables,
 4) one-sample learned likelihood–ratio GoF with calibration.
@@ -157,7 +157,6 @@ bayesian=True
 #### Run
 Activate the environment for Steps 1–3, move into your backend, and submit:
 ```bash
-conda activate nf_env
 cd Train_Ensembles/Train_Models/nflows
 sbatch run_submit_array_NFnflows.sh
 ```
@@ -188,3 +187,147 @@ Plotting utilities live in utils_flows.py in both backends.
 - ensemble size: 60 models
 
 ---
+
+### 5.2 Step 2 — Fit $w$ and propagate uncertainty
+
+Form the weighted mixture $\hat f(x)=\sum_i w_i f_i(x)$ by fitting the ensemble
+weights $w$ with a penalized MLE under the normalization constraint. The step also
+computes the weight covariance (sandwich estimator) and propagates it
+to a pointwise predictive band $\hat f \pm \sigma_{\hat f}$.
+
+#### Where
+```bash 
+MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/
+```
+#### Python scripts
+- fit_NF_ensemble_weights_2d.py
+- fit_NF_ensemble_weights_4d.py
+- fit_toy_weights.py
+
+#### Utilities
+utils_wifi.py — shared helpers used by all weight-fitting scripts
+
+#### Submission scripts
+- submit_fit_NF_ensemble_weights.sh
+- submit_fit_toy_weights.sh
+
+#### Outputs 
+- results_fit_weights_NF/
+- results_fit_weights_gaussian_toy/
+
+These folders contain the fitted weights, logs, and diagnostics. 
+
+#### Configure
+
+1. Edit the submission script
+Open submit_fit_NF_ensemble_weights.sh and set:
+- trial_dir — directory that contains your f_i.pth from Step 5.1
+- data_path — path to the 100k target events file from Step 4
+
+2. Submit
+```bash 
+cd Uncertainty_Modeling/wifi/Fit_Weights
+sbatch submit_fit_NF_ensemble_weights.sh
+```
+
+#### Recovering the final weights 
+
+The fitted weights are later used to perform hit-or-miss Monte Carlo over the ensemble for the learned likelihood-ratio GoF test.
+
+You can obtain the final fitted weights in two ways:
+- From the output files saved in results_fit_weights_*
+- With the notebook: Uncertainty_Modeling/wifi/Fit_Weights/w_i_final_file.ipynb
+
+---
+
+### 5.3 Step 3 — Coverage test
+
+This step checks whether the propagated uncertainty from the fitted ensemble
+adequately covers a known observable (here, the **first moment**) at a chosen
+confidence level.
+
+At a high level, we run **multiple pseudo-experiments**. For each experiment:
+1. Generate a fresh target dataset inside the script (e.g., **200,000** events) to
+   achieve a **2× oversampling** with respect to the NF ensemble’s statistical
+   power (**100,000** events).
+2. Recompute the first moment estimate $\hat{\mu}$ from the fitted ensemble.
+3. Compare against the analytic truth $\mu^\star$ using
+   $$|\hat{\mu}-\mu^\star| < z_{1-\alpha/2}\,\sigma_{\hat{\mu}},$$
+   where $\sigma_{\hat{\mu}}$ is the propagated uncertainty from the weight
+   covariance (sandwich estimator).  
+   We repeat this **300 times** and report pass/fail per feature and the overall
+   coverage rate.
+
+#### Prerequisites
+
+You need the following artifacts from previous steps:
+
+- **Step 5.1:** `f_i.pth` (the collected ensemble)
+- **Step 5.2:** fitted weights and their covariance (saved in your `results_fit_weights_*` dir)
+- **Step 4:** analytic first moment file $\mu^\star$
+- **(New)** a file containing **sampled ensemble means** for each experiment (generated in A below)
+
+#### A) Generate sampled ensemble means
+
+##### Where
+```text
+MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/generate_sampled_means/
+```
+##### Scripts
+- generate_sampled_means.py
+- submit_generate_sampled_means.sh
+
+##### Configure
+In submit_generate_sampled_means.sh edit: 
+- TRIAL_DIR — the directory where the Step 5.2 weight-fitting results are stored
+- ARCH_CONFIG_DIR — the directory where the Step 5.1 ensemble models (and architecture config) are stored
+
+##### Run
+```bash
+cd Uncertainty_Modeling/wifi/Coverage_Check/generate_sampled_means
+sbatch submit_generate_sampled_means.sh
+```
+
+##### Outputs
+```text
+Uncertainty_Modeling/wifi/Coverage_Check/generate_sampled_means/results_generated_sampled_means/
+└── <means_file.npy>   # per-experiment first-moment estimates from the ensemble
+```
+You will pass the path to <means_file.npy> into the coverage step as MU_I_FILE.
+
+#### B) Run the coverage check
+
+##### Where
+```text
+MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/
+```
+
+##### Scripts
+- e.g. coverage_check_2d.py (for a 2d target distribution)
+- submit_coverage_check.sh
+
+##### Configure
+Open submit_coverage_check.sh and set:
+- TRIAL_DIR — directory that contains your f_i.pth from Step 5.1
+- N_SAMPLED — number of target events to sample inside the coverage script (e.g., 200000 for a 2× oversampling relative to the 100k used to train the NFs)
+- MU_TARGET_PATH — path to the file saved in Step 4 with the analytic first moment
+- MU_I_FILE — — path to the <means_file.npy> produced in step A (this must point to .../Coverage_Check/generate_sampled_means/results_generated_sampled_means/<means_file.npy>)
+
+##### Run
+```bash
+cd Uncertainty_Modeling/wifi/Coverage_Check
+sbatch submit_coverage_check.sh
+```
+
+##### Outputs 
+Results are written under:
+```bash
+Uncertainty_Modeling/wifi/Coverage_Check/coverage_outputs/
+```
+Typical contents include:
+- Per-experiment pass/fail (per feature) indicating whether
+$|\hat{\mu}-\mu^\star| < z_{1-\alpha/2},\sigma_{\hat{\mu}}$ held.
+- Aggregate coverage summary (e.g., binomial error bars, saved $\hat{\mu}$ vectors, propagated uncertainties,...).
+
+---
+
