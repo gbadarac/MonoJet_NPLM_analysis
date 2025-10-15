@@ -30,16 +30,16 @@ The pipeline has four components.
 1. **Density estimation with Normalizing Flows**  
    Ensemble of normalizing flows trained on bootstrap replicas and independent initializations to capture data and optimization variability.
 
-2. **Frequentist UQ with \(w_i f_i\) ensembles**  
-   Weighted mixture \(\hat f(x)=\sum_i \hat w_i f_i(x)\). Weights come from penalized MLE with a normalization constraint. Covariance of \(\hat w\) via a sandwich estimator, propagated to a pointwise band \(\hat f \pm \sigma_{\hat f}\).
+2. **Frequentist UQ with $w_i f_i$ ensembles**  
+   Weighted mixture $\hat f(x)=\sum_i \hat w_i f_i(x)$. Weights come from penalized MLE with a normalization constraint. Covariance of $\hat w$ via a sandwich estimator, propagated to a pointwise band $\hat f \pm \sigma_{\hat f}$.
 
 3. **Coverage validation**  
    Check if a known observable (here, the first moment) falls within the predicted uncertainty band at the chosen confidence level.
 
 4. **One-sample learned LRT GoF**  
-   Null \(H_\phi\): ensemble with Gaussian prior \(w\sim\mathcal N(\hat w,\mathrm{Cov}(\hat w))\).  
-   Alternative \(H_{\phi,a}\): ensemble plus a Gaussian-mixture expansion.  
-   Calibrate the test statistic with pseudo-experiments from \(\hat f\).
+   Null $H_\phi$: ensemble with Gaussian prior $w\sim\mathcal N(\hat w,\mathrm{Cov}(\hat w))$.  
+   Alternative $H_{\phi,a}$: ensemble plus a Gaussian–mixture expansion.  
+   Calibrate the test statistic with pseudo-experiments from $\hat f$.
 
 ---
 
@@ -170,6 +170,12 @@ Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/
 ├── <one folder per trained member>   # checkpoints 
 └── f_i.pth                           # collects all members for downstream steps
 ```
+If f_i.pth is missing but all single-model .pth files exist:
+use the notebook below to gather the trained members into a single ensemble file:
+```bash
+Train_Ensembles/Train_Models/<backend>/collect_all_models_into_ensemble.ipynb
+```
+Open it, point it to the directory with the per-member folders, and run the cells to create f_i.pth.
 
 #### Quick visual check
 Plot model vs target marginals with the notebook:
@@ -178,7 +184,7 @@ Train_Ensembles/Train_Models/nflows/test_NFs_marginals.ipynb
 ```
 Plotting utilities live in utils_flows.py in both backends.
 
-#### Typical settings (used in the paper)
+#### Typical settings
 - architecture: layers 4, blocks 16, hidden 128, bins 15
 - batch size 512, learning rate 5e-6, early stopping patience 10
 - ensemble size ~60 models
