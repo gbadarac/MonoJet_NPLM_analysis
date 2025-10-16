@@ -15,7 +15,7 @@ End-to-end pipeline for
 2. Repository layout
 3. Environment
 4. Generate Data
-5. Step-by-step usage
+5. Step-by-step pipeline 
    1. Step 1 — Train NF ensemble
    2. Step 2 — Fit $w$ and propagate uncertainty
    3. Step 3 — Coverage test
@@ -117,6 +117,10 @@ Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/
 ├── 500k_2d_gaussian_heavy_tail_target_set.npy
 └── <file with analytic first moment used for coverage>
 ```
+
+---
+
+## 5. Step-by-step pipeline
 
 ---
 
@@ -222,7 +226,7 @@ These folders contain the fitted weights `w_i_fitted.npy`, covariance matrix `co
 1. Edit the submission script
 Open `submit_fit_NF_ensemble_weights.sh` and set:
 - `trial_dir` — directory that contains your `f_i.pth` from Step 5.1
-- `data_path` — path to the 100k target events file from Step 4
+- `data_path` — path to the 100000 target events file from Step 4
 
 2. Submit
 ```bash 
@@ -310,7 +314,7 @@ MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/
 ##### Configure
 Open `submit_coverage_check.sh` and set:
 - `TRIAL_DIR` — directory that contains your `f_i.pth` from Step 5.1
-- `N_SAMPLED` — number of target events to sample inside the coverage script (e.g., 200000 for a 2× oversampling relative to the 100k used to train the NFs)
+- `N_SAMPLED` — number of target events to sample inside the coverage script (e.g., 200000 for a 2× oversampling relative to the 100000 used to train the NFs)
 - `MU_TARGET_PATH` — path to the file saved in Step 4 with the analytic first moment
 - `MU_I_FILE` — path to the <means_file.npy> produced in step A (this must point to .../Coverage_Check/generate_sampled_means/results_generated_sampled_means/<means_file.npy>)
 
@@ -327,7 +331,7 @@ Uncertainty_Modeling/wifi/Coverage_Check/coverage_outputs/
 ```
 Typical contents include:
 - Per-experiment pass/fail (per feature) indicating whether
-$|\hat{\mu}-\mu^\star| < z_{1-\alpha/2},\sigma_{\hat{\mu}}$ held.
+$|\hat{\mu}-\mu^\star| < z_{1-\alpha/2} \sigma_{\hat{\mu}}$ held.
 - Aggregate coverage summary (e.g., binomial error bars, saved $\hat{\mu}$ vectors, propagated uncertainties,...).
 
 ---
