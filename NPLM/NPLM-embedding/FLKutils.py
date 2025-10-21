@@ -61,17 +61,6 @@ def run_toy(test_label, X_train, Y_train, weight, flk_config, seed, bins_centroi
             plot=False, verbose=False, savefig=False, output_path='', df=10, binsrange=None, yrange=None, xlabels=None, 
             ):
     
-    '''                                                                                                                     
-    type of signal: "NP0", "NP1", "NP2", "NP3"                                                                              
-    output_path: directory (inside ./runs/) where to save results                                                           
-    N_0: size of ref sample                                                                                                 
-    N0: expected num of bkg events                                                                                          
-    NS: expected num of signal events                                                                                       
-    flk_config: dictionary of logfalkon parameters                                                                          
-    toys: numpy array with seeds for toy generation                                                                         
-    plots_freq: how often to plot inputs with learned reconstructions                                                       
-    df: degree of freedom of chi^2 for plots                                                                                
-    '''
 
     if not os.path.exists(output_path):
       os.makedirs(output_path, exist_ok=True)
@@ -145,121 +134,6 @@ def ratio_with_error(a, b, a_err, b_err):
     ratio_err = ratio * np.sqrt((a_err / a)**2 + (b_err / b)**2)
     return ratio, ratio_err
 
-'''
-
-def plot_reconstruction(data, # 
-                        weight_data, ref, weight_ref, ref_preds, 
-                        xlabels=[], #[D]
-                        bins_centroids = [], #[Nb, D]
-                        f_bins_centroids = [], #[Nb, D]
-                        ferr_bins_centroids = [], #[Nb, D]
-                        yrange=None,
-                        save=False, save_path='', file_name=''):
-
-    eps = 1e-10
-
-    weight_ref = np.ones(len(ref))*weight_ref
-    weight_data = np.ones(len(data))*weight_data
-
-    plt.rcParams.update({
-        "font.family": "serif",
-        "font.size": 28,          # base
-        "axes.labelsize": 44,     # axis labels
-        "xtick.labelsize": 32,
-        "ytick.labelsize": 32,
-        "legend.fontsize": 30,
-    })
-
-    for i in range(data.shape[1]):
-        #All = np.append(ref[:, i], data[:, i])
-        bins = centroids_to_edges(bins_centroids[:,i])#np.linspace(np.min(All),np.max(All),30)
-        N = np.sum(weight_ref)
-        bins_legth = (bins[1:]-bins[:-1])*N
-        
-        fig = plt.figure(figsize=(22, 14))
-        fig.patch.set_facecolor('white')
-        ax1 = fig.add_axes([0.12, 0.52, 0.76, 0.38])  # top now at 0.90 (no clipping)
-        hD = ax1.hist(data[:, i],weights=weight_data, bins=bins, label='DATA', color='black', lw=1.5, histtype='step', zorder=2)
-        hR = ax1.hist(ref[:, i], weights=weight_ref, color='green', ec='green', alpha=0.25, bins=bins, lw=1, label='REFERENCE', zorder=1)
-        hN = ax1.hist(ref[:, i], weights=np.exp(ref_preds[:, 0])*weight_ref, histtype='step', bins=bins, lw=0)
-        #ax1.plot(bins_centroids[:, i], bins_legth*f_bins_centroids[:, i])
-        plt.errorbar(0.5*(bins[1:]+bins[:-1]), hD[0], yerr= np.sqrt(hD[0]), color='black', ls='', marker='o', ms=7, zorder=3)
-        plt.scatter(0.5*(bins[1:]+bins[:-1]),  hN[0], edgecolor='black', label='LRT RECO', color="#f80808", lw=2, s=38, zorder=4)
-
-        font = font_manager.FontProperties(family='serif', size=30)
-        l    = plt.legend(fontsize=30, prop=font, ncol=1, frameon=False, 
-                        bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
-
-
-        plt.tick_params(axis='x', which='both',    labelbottom=False)
-        plt.yticks(fontsize=32, fontname='serif')
-        plt.xlim(bins[0], bins[-1])
-        plt.ylabel("events", fontsize=44, fontname='serif')
-        plt.yscale('log')
-        ax2 = fig.add_axes([0.12, 0.10, 0.76, 0.40])
-        x   = bins_centroids[:, i]
-        area= np.sum(bins_legth*f_bins_centroids[:, i])
-        print("Area: ", area)
-        ratio, ratio_err = ratio_with_error(N/area*bins_legth*f_bins_centroids[:, i], hR[0], N/area*bins_legth*ferr_bins_centroids[:, i], np.sqrt(hR[0]))
-        ratio_nplm = hN[0]/(hR[0]+eps)
-        ratio_nplm_x = x[ratio_nplm>0]
-        ratio_nplm = ratio_nplm[ratio_nplm>0]
-        ax2.errorbar(x, hD[0]/(hR[0]+eps), yerr=np.sqrt(hD[0])/(hR[0]+eps), ls='', marker='o', label ='DATA/REF', color='black',zorder=1)
-        ax2.plot(ratio_nplm_x, ratio_nplm, label ='LRT RECO/REF', color="#f80808", lw=2)
-        
-
-
-        # Plot the central ratio line
-        ax2.plot(x, ratio, label=r'GEN/REF', color='blue')
-        # ±1σ band
-        ax2.fill_between(x, ratio - ratio_err, ratio + ratio_err, color='blue', alpha=0.3, label=r'$\pm 1 \sigma$')
-        # ±2σ band
-        ax2.fill_between(x, ratio - 2*ratio_err, ratio + 2*ratio_err, color='blue', alpha=0.15, label=r'$\pm 2 \sigma$')
-        
-        font = font_manager.FontProperties(family='serif', size=30)
-        l    = plt.legend(fontsize=30, prop=font, ncol=1, frameon=False, 
-                        bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
-
-        if len(xlabels)>0:
-            plt.xlabel(xlabels[i], fontsize=44, fontname='serif')
-        else:
-            plt.xlabel('x', fontsize=44, fontname='serif')
-        plt.ylabel("ratio", fontsize=44, fontname='serif')
-
-        plt.yticks(fontsize=32, fontname='serif')
-        plt.xticks(fontsize=32, fontname='serif')
-
-        plt.xlim(bins[0], bins[-1])
-        plt.ylim(0.05, 2)
-
-        if len(xlabels):
-            if not yrange==None and len(xlabels)>0:
-                plt.ylim(yrange[xlabels[i]][0], yrange[xlabels[i]][1])
-        # grid style
-        ax1.grid(False)  # no grid on the top panel
-        ax2.set_axisbelow(True)
-        ax2.grid(True, which='major', axis='both', linestyle=':', linewidth=0.8, alpha=0.25)  # light horizontal guides
-
-        if save:
-            os.makedirs(save_path, exist_ok=True)
-            # tighten layout & trim outer margins to zero
-            try:
-                fig.tight_layout(pad=0.1)
-            except Exception:
-                pass
-            out_path = save_path + file_name.replace('.pdf', f'_{i}.pdf')
-            fig.savefig(
-                out_path,
-                bbox_inches='tight',
-                pad_inches=0.12  # tiny margin; vector => dpi ignored
-                # , **bbox_extra
-            )
-
-        # Optional: comment out show() to avoid extra whitespace in some backends
-        # plt.show()
-        plt.close()
-    return
-'''
 
 from matplotlib.gridspec import GridSpec
 from matplotlib.lines import Line2D

@@ -18,10 +18,10 @@ conda activate nf_env
 # ============
 # Parameters
 # ============
-TRIAL_NAME="N_100000_dim_2_seeds_60_4_8_64_8"
+TRIAL_NAME="N_100000_dim_2_seeds_60_4_16_128_15"
 
-TRIAL_DIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/${TRIAL_NAME}"
-ARCH_CONFIG_DIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/${TRIAL_NAME}"
+TRIAL_DIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/${TRIAL_NAME}_bimodal_gaussian_heavy_tail"
+ARCH_CONFIG_DIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/${TRIAL_NAME}"
 OUT_DIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/generate_sampled_means/results_generated_sampled_means"
 
 # ============

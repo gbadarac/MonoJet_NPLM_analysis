@@ -26,9 +26,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", device)
 
 # Set paths
-trial_dir = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_128_15_trial"
-data_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_target_training_set.npy"
-subdir = f"N_100000_dim_2_seeds_60_4_16_128_15"
+trial_dir = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_128_15_bimodal_gaussian_heavy_tail"
+data_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_heavy_tail_target_set.npy"
+subdir = f"N_100000_dim_2_seeds_60_4_16_128_15_bimodal_gaussian_heavy_tail"
 out_dir = os.path.join(
     "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data",
     subdir,
@@ -36,7 +36,7 @@ out_dir = os.path.join(
 os.makedirs(out_dir, exist_ok=True)
 
 # Reference architecture (consistent across models)
-arch_config_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/N_100000_dim_2_seeds_60_4_16_128_15/architecture_config.json"
+arch_config_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_seeds_60_4_16_128_15/architecture_config.json"
 
 # Load model weights and configs
 with open(arch_config_path) as f:
@@ -44,19 +44,14 @@ with open(arch_config_path) as f:
 
 f_i_statedicts = torch.load(os.path.join(trial_dir, "f_i.pth"), map_location=device)
 #w_i_fitted = torch.tensor(np.load(os.path.join(trial_dir, "w_i_fitted.npy")), dtype=torch.float64)
-w_i_fitted = torch.tensor([ 2.7465e-02,  3.9775e-02,  2.9415e-02,  6.0815e-02,  1.6158e-02,
-         8.9290e-02,  5.7797e-03, -1.1812e-02,  2.4000e-02,  3.1447e-02,
-         8.1284e-02, -2.3717e-02,  2.6356e-02, -1.7371e-02, -1.0963e-02,
-         8.3692e-03, -8.1379e-03, -2.3745e-02,  2.1039e-02, -2.9520e-04,
-        -4.8599e-02,  6.1569e-02, -4.8001e-02, -3.0407e-02, -1.4790e-02,
-        -2.3764e-02,  5.1739e-02,  3.5346e-02,  8.6801e-03,  4.0055e-02,
-        -8.1822e-03, -7.8225e-02,  5.8031e-02,  5.0157e-02, -5.7196e-03,
-         1.7794e-02,  6.6487e-02,  1.7647e-02, -1.0253e-02,  1.3936e-02,
-        -4.6986e-02,  3.5879e-03,  3.0478e-02,  9.8500e-02,  1.6057e-02,
-        -4.4614e-03,  5.2503e-03, -4.2855e-03,  2.5735e-02,  1.7025e-02,
-         7.2025e-02,  1.9940e-02, -1.0673e-02,  2.1200e-02,  9.2340e-02,
-        -3.0226e-02,  4.8697e-02,  7.0400e-05,  7.8944e-02,  4.8129e-02],
-       dtype=torch.float64)
+w_i_fitted = torch.tensor([ 0.0912, -0.0383,  0.0128, -0.1706,  0.0305,  0.0267,  0.0212,  0.0789,
+        -0.0277, -0.0033,  0.0827,  0.0992,  0.0059,  0.0717, -0.0109, -0.0285,
+        -0.0302,  0.0826,  0.0038,  0.0680,  0.0187,  0.0504, -0.0313, -0.0627,
+        -0.0114,  0.0027, -0.0099, -0.1422, -0.0445, -0.0175,  0.0883, -0.0964,
+         0.1031, -0.0485, -0.0212,  0.0047,  0.0511, -0.0116, -0.0476,  0.0832,
+         0.1465, -0.0226,  0.0562, -0.0299,  0.0008,  0.0254,  0.0255,  0.0359,
+         0.0447,  0.0181,  0.0138,  0.0810,  0.0279,  0.0905,  0.0413,  0.0171,
+         0.0233, -0.0044,  0.0391,  0.1463], dtype=torch.float64)
 
 # Load data
 x_data = torch.from_numpy(np.load(data_path)).float()
@@ -169,5 +164,5 @@ def hit_or_miss_2d(x1_min, x1_max, x2_min, x2_max, f_i_models, w_i_fitted, N_eve
 tb = 2.8
 
 samples = hit_or_miss_2d(-tb, tb, -tb, tb, f_i_models, w_i_fitted, N_events=5000) 
-np.save(os.path.join(out_dir, "ensemble_generated_samples_4_16_128_15_seed_%i.npy"%(seed)), samples.cpu().numpy())
+np.save(os.path.join(out_dir, "ensemble_generated_samples_4_16_128_15_bimodsl_gaussian_heavy_tail_seed_%i.npy"%(seed)), samples.cpu().numpy())
 print("Saved generated samples.")

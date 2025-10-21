@@ -64,6 +64,7 @@ print(f"Output directory set to: {out_dir}", flush=True)
 
 N_events = 100000
 
+'''
 def generate_target_data(n_points, seed=None):
     if seed is not None:
         np.random.seed(seed)
@@ -72,6 +73,45 @@ def generate_target_data(n_points, seed=None):
     feat1 = np.random.normal(mean_feat1, std_feat1, n_points)
     feat2 = np.random.normal(mean_feat2, std_feat2, n_points)
     return np.column_stack((feat1, feat2)).astype(np.float32)
+'''
+def generate_target_data(n_points, seed=None, return_mu=False):
+    """
+    Feature 1: Gaussian mixture (wG=0.5, mu_a=-0.70, mu_b=-0.30, sig=0.12)
+    Feature 2: Skew-Normal via two-normal construction (loc=1.0, scale=0.75, alpha=8.0)
+    """
+    import numpy as np
+
+    if seed is not None:
+        np.random.seed(seed)
+
+    # --- Feature 1: Gaussian mixture ---
+    wG = 0.50
+    mu_a, sig_a = -0.70, 0.12
+    mu_b, sig_b = -0.30, 0.12
+    n1_a = np.random.binomial(n_points, wG)
+    x1 = np.concatenate([
+        np.random.normal(mu_a, sig_a, n1_a),
+        np.random.normal(mu_b, sig_b, n_points - n1_a),
+    ])
+
+    # --- Feature 2: Skew-Normal (no scipy needed) ---
+    loc2, scale2, alpha2 = 1.0, 0.75, 8.0
+    delta = alpha2 / np.sqrt(1.0 + alpha2**2)
+    z0 = np.random.randn(n_points)
+    z1 = np.random.randn(n_points)
+    xstd = delta * np.abs(z0) + np.sqrt(1.0 - delta**2) * z1
+    x2 = loc2 + scale2 * xstd
+
+    X = np.column_stack([x1, x2]).astype(np.float32)
+
+    if return_mu:
+        E_x1 = wG * mu_a + (1.0 - wG) * mu_b
+        E_x2 = loc2 + scale2 * delta * np.sqrt(2.0 / np.pi)
+        mu_target = np.array([E_x1, E_x2], dtype=np.float32)
+        return X, mu_target
+
+    return X
+
 
 # -------- Ground truth data --------
 if calibration:
@@ -176,7 +216,7 @@ model_den = TAU(
     train_net=False).to(device)
 
 # Numerator: pass ensemble_probs=model_probs (NOT None)
-n_kernels = 20
+n_kernels = 350
 centers = x_data[:n_kernels].clone()  # already on device
 coeffs  = torch.ones((n_kernels,), dtype=torch.float32, device=device) / n_kernels
 
@@ -188,7 +228,7 @@ model_num = TAU(
     weights_mean=w_init_dev,
     gaussian_center=centers,
     gaussian_coeffs=coeffs,
-    gaussian_sigma=0.05,
+    gaussian_sigma=1.0,
     lambda_regularizer=1e6,
     lambda_net=0,
     train_net=True).to(device)

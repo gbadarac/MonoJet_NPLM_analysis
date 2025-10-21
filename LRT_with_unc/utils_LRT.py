@@ -34,6 +34,7 @@ class GaussianKernelLayer(nn.Module):
 
     def get_coefficients(self):
         a = self.coefficients
+        '''
         if self._mode == "zero_sum":
             # keep sum(a)=0 at all times
             return a - a.mean()
@@ -41,7 +42,8 @@ class GaussianKernelLayer(nn.Module):
             # keep sum(a)=1 despite updates (allow negatives)
             return a / (a.sum() + 1e-12)
         else:
-            return a
+        '''
+        return a
 
     def forward(self, x):
         x = x.float()

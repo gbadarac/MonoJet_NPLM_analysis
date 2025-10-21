@@ -32,14 +32,8 @@ N_data = args.data
 calibration = args.calibration.lower() == "true"
 
 # Load real reference and data
-'''
-reference_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/500k_target_training_set.npy"
-data_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/N_100000_dim_2_seeds_60_4_16_128_15/concatenated_ensemble_generated_samples_4_16_128_15.npy"
-#generated_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/Coverage_Check/generated_samples/generated_samples_1_models_4_16_128_15.npy"
-'''
-
-data_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/500k_target_training_set.npy"
-reference_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/N_100000_dim_2_seeds_60_4_16_128_15/concatenated_ensemble_generated_samples_4_16_128_15_N_1000000.npy"
+data_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/500k_2d_gaussian_heavy_tail_target_set.npy"
+reference_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/N_100000_dim_2_seeds_60_4_16_128_15_bimodal_gaussian_heavy_tail/concatenated_ensemble_generated_samples_4_16_128_15_bimodal_gaussian_heavy_tail_N_1000000.npy"
 
 reference_dataset = np.load(reference_path).astype('float32')
 data_dataset = np.load(data_path).astype('float32')
@@ -158,7 +152,7 @@ for i in range(Ntoys):
 
         return f_binned_stacked, f_err_stacked, bin_centers_stacked
     
-    marginals_dir='/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_128_15_trial'
+    marginals_dir='/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_128_15_bimodal_gaussian_heavy_tail'
     f_bins_centroids, ferr_bins_centroids, bins_centroids = load_stacked_marginals(marginals_dir, num_features=2)
 
     # Run the toy experiment

@@ -90,15 +90,13 @@ conda activate nplm_env
 
 ## 4. Generate Data
 
-This step creates the **2D target distribution** used across the pipeline: a mixture where
-- **Feature 1** is a bimodal Gaussian mixture, and  
-- **Feature 2** is skewed with heavy tails.
+This step creates the **2D target distribution** used across the pipeline.
 
 The script also **saves the analytic first moment** of the target, which is required later for the coverage test.
 
 **Where:** `Train_Ensembles/Generate_Data/`  
-**Main script:** `generate_2d_gaussian_heavy_tail_target_data.py`  
-**Plotting notebook:** `plot_2d_gaussian_heavy_tail_target.ipynb`
+**Main script:** e.g. `generate_2d_gaussian_heavy_tail_target_data.py`  
+**Plotting notebook:** e.g. `plot_2d_gaussian_heavy_tail_target.ipynb`
 
 **Event counts**
 - For training the NF ensemble (“statistical power”): **100,000** target events
@@ -296,9 +294,15 @@ sbatch submit_generate_sampled_means.sh
 ##### Outputs
 ```text
 Uncertainty_Modeling/wifi/Coverage_Check/generate_sampled_means/results_generated_sampled_means/
-└── <means_file.npy>   # per-experiment first-moment estimates from the ensemble
+└── <means_file.npy>   # first-moment estimates from the ensemble
 ```
 You will pass the path to <means_file.npy> into the coverage step as MU_I_FILE.
+
+To verify that the sampled means were generated correctly, use `check_sampled_means.ipynb` and confirm:
+- Array shape is (n_models, n_features)
+- Feature-wise means and standard deviations look reasonable
+- Feature-wise minimum and maximum values are within expected ranges.
+- No `NaNs` or `infs` values are present 
 
 #### B) Run the coverage check
 
@@ -332,7 +336,11 @@ Uncertainty_Modeling/wifi/Coverage_Check/coverage_outputs/
 Typical contents include:
 - Per-experiment pass/fail (per feature) indicating whether
 $|\hat{\mu}-\mu^\star| < z_{1-\alpha/2} \sigma_{\hat{\mu}}$ held.
-- Aggregate coverage summary (e.g., binomial error bars, saved $\hat{\mu}$ vectors, propagated uncertainties,...).
+- Aggregate coverage summary (e.g., error bars, saved $\hat{\mu}$ vectors, propagated uncertainties,...).
+
+##### Final diagnostic 
+After the coverage check completes, open `Uncertainty_Modeling/wifi/Coverage_Check/coverage_calc.ipynb` and run all cells. The notebook reads from coverage_outputs/ and reports per feature and overall coverage, adds binomial confidence intervals, and produces quick sanity-check plots in the `coverage_plots/` folder. Use it to verify that the empirical coverage matches the target level within statistical uncertainty.
 
 ---
+
 

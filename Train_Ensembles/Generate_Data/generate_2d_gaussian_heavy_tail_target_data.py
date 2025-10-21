@@ -4,9 +4,9 @@ import numpy as np, os
 np.random.seed(1234)
 output_dir = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim"
 os.makedirs(output_dir, exist_ok=True)
-training_file = os.path.join(output_dir, "100k_2d_gaussian_heavy_tail_target_set.npy")
+training_file = os.path.join(output_dir, "500k_2d_gaussian_heavy_tail_target_set.npy")
 
-N = 100000
+N = 500000
 
 # ---- Feature 1: Bi-modal Gaussian mixture (clearly bimodal) ----
 wG = 0.50

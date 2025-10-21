@@ -18,14 +18,14 @@ conda activate nf_env
 # USER PARAMETERS
 # ======================================
 # setup
-model_seeds=60
+model_seeds=80
 num_features=2
 
 # Model hyperparameters
 n_epochs=1001
 learning_rate=5e-6
 batch_size=512
-hidden_features=128
+hidden_features=256
 num_blocks=16
 num_bins=15
 num_layers=4

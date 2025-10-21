@@ -51,8 +51,9 @@ f_i_statedicts = torch.load(f_i_file, map_location=device) #list of state_dicts
 with open(os.path.join(args.trial_dir, "architecture_config.json")) as f:
     config = json.load(f) 
 
+'''
 # ------------------
-# Generate Coverage Data for Target Distribution 
+# Generate Coverage Data for Target Distribution (2d Gaussian)
 # ------------------
 def generate_target_data(n_points, seed=None):
     if seed is not None:
@@ -62,6 +63,39 @@ def generate_target_data(n_points, seed=None):
 
     feat1 = np.random.normal(mean_feat1, std_feat1, n_points)
     feat2 = np.random.normal(mean_feat2, std_feat2, n_points)
+    data = np.column_stack((feat1, feat2)).astype(np.float32)
+    return data
+'''
+# ------------------
+# Generate Coverage Data for Target Distribution  (Mixture + Skew-Normal)
+# ------------------
+def sample_skewnorm(n, loc, scale, alpha):
+    # same construction you used in the data-generation script
+    alpha = float(alpha)
+    delta = alpha / np.sqrt(1.0 + alpha**2)
+    z0 = np.random.randn(n)
+    z1 = np.random.randn(n)
+    xstd = delta * np.abs(z0) + np.sqrt(1.0 - delta**2) * z1
+    return loc + scale * xstd
+
+def generate_target_data(n_points, seed=None):
+    if seed is not None:
+        np.random.seed(seed)
+
+    # --- Feature 1: Bi-modal Gaussian mixture ---
+    wG = 0.50
+    mu_a, sig_a = -0.70, 0.12
+    mu_b, sig_b = -0.30, 0.12
+    n1_a = np.random.binomial(n_points, wG)
+    feat1 = np.concatenate([
+        np.random.normal(mu_a, sig_a, n1_a),
+        np.random.normal(mu_b, sig_b, n_points - n1_a),
+    ])
+
+    # --- Feature 2: Skew-Normal ---
+    loc2, scale2, alpha2 = 1.0, 0.75, 8.0
+    feat2 = sample_skewnorm(n_points, loc2, scale2, alpha2)
+
     data = np.column_stack((feat1, feat2)).astype(np.float32)
     return data
 
@@ -118,24 +152,6 @@ model_probs = torch.stack(model_probs_list, dim=1).to("cpu").requires_grad_()
 def ensemble_model(weights, model_probs):
     return probs(weights, model_probs)
 
-'''
-def constraint_term(weights):
-    l=1e5
-    return l*(torch.sum(weights)-1.0)**2
-
-def nll(weights):
-    # assume: weights is float64 CPU and requires_grad=True
-    p = probs(weights, model_probs)  # (N,)
-    eps = 1e-12 * (weights**2).sum() #ridge term for numerical stability of the hessian 
-    # Handle invalid probabilities 
-    if (p <= 0).any():
-        # Differentiable penalty instead of a detached +inf
-        bad = torch.clamp_min(-p, 0.0)          # max(0, -p)
-        penalty = 1e6 * bad.pow(2).mean()       # smooth, large
-        return penalty + constraint_term(weights) + eps     
-    loss = -torch.log(p + 1e-12).mean() + constraint_term(weights) + eps
-    return loss
-'''
 def constraint_term(weights):
     l=1e0
     return l*(torch.sum(weights)-1.0)
