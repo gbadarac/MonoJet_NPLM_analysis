@@ -416,9 +416,7 @@ LRT_with_unc/analyse_LRT_output_ML4PS_style.ipynb
 - We first generate REF samples from the ensemble using hit-or-miss Monte Carlo.
 - We then run the learned LRT where a function $t_{\theta}(x)$ is trained to approximate the log density ratio (e.g., $t_{\theta}(x)\approx \log \tfrac{p_{\text{DATA}}(x)}{p_{\text{REF}}(x)}$).
 A sample-wise statistic such as
-\[
-S \;=\; \sum_{n} t_{\theta}(x_n)
-\]
+$S = \sum_{n} t_{\theta}(x_n)$
 is aggregated, calibrated with toys or permutations, and converted into a $Z$ score.
 
 #### A) Generate REF samples by hit-or-miss MC
