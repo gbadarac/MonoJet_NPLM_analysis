@@ -343,4 +343,103 @@ After the coverage check completes, open `Uncertainty_Modeling/wifi/Coverage_Che
 
 ---
 
+### 5.4 Step 4 — Learned-likelihood ratio tests 
+
+This step provides two complementary hypothesis tests based on a learned likelihood ratio. In both cases we report a Z score that quantifies how compatible the generated sample is with the target distribution.
+
+#### Common setup 
+- REF = density model, for example the fitted ensemble from Step 5.2, or a single NF.
+- DATA = target distribution sample
+
+#### Test statistic - high level 
+Let $(p_{\mathrm{REF}}$ be the reference density and $H_{\boldsymbol{\phi}}$ a flexible alternative that reduces to
+$p_{\mathrm{REF}}$ when $\boldsymbol{\phi}=0$.
+We learn the alternative from \text{DATA} and form a likelihood–ratio statistic
+$T \;=\; -2\log\lambda \;=\; 2\big[\ell(\hat{\boldsymbol{\phi}}) - \ell(\boldsymbol{\phi}{=}0)\big]$
+where $\ell$ is the log-likelihood on the DATA sample.
+We calibrate the null distribution of $T$ with pseudo-experiments drawn from the reference,
+convert the resulting $p$-value into a $Z$ score, and use $Z$ to summarize compatibility.
+
+#### What we use here
+
+1) One sample GoF learned LRT: 
+Used to propagate the uncertainty from $\hat{w}$ directly inside the GoF test. 
+Use the fitted weights $\hat{w}$ and their covariance $Cov(\hat{w})$ from Step 5.2.
+
+2) Two sample learned LRT (e.g. NPLM):
+Used to compare the ensemble and e.g. a single NF against the target distribution with both sides provided as samples.
+
+#### 1) One sample GoF learned LRT
+
+##### Idea 
+
+##### Scripts 
+in `LRT_with_unc/`you can find: 
+-
+-
+
+
+##### Run 
+
+##### Outputs 
+
+
+#### 2) Two sample learned LRT (NPLM)
+
+##### Idea 
+
+
+##### A) Generate REF samples by hit-or-miss MC
+
+###### Scripts 
+in `Generate_Ensemble_Data_Hit_or_Miss_MC/`:
+- python script:`generate_hit_or_miss.py`
+- submission script: `submit_generate_hit_or_miss.sh`
+
+###### Configure 
+- in `generate_hit_or_miss.py`: 
+   - `trial_dir`: directory where the fitted weights $\hat{w}$ are stored, example: `Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_128_15_bimodal_gaussian_heavy_tail`
+   - `data_path`: file where the target distribution samples are stored, example: `Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_heavy_tail_target_set.npy`
+   - arch_config_path: file where the architecture of the NFs is stored, example: `Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_seeds_60_4_16_128_15/architecture_config.json`
+   - `subdir`: desired output subfolder name
+   - `w_i_fitted`: load from the final weights saved in trial_dir (np.load from w_i_fitted.npy)
+   - `N_events`: events per array task, for example 5000
+   - Output file naming is set here, for example:
+   ```bash 
+   np.save(os.path.join(out_dir,
+    f"ensemble_generated_samples_4_16_128_15_bimodal_gaussian_heavy_tail_seed_{seed}.npy"),
+    samples.cpu().numpy())
+   ```
+   
+- in `submit_generate_hit_or_miss.sh`:
+   - Set the array size, for example `#SBATCH --array=0-199`. With N_events=5000 this yields one million proposals. As a rule of thumb, generate about twice the number of accepted events you will need for the test.
+
+###### Run 
+```bash 
+cd Generate_Ensemble_Data_Hit_or_Miss_MC
+sbatch submit_generate_hit_or_miss.sh
+```
+
+###### Sanity checks 
+- Inspect a single file with `check_hit_or_miss.ipynb`.
+- Merge many shards into one array with `concatenate.ipynb`.
+
+##### B) Run two sample test
+
+###### Scripts 
+
+###### Configure
+
+###### Utils 
+
+###### Run 
+
+###### Outputs 
+
+
+##### Interpreting Z-score
+
+- Z near zero indicates that REF and DATA are statistically compatible at the chosen level.
+- Large positive or negative Z indicates a discrepancy.
+
 
