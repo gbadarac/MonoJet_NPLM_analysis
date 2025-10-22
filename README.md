@@ -354,8 +354,8 @@ This step provides two complementary hypothesis tests based on a learned likelih
 #### Test statistic - high level 
 Let $(p_{\mathrm{REF}}$ be the reference density and $H_{\boldsymbol{\phi}}$ a flexible alternative that reduces to
 $p_{\mathrm{REF}}$ when $\boldsymbol{\phi}=0$.
-We learn the alternative from \text{DATA} and form a likelihood–ratio statistic
-$T \;=\; -2\log\lambda \;=\; 2\big[\ell(\hat{\boldsymbol{\phi}}) - \ell(\boldsymbol{\phi}{=}0)\big]$
+We learn the alternative from DATA and form a likelihood–ratio statistic
+$T = 2\big[\ell(\hat{\boldsymbol{\phi}}) - \ell(\boldsymbol{\phi}{=}0)\big]$
 where $\ell$ is the log-likelihood on the DATA sample.
 We calibrate the null distribution of $T$ with pseudo-experiments drawn from the reference,
 convert the resulting $p$-value into a $Z$ score, and use $Z$ to summarize compatibility.
@@ -374,29 +374,31 @@ Compares the ensemble (or a single NF) with the target distribution when both RE
 #### Idea 
 - The reference enters in analytical form as an evaluable pdf $p_{\mathrm{REF}}(x)$, obtained from the ensemble with the $\hat{\boldsymbol w}$ uncertainty integrated as in Step 5.2.
 - The alternative adds a small, learnable correction $f(x,\boldsymbol{\phi})$ that integrates to zero so the result remains a valid density:
-$p(x \mid H_{\boldsymbol{\phi}}) \;=\; p_{\mathrm{REF}}(x) + f(x,\boldsymbol{\phi}), 
-\qquad \int f(x,\boldsymbol{\phi})\,dx = 0$.
+$p(x \mid H_{\boldsymbol{\phi}}) = p_{\mathrm{REF}}(x) + f(x,\boldsymbol{\phi}),
+\qquad \int f(x,\boldsymbol{\phi})dx = 0$.
 - We fit $\boldsymbol{\phi}$ on DATA, build $T$, calibrate $T$ with toys drawn from $p_{\mathrm{REF}}$, then report $Z$.
 
-#### Scripts 
+#### Scripts
 In `LRT_with_unc/`you can find: 
--
--
+- 
+- 
 
 
 #### Run 
 
-#### Outputs 
+#### Outputs
+
+#### Optional analysis 
 
 
 ### 2) Two sample learned LRT (NPLM)
 
 #### Idea 
 - Both REF and DATA enter as samples.
-- We first generate REF samples from the ensemble using hit--or--miss Monte Carlo.
-- We then run the learned LRT where a function $t_{\theta}(x)$ is trained to approximate the log density ratio (e.g., $t_{\theta}(x)\approx \log \tfrac{p_{\text{DATA}}(x)}{p_{\text{REF}}(x)}\)$.
+- We first generate REF samples from the ensemble using hit-or-miss Monte Carlo.
+- We then run the learned LRT where a function $t_{\theta}(x)$ is trained to approximate the log density ratio (e.g., $t_{\theta}(x)\approx \log \tfrac{p_{\text{DATA}}(x)}{p_{\text{REF}}(x)}\$).
 A sample-wise statistic such as
-$S \;=\; \sum_{n} t_{\theta}(x_n)$
+$S = \sum_{n} t_{\theta}(x_n)$
 is aggregated, calibrated with toys or permutations, and converted into a $Z$ score.
 
 #### A) Generate REF samples by hit-or-miss MC
@@ -436,16 +438,57 @@ sbatch submit_generate_hit_or_miss.sh
 
 #### B) Run two sample test
 
-##### Scripts 
+##### Scripts
+In `NPLM-embedding/` one can find: 
+- python scripts: 
+   - `toy_ensemble.py`: REF is the ensemble (samples generated in A))
+   - `toy.py`: REF is a single NF model
+- submission scripts: `submit_toy_ensemble.sh`, `submit_toy.sh`
+- utils scripts: `FLKutils.py` (ensemble), `FLKutils_model.py` (single NF), `SampleUtils.py`
 
 ##### Configure
+In `toy_ensemble.py` or `toy.py`, set:
+- `data_path`: DATA samples (target), e.g.
+`Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/500k_2d_gaussian_heavy_tail_target_set.npy`
+- `reference_path`: REF samples from hit-or-miss (step A), e.g.
+`Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/N_100000_dim_2_seeds_60_4_16_128_15_bimodal_gaussian_heavy_tail/concatenated_ensemble_generated_samples_4_16_128_15_bimodal_gaussian_heavy_tail_N_1000000.npy`
 
-##### Utils 
+In `submit_toy_ensemble.sh` or `submit_toy.sh`, set args:
+- -d <int>: number of DATA events, e.g. 100000
+- -r <int>: number of REF events, e.g. 500000
+- -t <int>: number of toys, e.g. 100
+- -M <int>: $M ≈ sqrt(d+r)$
+- -c {True,False}: CALIBRATION=True or False
+
+Example: 
+```text
+-d 100000 -r 500000 -t 100 -M 2400 -c ${CALIBRATION}
+```
+
+***Important***: for each (d,r) pair, run both CALIBRATION=True  and CALIBRATION=False. To study p-value vs sample size, sweep multiple (d,r) pairs (update `M` accordingly)
 
 ##### Run 
+```bash 
+cd NPLM-embedding
+# Ensemble as REF
+sbatch submit_toy_ensemble.sh
+# Single NF as REF
+sbatch submit_toy.sh
+```
 
 #### Outputs 
 
+`NPLM_NF_ensemble/` and `NPLM_NF_one_model/`, each containing:
+   - `calibration/` (runs with -c True)
+   - `comparison/` (runs with -c False)
+   For every (d,r,c) combination:
+      - `plots/` — per-feature REF/DATA ratio plots and quick diagnostics
+      - `.h5` — test-statistic payload used to derive p-values and Z
+
+To produce the probability vs test-statistic curves and summary tables, run:
+```bash 
+NPLM-embedding/analyse_output.ipynb
+```
 
 #### Interpreting Z score
 
