@@ -346,19 +346,15 @@ This step provides two complementary hypothesis tests based on a learned likelih
 Let $p_{\mathrm{REF}}$ be the reference density and $H_{\boldsymbol{\phi}}$ a flexible alternative that reduces to
 $p_{\mathrm{REF}}$ when $\boldsymbol{\phi}=0$.
 We learn the alternative from DATA and form a likelihood–ratio statistic
-\[
-T \;=\; -2\log\lambda \;=\; 2\big[\ell(\hat{\boldsymbol{\phi}}) - \ell(\boldsymbol{\phi}{=}0)\big],
-\]
+$ T = -2\log\lambda = 2\big[\ell(\hat{\boldsymbol{\phi}}) - \ell(\boldsymbol{\phi}{=}0)\big]$, 
 where $\ell$ is the log likelihood on the DATA sample.
 We calibrate the null distribution of $T$ with pseudo-experiments drawn from the reference,
 convert the resulting $p$-value into a $Z$ score, and use $Z$ to summarize compatibility.
 
 #### What we use here
-
 1) One sample GoF learned LRT: 
 Propagates the uncertainty on $\hat{w}$ directly into the GoF test, then compares the ensemble with the target distribution.
 Use the fitted weights $\hat w$ and their covariance $\mathrm{Cov}(\hat w)$ from Step 5.2.
-
 2) Two sample learned LRT (e.g. NPLM):
 Compares the ensemble (or a single NF) with the target distribution when both REF and DATA are provided as samples.
 
