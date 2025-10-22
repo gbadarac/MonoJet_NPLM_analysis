@@ -5,7 +5,7 @@ End-to-end pipeline for
 2) frequentist uncertainty with $w_i f_i$ ensembles
    ([Benevedes & Thaler, 2025](https://arxiv.org/abs/2506.00113)),
 3) coverage validation on observables,
-4) one-sample learned likelihood–ratio GoF with calibration.
+4) learned likelihood–ratio hypothesis tests with calibration.
 
 ---
 
@@ -19,7 +19,7 @@ End-to-end pipeline for
    1. Step 1 — Train NF ensemble
    2. Step 2 — Fit $w$ and propagate uncertainty
    3. Step 3 — Coverage test
-   4. Step 4 — One-sample GoF (learned LRT)
+   4. Step 4 — Learned likelihood–ratio tests (one-sample GoF and two-sample)
 
 ---
 
@@ -36,10 +36,9 @@ The pipeline has four components.
 3. **Coverage validation**  
    Check if a known observable (here, the first moment) falls within the predicted uncertainty band at the chosen confidence level.
 
-4. **One-sample learned LRT GoF**  
-   Null $H_\phi$: ensemble with Gaussian prior $w\sim\mathcal N(\hat w,\mathrm{Cov}(\hat w))$.  
-   Alternative $H_{\phi,a}$: ensemble plus a Gaussian–mixture expansion.  
-   Calibrate the test statistic with pseudo-experiments from $\hat f$.
+4. **Learned likelihood–ratio tests**  
+   **One-sample GoF:** uncertainty on $\hat w$ is propagated inside the test; null $H_\phi$ uses the ensemble with $w\sim\mathcal N(\hat w,\mathrm{Cov}(\hat w))$, the alternative adds a small Gaussian–mixture correction.  
+   **Two-sample (NPLM):** both REF and DATA enter as samples; the ratio is learned and calibrated with toys or permutations.
 
 ---
 
@@ -351,12 +350,14 @@ This step provides two complementary hypothesis tests based on a learned likelih
 - REF = density model, for example the fitted ensemble from Step 5.2, or a single NF.
 - DATA = target distribution sample
 
-#### Test statistic - high level 
-Let $(p_{\mathrm{REF}}$ be the reference density and $H_{\boldsymbol{\phi}}$ a flexible alternative that reduces to
+#### Test statistic, high level 
+Let $p_{\mathrm{REF}}$ be the reference density and $H_{\boldsymbol{\phi}}$ a flexible alternative that reduces to
 $p_{\mathrm{REF}}$ when $\boldsymbol{\phi}=0$.
 We learn the alternative from DATA and form a likelihood–ratio statistic
-$T = 2\big[\ell(\hat{\boldsymbol{\phi}}) - \ell(\boldsymbol{\phi}{=}0)\big]$
-where $\ell$ is the log-likelihood on the DATA sample.
+\[
+T \;=\; -2\log\lambda \;=\; 2\big[\ell(\hat{\boldsymbol{\phi}}) - \ell(\boldsymbol{\phi}{=}0)\big],
+\]
+where $\ell$ is the log likelihood on the DATA sample.
 We calibrate the null distribution of $T$ with pseudo-experiments drawn from the reference,
 convert the resulting $p$-value into a $Z$ score, and use $Z$ to summarize compatibility.
 
@@ -364,7 +365,7 @@ convert the resulting $p$-value into a $Z$ score, and use $Z$ to summarize compa
 
 1) One sample GoF learned LRT: 
 Propagates the uncertainty on $\hat{w}$ directly into the GoF test, then compares the ensemble with the target distribution.
-Use the fitted weights $\hat{w}$ and their covariance $Cov(\hat{w})$ from Step 5.2.
+Use the fitted weights $\hat w$ and their covariance $\mathrm{Cov}(\hat w)$ from Step 5.2.
 
 2) Two sample learned LRT (e.g. NPLM):
 Compares the ensemble (or a single NF) with the target distribution when both REF and DATA are provided as samples.
@@ -397,7 +398,7 @@ In the submission script (`submit_toys_LRT.sh`):
 
 In the python script (toys_LRT_with_unc.py):
 - `N_events`: number of DATA events used by the GoF
-- `n_kernels`: number of kernels in the Gaussian expansion, choose: $n_{kernels} = \sqrt{N_{events}}$
+- `n_kernels`: number of kernels in the Gaussian expansion, choose $n_{\text{kernels}}\approx\sqrt{N_{\text{events}}}$
 
 #### Run 
 ```bash 
@@ -426,9 +427,11 @@ LRT_with_unc/analyse_LRT_output_ML4PS_style.ipynb
 #### Idea 
 - Both REF and DATA enter as samples.
 - We first generate REF samples from the ensemble using hit-or-miss Monte Carlo.
-- We then run the learned LRT where a function $t_{\theta}(x)$ is trained to approximate the log density ratio (e.g., $t_{\theta}(x)\approx \log \tfrac{p_{\text{DATA}}(x)}{p_{\text{REF}}(x)}\$).
+- We then run the learned LRT where a function $t_{\theta}(x)$ is trained to approximate the log density ratio (e.g., $t_{\theta}(x)\approx \log \tfrac{p_{\text{DATA}}(x)}{p_{\text{REF}}(x)}$).
 A sample-wise statistic such as
-$S = \sum_{n} t_{\theta}(x_n)$
+\[
+S \;=\; \sum_{n} t_{\theta}(x_n)
+\]
 is aggregated, calibrated with toys or permutations, and converted into a $Z$ score.
 
 #### A) Generate REF samples by hit-or-miss MC
@@ -454,7 +457,7 @@ in `Generate_Ensemble_Data_Hit_or_Miss_MC/`:
    ```
    
 - in `submit_generate_hit_or_miss.sh`:
-   - Set the array size, for example `#SBATCH --array=0-199`. With N_events=5000 this yields one million . As a rule of thumb, generate about twice the number of accepted events you will need for the test.
+   Set the array size, for example `#SBATCH --array=0-199`. With `N_events=5000`, this yields ~one million proposals. As a rule of thumb, generate about twice the number of accepted events you will need for the test.
 
 ##### Run 
 ```bash 
@@ -469,7 +472,7 @@ sbatch submit_generate_hit_or_miss.sh
 #### B) Run two sample test
 
 ##### Scripts
-In `NPLM-embedding/` one can find: 
+In `NPLM/NPLM-embedding/` one can find: 
 - python scripts: 
    - `toy_ensemble.py`: REF is the ensemble (samples generated in A))
    - `toy.py`: REF is a single NF model
@@ -496,7 +499,7 @@ Example:
 
 ##### Run 
 ```bash 
-cd NPLM-embedding
+cd NPLM/NPLM-embedding
 # Ensemble as REF
 sbatch submit_toy_ensemble.sh
 # Single NF as REF
@@ -505,7 +508,7 @@ sbatch submit_toy.sh
 
 #### Outputs 
 
-`NPLM_NF_ensemble/` and `NPLM_NF_one_model/`, each containing:
+`NPLM/NPLM_NF_ensemble/` and `NPLM/NPLM_NF_one_model/`, each containing:
    - `calibration/` (runs with -c True)
    - `comparison/` (runs with -c False)
    For every (d,r,c) combination:
@@ -514,7 +517,7 @@ sbatch submit_toy.sh
 
 To produce the probability vs test-statistic curves and summary tables, run:
 ```text 
-NPLM-embedding/analyse_output.ipynb
+NPLM/NPLM-embedding/analyse_output.ipynb
 ```
 
 #### Interpreting Z score
