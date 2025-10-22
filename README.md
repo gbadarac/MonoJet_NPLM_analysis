@@ -223,8 +223,8 @@ These folders contain the fitted weights `w_i_fitted.npy`, covariance matrix `co
 
 1. Edit the submission script
 Open `submit_fit_NF_ensemble_weights.sh` and set:
-- `trial_dir` — directory that contains your `f_i.pth` from Step 5.1
-- `data_path` — path to the 100000 target events file from Step 4
+- `trial_dir`: directory that contains your `f_i.pth` from Step 5.1
+- `data_path`: path to the 100000 target events file from Step 4
 
 2. Submit
 ```bash 
@@ -282,8 +282,8 @@ MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/generate_sampled_
 
 ##### Configure
 In submit_generate_sampled_means.sh edit: 
-- `TRIAL_DIR` — the directory where the Step 5.2 weight-fitting results are stored
-- `ARCH_CONFIG_DIR` — the directory where the Step 5.1 ensemble models (and architecture config) are stored
+- `TRIAL_DIR`: the directory where the Step 5.2 weight-fitting results are stored
+- `ARCH_CONFIG_DIR`: the directory where the Step 5.1 ensemble models (and architecture config) are stored
 
 ##### Run
 ```bash
@@ -318,9 +318,9 @@ MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/
 ##### Configure
 Open `submit_coverage_check.sh` and set:
 - `TRIAL_DIR` — directory that contains your `f_i.pth` from Step 5.1
-- `N_SAMPLED` — number of target events to sample inside the coverage script (e.g., 200000 for a 2× oversampling relative to the 100000 used to train the NFs)
-- `MU_TARGET_PATH` — path to the file saved in Step 4 with the analytic first moment
-- `MU_I_FILE` — path to the <means_file.npy> produced in step A (this must point to .../Coverage_Check/generate_sampled_means/results_generated_sampled_means/<means_file.npy>)
+- `N_SAMPLED`: number of target events to sample inside the coverage script (e.g., 200000 for a 2× oversampling relative to the 100000 used to train the NFs)
+- `MU_TARGET_PATH`: path to the file saved in Step 4 with the analytic first moment
+- `MU_I_FILE`: path to the <means_file.npy> produced in step A (this must point to .../Coverage_Check/generate_sampled_means/results_generated_sampled_means/<means_file.npy>)
 
 ##### Run
 ```bash
@@ -379,17 +379,47 @@ $p(x \mid H_{\boldsymbol{\phi}}) = p_{\mathrm{REF}}(x) + f(x,\boldsymbol{\phi}),
 - We fit $\boldsymbol{\phi}$ on DATA, build $T$, calibrate $T$ with toys drawn from $p_{\mathrm{REF}}$, then report $Z$.
 
 #### Scripts
-In `LRT_with_unc/`you can find: 
-- 
-- 
+In `LRT_with_unc/` you can find: 
+- Python script: `toys_LRT_with_unc.py`
+- Submission script: `submit_toys_LRT.sh` 
+- Utils: `utils_LRT.py`
 
+#### Configure
+In the submission script (`submit_toys_LRT.sh`):
+- `CALIBRATION`={True,False}
+- `BASE_OUT`: output directory
+- `w`: fitted weights file
+- `w_cov`: covariance matrix file
+- `hit_or_miss_data`: REF generated data file. Important: these are toys only, not used for training
+- `ensemble_dir`: folder where the ensemble models were trained
+- SLURM array for number of toys, e.g.
+`#SBATCH --array=0-99` for 100 toys
+
+In the python script (toys_LRT_with_unc.py):
+- `N_events`: number of DATA events used by the GoF
+- `n_kernels`: number of kernels in the Gaussian expansion, choose: $n_{kernels} = \sqrt{N_{events}}$
 
 #### Run 
+```bash 
+cd LRT_with_unc
+# Run calibrated toys
+CALIBRATION=True  sbatch submit_toys_LRT.sh
+# Run the corresponding uncalibrated pass
+CALIBRATION=False sbatch submit_toys_LRT.sh
+```
 
 #### Outputs
+Results are written under `LRT_with_unc/results/`.
+For each ensemble architecture you will find:
+`calibration/` (`CALIBRATION=True`) and `comparison/`(`CALIBRATION=False`) subfolders
+inside each, one folder per toy, containing:
+- diagnostic plots
+- a `.json` with the test-statistic values needed to build $p(T)$, the $p$-value, and $Z$.
 
-#### Optional analysis 
-
+To produce the probability vs test-statistic curves and summary tables, run:
+```text
+LRT_with_unc/analyse_LRT_output_ML4PS_style.ipynb
+```
 
 ### 2) Two sample learned LRT (NPLM)
 
@@ -410,9 +440,9 @@ in `Generate_Ensemble_Data_Hit_or_Miss_MC/`:
 
 ##### Configure 
 - in `generate_hit_or_miss.py`: 
-   - `trial_dir`: directory where the fitted weights $\hat{w}$ are stored, example: `Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_128_15_bimodal_gaussian_heavy_tail`
-   - `data_path`: file where the target distribution samples are stored, example: `Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_heavy_tail_target_set.npy`
-   - arch_config_path: file where the architecture of the NFs is stored, example: `Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_seeds_60_4_16_128_15/architecture_config.json`
+   - `trial_dir`: directory where the fitted weights $\hat{w}$ are stored
+   - `data_path`: file where the target distribution samples are stored
+   - arch_config_path: file where the architecture of the NFs is stored
    - `subdir`: desired output subfolder name
    - `w_i_fitted`: load from the final weights saved in trial_dir (np.load from w_i_fitted.npy)
    - `N_events`: events per array task, for example 5000
@@ -448,24 +478,21 @@ In `NPLM-embedding/` one can find:
 
 ##### Configure
 In `toy_ensemble.py` or `toy.py`, set:
-- `data_path`: DATA samples (target), e.g.
-`Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/500k_2d_gaussian_heavy_tail_target_set.npy`
-- `reference_path`: REF samples from hit-or-miss (step A), e.g.
-`Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/N_100000_dim_2_seeds_60_4_16_128_15_bimodal_gaussian_heavy_tail/concatenated_ensemble_generated_samples_4_16_128_15_bimodal_gaussian_heavy_tail_N_1000000.npy`
+- `data_path`: DATA samples (target)
+- `reference_path`: REF samples from hit-or-miss (step A)
 
 In `submit_toy_ensemble.sh` or `submit_toy.sh`, set args:
 - -d <int>: number of DATA events, e.g. 100000
 - -r <int>: number of REF events, e.g. 500000
 - -t <int>: number of toys, e.g. 100
-- -M <int>: $M ≈ sqrt(d+r)$
+- -M <int>: $M ≈ \sqrt(d+r)$
 - -c {True,False}: CALIBRATION=True or False
 
 Example: 
 ```text
 -d 100000 -r 500000 -t 100 -M 2400 -c ${CALIBRATION}
 ```
-
-***Important***: for each (d,r) pair, run both CALIBRATION=True  and CALIBRATION=False. To study p-value vs sample size, sweep multiple (d,r) pairs (update `M` accordingly)
+***Important***: for each (d,r) pair, run both CALIBRATION=True  and CALIBRATION=False. To study p-value vs sample size, sweep multiple (d,r) pairs (update `M` accordingly). 
 
 ##### Run 
 ```bash 
@@ -482,11 +509,11 @@ sbatch submit_toy.sh
    - `calibration/` (runs with -c True)
    - `comparison/` (runs with -c False)
    For every (d,r,c) combination:
-      - `plots/` — per-feature REF/DATA ratio plots and quick diagnostics
-      - `.h5` — test-statistic payload used to derive p-values and Z
+      - `plots/`:  per-feature REF/DATA ratio plots and quick diagnostics
+      - `.h5`: test-statistic payload used to derive p-values and Z
 
 To produce the probability vs test-statistic curves and summary tables, run:
-```bash 
+```text 
 NPLM-embedding/analyse_output.ipynb
 ```
 
