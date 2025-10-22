@@ -363,40 +363,50 @@ convert the resulting $p$-value into a $Z$ score, and use $Z$ to summarize compa
 #### What we use here
 
 1) One sample GoF learned LRT: 
-Used to propagate the uncertainty from $\hat{w}$ directly inside the GoF test. 
+Propagates the uncertainty on $\hat{w}$ directly into the GoF test, then compares the ensemble with the target distribution.
 Use the fitted weights $\hat{w}$ and their covariance $Cov(\hat{w})$ from Step 5.2.
 
 2) Two sample learned LRT (e.g. NPLM):
-Used to compare the ensemble and e.g. a single NF against the target distribution with both sides provided as samples.
+Compares the ensemble (or a single NF) with the target distribution when both REF and DATA are provided as samples.
 
-#### 1) One sample GoF learned LRT
+### 1) One sample GoF learned LRT
 
-##### Idea 
+#### Idea 
+- The reference enters in analytical form as an evaluable pdf $p_{\mathrm{REF}}(x)$, obtained from the ensemble with the $\hat{\boldsymbol w}$ uncertainty integrated as in Step 5.2.
+- The alternative adds a small, learnable correction $f(x,\boldsymbol{\phi})$ that integrates to zero so the result remains a valid density:
+$p(x \mid H_{\boldsymbol{\phi}}) \;=\; p_{\mathrm{REF}}(x) + f(x,\boldsymbol{\phi}), 
+\qquad \int f(x,\boldsymbol{\phi})\,dx = 0$.
+- We fit $\boldsymbol{\phi}$ on DATA, build $T$, calibrate $T$ with toys drawn from $p_{\mathrm{REF}}$, then report $Z$.
+
+#### Scripts 
+In `LRT_with_unc/`you can find: 
+-
+-
+
+
+#### Run 
+
+#### Outputs 
+
+
+### 2) Two sample learned LRT (NPLM)
+
+#### Idea 
+- Both REF and DATA enter as samples.
+- We first generate REF samples from the ensemble using hit--or--miss Monte Carlo.
+- We then run the learned LRT where a function $t_{\theta}(x)$ is trained to approximate the log density ratio (e.g., $t_{\theta}(x)\approx \log \tfrac{p_{\text{DATA}}(x)}{p_{\text{REF}}(x)}\)$.
+A sample-wise statistic such as
+$S \;=\; \sum_{n} t_{\theta}(x_n)$
+is aggregated, calibrated with toys or permutations, and converted into a $Z$ score.
+
+#### A) Generate REF samples by hit-or-miss MC
 
 ##### Scripts 
-in `LRT_with_unc/`you can find: 
--
--
-
-
-##### Run 
-
-##### Outputs 
-
-
-#### 2) Two sample learned LRT (NPLM)
-
-##### Idea 
-
-
-##### A) Generate REF samples by hit-or-miss MC
-
-###### Scripts 
 in `Generate_Ensemble_Data_Hit_or_Miss_MC/`:
 - python script:`generate_hit_or_miss.py`
 - submission script: `submit_generate_hit_or_miss.sh`
 
-###### Configure 
+##### Configure 
 - in `generate_hit_or_miss.py`: 
    - `trial_dir`: directory where the fitted weights $\hat{w}$ are stored, example: `Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_128_15_bimodal_gaussian_heavy_tail`
    - `data_path`: file where the target distribution samples are stored, example: `Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_heavy_tail_target_set.npy`
@@ -412,34 +422,34 @@ in `Generate_Ensemble_Data_Hit_or_Miss_MC/`:
    ```
    
 - in `submit_generate_hit_or_miss.sh`:
-   - Set the array size, for example `#SBATCH --array=0-199`. With N_events=5000 this yields one million proposals. As a rule of thumb, generate about twice the number of accepted events you will need for the test.
+   - Set the array size, for example `#SBATCH --array=0-199`. With N_events=5000 this yields one million . As a rule of thumb, generate about twice the number of accepted events you will need for the test.
 
-###### Run 
+##### Run 
 ```bash 
 cd Generate_Ensemble_Data_Hit_or_Miss_MC
 sbatch submit_generate_hit_or_miss.sh
 ```
 
-###### Sanity checks 
+##### Sanity checks 
 - Inspect a single file with `check_hit_or_miss.ipynb`.
 - Merge many shards into one array with `concatenate.ipynb`.
 
-##### B) Run two sample test
+#### B) Run two sample test
 
-###### Scripts 
+##### Scripts 
 
-###### Configure
+##### Configure
 
-###### Utils 
+##### Utils 
 
-###### Run 
+##### Run 
 
-###### Outputs 
+#### Outputs 
 
 
-##### Interpreting Z-score
+#### Interpreting Z score
 
 - Z near zero indicates that REF and DATA are statistically compatible at the chosen level.
-- Large positive or negative Z indicates a discrepancy.
+- Large Z indicates a discrepancy.
 
 
