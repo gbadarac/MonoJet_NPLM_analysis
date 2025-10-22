@@ -1,6 +1,6 @@
 # Uncertainty-Aware Density Estimation and GoF with Normalizing Flows
 
-End-to-end pipeline for
+End-to-end pipeline for:
 1) distributional modeling with Normalizing Flows,
 2) frequentist uncertainty with $w_i f_i$ ensembles
    ([Benevedes & Thaler, 2025](https://arxiv.org/abs/2506.00113)),
@@ -206,7 +206,7 @@ MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/
 - `fit_toy_weights.py`
 
 #### Utilities
-`utils_wifi.py` — shared helpers used by all weight-fitting scripts
+`utils_wifi.py`: shared helpers used by all weight-fitting scripts
 
 #### Submission scripts
 - `submit_fit_NF_ensemble_weights.sh`
@@ -215,7 +215,6 @@ MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/
 #### Outputs 
 - `results_fit_weights_NF/`
 - `results_fit_weights_gaussian_toy/`
-
 These folders contain the fitted weights `w_i_fitted.npy`, covariance matrix `cov_w.npy`, logs, and diagnostics. 
 
 #### Configure
@@ -224,7 +223,6 @@ These folders contain the fitted weights `w_i_fitted.npy`, covariance matrix `co
 Open `submit_fit_NF_ensemble_weights.sh` and set:
 - `trial_dir`: directory that contains your `f_i.pth` from Step 5.1
 - `data_path`: path to the 100000 target events file from Step 4
-
 2. Submit
 ```bash 
 cd Uncertainty_Modeling/wifi/Fit_Weights
@@ -233,22 +231,17 @@ sbatch submit_fit_NF_ensemble_weights.sh
 
 #### Recovering the final weights 
 
-The fitted weights are later used to perform hit-or-miss Monte Carlo over the ensemble for the learned likelihood-ratio GoF test.
-
-You can obtain the final fitted weights in two ways:
+The fitted weights are later used to perform hit-or-miss Monte Carlo over the ensemble for the learned likelihood-ratio GoF test. You can obtain the final fitted weights in two ways:
 - From the output files saved in `results_fit_weights_*`
 - With the notebook: `Uncertainty_Modeling/wifi/Fit_Weights/w_i_final_file.ipynb`
-
-Note: If optimization fails on some runs, check logs for non-finite losses and retry.
+Note that if optimization fails on some runs, check logs for non-finite losses and retry.
 ---
 
 ### 5.3 Step 3 — Coverage test
 
 This step checks whether the propagated uncertainty from the fitted ensemble
 adequately covers a known observable (here, the **first moment**) at a chosen
-confidence level.
-
-At a high level, we run **multiple pseudo-experiments**. For each experiment:
+confidence level. At a high level, we run **multiple pseudo-experiments**. For each experiment:
 1. Generate a fresh target dataset inside the script (e.g., **200,000** events) to
    achieve a **2× oversampling** with respect to the NF ensemble’s statistical
    power (**100,000** events).
@@ -263,7 +256,6 @@ At a high level, we run **multiple pseudo-experiments**. For each experiment:
 #### Prerequisites
 
 You need the following artifacts from previous steps:
-
 - **Step 5.1:** `f_i.pth` (the collected ensemble)
 - **Step 5.2:** fitted weights and their covariance (saved in your `results_fit_weights_*` dir)
 - **Step 4:** analytic first moment file $\mu^\star$
@@ -275,6 +267,7 @@ You need the following artifacts from previous steps:
 ```text
 MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Coverage_Check/generate_sampled_means/
 ```
+
 ##### Scripts
 - `generate_sampled_means.py`
 - `submit_generate_sampled_means.sh`
@@ -296,7 +289,6 @@ Uncertainty_Modeling/wifi/Coverage_Check/generate_sampled_means/results_generate
 └── <means_file.npy>   # first-moment estimates from the ensemble
 ```
 You will pass the path to <means_file.npy> into the coverage step as MU_I_FILE.
-
 To verify that the sampled means were generated correctly, use `check_sampled_means.ipynb` and confirm:
 - Array shape is (n_models, n_features)
 - Feature-wise means and standard deviations look reasonable
@@ -416,7 +408,6 @@ For each ensemble architecture you will find:
 inside each, one folder per toy, containing:
 - diagnostic plots
 - a `.json` with the test-statistic values needed to build $p(T)$, the $p$-value, and $Z$.
-
 To produce the probability vs test-statistic curves and summary tables, run:
 ```text
 LRT_with_unc/analyse_LRT_output_ML4PS_style.ipynb
@@ -455,7 +446,6 @@ in `Generate_Ensemble_Data_Hit_or_Miss_MC/`:
     f"ensemble_generated_samples_4_16_128_15_bimodal_gaussian_heavy_tail_seed_{seed}.npy"),
     samples.cpu().numpy())
    ```
-   
 - in `submit_generate_hit_or_miss.sh`:
    Set the array size, for example `#SBATCH --array=0-199`. With `N_events=5000`, this yields ~one million proposals. As a rule of thumb, generate about twice the number of accepted events you will need for the test.
 
@@ -490,12 +480,11 @@ In `submit_toy_ensemble.sh` or `submit_toy.sh`, set args:
 - -t <int>: number of toys, e.g. 100
 - -M <int>: $M ≈ \sqrt(d+r)$
 - -c {True,False}: CALIBRATION=True or False
-
 Example: 
 ```text
 -d 100000 -r 500000 -t 100 -M 2400 -c ${CALIBRATION}
 ```
-***Important***: for each (d,r) pair, run both CALIBRATION=True  and CALIBRATION=False. To study p-value vs sample size, sweep multiple (d,r) pairs (update `M` accordingly). 
+Note that for each (d,r) pair, run both CALIBRATION=True  and CALIBRATION=False. To study p-value vs sample size, sweep multiple (d,r) pairs (update `M` accordingly). 
 
 ##### Run 
 ```bash 
@@ -507,7 +496,6 @@ sbatch submit_toy.sh
 ```
 
 #### Outputs 
-
 `NPLM/NPLM_NF_ensemble/` and `NPLM/NPLM_NF_one_model/`, each containing:
    - `calibration/` (runs with -c True)
    - `comparison/` (runs with -c False)
@@ -521,7 +509,6 @@ NPLM/NPLM-embedding/analyse_output.ipynb
 ```
 
 #### Interpreting Z score
-
 - Z near zero indicates that REF and DATA are statistically compatible at the chosen level.
 - Large Z indicates a discrepancy.
 
