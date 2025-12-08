@@ -43,3 +43,7 @@
 # Allow Gaussian toy plots and toy models
 !Generate_Gaussian_Toy/saved_generated_gaussian_toys/**/*.png
 !Generate_Gaussian_Toy/saved_generated_gaussian_toys/**/*.npy
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
