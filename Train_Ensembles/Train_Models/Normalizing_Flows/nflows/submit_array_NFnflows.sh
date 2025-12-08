@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=NF_job
 #SBATCH --array=0-79
-# #SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/logs/job_output_%j.out
-# #SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/logs/job_error_%j.err
+# #SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/logs/job_output_%j.out
+# #SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/logs/job_error_%j.err
 #SBATCH --output=/dev/null
 #SBATCH --error=/dev/null
 #SBATCH --time=12:00:00
@@ -18,10 +18,10 @@ conda activate nf_env
 
 # === Parameters
 seed=$SLURM_ARRAY_TASK_ID
-export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles:$PYTHONPATH
+export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models:$PYTHONPATH
 
 # === Run training
-python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows.py \
+python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows.py \
     --data_path ${DATA_PATH} \
     --outdir ${TRIAL_DIR} \
     --seed ${seed} \

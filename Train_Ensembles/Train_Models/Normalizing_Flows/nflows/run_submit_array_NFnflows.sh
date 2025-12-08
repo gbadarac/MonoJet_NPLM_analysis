@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=NF_launcher
-#SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/logs/launcher_output_%j.out
-#SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/logs/launcher_error_%j.err
+#SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/2_dim/logs/launcher_output_%j.out
+#SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/2_dim/logs/launcher_error_%j.err
 #SBATCH --time=00:10:00
 #SBATCH --mem=96G
 #SBATCH --partition=gpu
@@ -31,7 +31,7 @@ num_bins=15
 num_layers=4
 
 # Base directory
-base_dir="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail"
+base_dir="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail"
 #Get dataset size 
 dataset_path="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_heavy_tail_target_set.npy"
 num_events=$(python -c "import numpy as np; print(np.load('${dataset_path}').shape[0])")
@@ -59,6 +59,6 @@ sbatch --job-name=NF_collect \
   --time=00:10:00 \
   --mem=4G \
   --partition=standard \
-  --wrap="source /work/gbadarac/miniforge3/bin/activate && conda activate nf_env && export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles:\$PYTHONPATH && \
-         python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows.py \
+  --wrap="source /work/gbadarac/miniforge3/bin/activate && conda activate nf_env && export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models:\$PYTHONPATH && \
+         python /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows.py \
            --outdir ${trial_dir} --collect_all --num_models ${model_seeds} --num_features ${num_features}"
