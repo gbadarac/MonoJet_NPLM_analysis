@@ -1,0 +1,12 @@
+name: kernels_env
+channels:
+  - conda-forge
+dependencies:
+  - matplotlib
+  - scikit-learn
+  - h5py
+  - scipy
+  - python=3.11
+  - pyyaml
+  - numpy
+prefix: /work/gbadarac/miniforge3/envs/kernels_env
