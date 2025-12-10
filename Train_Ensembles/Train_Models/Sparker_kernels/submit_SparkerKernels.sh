@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=sparker_2gmm
-#SBATCH --array=0-0
+#SBATCH --array=1-9
 #SBATCH --time=08:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G

@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 from torch.optim.lr_scheduler import _LRScheduler
+import math 
 
 def pairwise_dist(X, P):
     X2 = (X ** 2).sum(dim=1, keepdim=True) # (n x 1)                                                            
@@ -154,14 +155,18 @@ class KernelMethod(nn.Module):
         else:
             self.cmin=-coeffs_clip
             self.cmax=coeffs_clip
-        self.coeffs = Variable(coeffs.reshape((-1, 1)).type(torch.double),
-                               requires_grad=train_coeffs) # [M, 1]                                                                                  
+        self.coeffs = Variable(
+            coeffs.reshape((-1, 1)).to(dtype=torch.float32),
+            requires_grad=train_coeffs
+        )  # [M, 1]
+                                                                               
         self.kernel_layer = KernelLayer(input_shape=input_shape, centroids=centroids, widths=widths,
                                         train_centroids=train_centroids, train_widths=train_widths,
                                         resolution_const=resolution_const, resolution_scale=resolution_scale,
                                         name='kernel_layer')
         self.softmax = torch.softmax
         self.probability_coeffs=probability_coeffs
+
     def call(self, x):
         K_x, _ = self.kernel_layer.call(x) # [n, M] 
         W_x = self.coeffs  # [M, 1 ] 
@@ -224,12 +229,36 @@ class KernelMethod_SoftMax_2(nn.Module):
         self.probability_coeffs=probability_coeffs
 
     def call(self, x):
-        K_x, _ = self.kernel_layer.call(x) # [n, M]    
-        Z = torch.sum(K_x, dim=1, keepdim=True) +self.epsilon # [n, 1]  
-        W_x = self.coeffs  # [M, 1 ] 
-        if self.probability_coeffs==True:W_x=self.softmax(W_x, 0)
-        out = torch.tensordot(torch.mul(K_x,K_x), W_x, dims=([1], [0])) # [n, 1] 
-        out = torch.divide(out, Z) # [n, 1]  
+        K_x, _ = self.kernel_layer.call(x)  # [n, M]
+
+        Z = torch.sum(K_x, dim=1, keepdim=True) + self.epsilon  # [n, 1]
+
+        # ---- local copy of coeffs with correct dtype/device (DO NOT overwrite self.coeffs) ----
+        W_x = self.coeffs
+        if W_x.dtype != K_x.dtype or W_x.device != K_x.device:
+            W_x = W_x.to(dtype=K_x.dtype, device=K_x.device)
+        # ---------------------------------------------------------------------------------------
+
+        total_kernel_activation = torch.sum(K_x, dim=0).unsqueeze(1)  # [M, 1]
+        total_kernel_activation = torch.abs(
+            total_kernel_activation - torch.mean(total_kernel_activation)
+        ) / (torch.std(total_kernel_activation) + 1e-8)
+
+        # mask for "active" kernels, same dtype/device as W_x
+        mask_non_active_kernels = (total_kernel_activation < 2).to(
+            dtype=W_x.dtype, device=W_x.device
+        )
+
+        # update the *leaf* tensor in-place via .data, keep optimizer happy
+        self.coeffs.data = self.coeffs.data * mask_non_active_kernels.to(
+            self.coeffs.data.dtype
+        )
+
+        if self.probability_coeffs:
+            W_x = self.softmax(W_x, 0)
+
+        out = torch.tensordot(K_x * K_x, W_x, dims=([1], [0]))  # [n, 1]
+        out = out / Z  # [n, 1]
         return out
 
     def get_softmax(self, x):
@@ -273,27 +302,39 @@ class KernelMethod_SoftMax_2(nn.Module):
         return
 
 class KernelLayer(nn.Module):
-    '''
-    layer of M gaussians: [K_1, ..., K_m]
-    input data: x [shape: (N,d)]
-    output: K_1(x), ..., K_m(x) [shape: (N, m)]
-    '''
     def __init__(self, centroids, widths, resolution_const=0, resolution_scale=1,
                  beta=None,
-                 cmin=None, cmax=None,train_centroids=True, train_widths=False,
+                 cmin=None, cmax=None, train_centroids=True, train_widths=False,
                  name=None, **kwargs):
         super(KernelLayer, self).__init__()
-        self.resolution_const=resolution_const
-        self.resolution_scale=resolution_scale
-        self.cmin=cmin
-        self.cmax=cmax
-        self.beta=beta
+
+        self.resolution_const = resolution_const
+        self.resolution_scale = resolution_scale
+        self.cmin = cmin
+        self.cmax = cmax
+        self.beta = beta
+
         self.M = centroids.shape[0]
         self.d = centroids.shape[1]
-        self.width = widths[0] #d
-        #self.widths = Variable( widths.type(torch.float32), requires_grad=train_widths) # M, d
-        self.centroids = Variable(centroids.type(torch.float32), requires_grad=train_centroids) #M, d
-        self.cov_diag = self.width**2
+
+        # Decide device from centroids if they are a tensor, otherwise CPU
+        if isinstance(centroids, torch.Tensor):
+            device = centroids.device
+        else:
+            device = torch.device("cpu")
+
+        # Make sure centroids and widths are tensors on the same device
+        centroids = torch.as_tensor(centroids, dtype=torch.float32, device=device)
+        widths    = torch.as_tensor(widths,    dtype=torch.float32, device=device)
+
+        # width is a tensor (scalar or [d]-vector) on the right device
+        self.width = widths[0]              # shape [d] or scalar
+        self.centroids = Variable(
+            centroids,
+            requires_grad=train_centroids
+        )                                   # [M, d]
+
+        self.cov_diag = self.width ** 2
 
     def call(self, x):
         if self.beta==None:
@@ -311,7 +352,12 @@ class KernelLayer(nn.Module):
         return widths
 
     def get_widths(self):
-        return self.width*torch.ones((self.M, self.d))
+        return self.width * torch.ones(
+            (self.M, self.d),
+            device=self.width.device,
+            dtype=self.width.dtype,
+        )
+
 
     def set_widths(self, widths):
         self.widths.data = widths
@@ -319,6 +365,18 @@ class KernelLayer(nn.Module):
         return
 
     def set_width(self, width):
+        """
+        Ensure self.width is always a torch.Tensor on the same
+        device/dtype as the existing width.
+        """
+        # If width is not a tensor, wrap it
+        if not isinstance(width, torch.Tensor):
+            width = torch.tensor(
+                width,
+                device=self.width.device if isinstance(self.width, torch.Tensor) else self.centroids.device,
+                dtype=self.width.dtype if isinstance(self.width, torch.Tensor) else self.centroids.dtype,
+            )
+
         self.width = width
         self.compute_cov_diag()
         return
@@ -346,13 +404,17 @@ class KernelLayer(nn.Module):
         return
 
     def gauss_const(self):
-        """ 
-        # widths.shape = [M, d]  
-        Returns the normalization constant for a gaussian     
-        # return.shape = [M,] 
-        """
-        det_sigma_sqrt = torch.pow(torch.tensor(self.width), self.d)#torch.sum(cov_diag, axis=1)# [M,]   
-        const= torch.unique(1/(det_sigma_sqrt*torch.pow(torch.tensor(2*torch.pi), 0.5*self.d)))
+        # self.width is a tensor on the correct device
+        det_sigma_sqrt = self.width.pow(self.d)
+
+        two_pi = torch.tensor(
+            2 * math.pi,
+            device=self.width.device,
+            dtype=self.width.dtype,
+        )
+
+        const = 1.0 / (det_sigma_sqrt * two_pi.pow(0.5 * self.d))
+        const = torch.unique(const)  # optional, to mimic old behavior
         return const
 
     def Kernel(self,x):

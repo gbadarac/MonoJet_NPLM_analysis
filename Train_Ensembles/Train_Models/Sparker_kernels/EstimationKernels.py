@@ -109,7 +109,7 @@ config_json = {
     "decay_epochs": 0.9,
     "coeffs_init": [0 for _ in range(10)], # initial kernel coefficients (amplitudes)
     "coeffs_clip": 100, # clip |coeff| to this value during training
-    "number_centroids": [4 for _ in range(10)], # kernels per layer (here 4)
+    "number_centroids": [10 for _ in range(10)], # kernels per layer (here 4)
     "coeffs_reg_lambda":  0,
     "widths_reg_lambda":  0,
     "entropy_reg_lambda": 0,
@@ -156,7 +156,12 @@ def training_loop(seed, data_train_tot, config_json, json_path):
     # CPU only for now (set cuda=True if you want to use GPUs later)
     # CPU or GPU depending on availability
     cuda = torch.cuda.is_available()
-    DEVICE = torch.device("cuda" if cuda else "cpu")
+    if cuda:
+        major, minor = torch.cuda.get_device_capability()
+        print(f"Found CUDA device with capability sm_{major}{minor}")
+        DEVICE = torch.device("cuda")
+    else:
+        DEVICE = torch.device("cpu")
     print("Using device:", DEVICE)
 
     with open(json_path, 'r') as jsonfile:
@@ -195,8 +200,8 @@ def training_loop(seed, data_train_tot, config_json, json_path):
 
     resolution_scale = np.array(config_json["resolution_scale"]).reshape((-1,))
     resolution_const = np.array(config_json["resolution_const"]).reshape((-1,))
-    resolution_const = torch.from_numpy(resolution_const).double()
-    resolution_scale = torch.from_numpy(resolution_scale).double()
+    resolution_const = torch.from_numpy(resolution_const).float().to(DEVICE)
+    resolution_scale = torch.from_numpy(resolution_scale).float().to(DEVICE)
     print('Resolution constants:', resolution_const)
 
     # init
@@ -212,9 +217,10 @@ def training_loop(seed, data_train_tot, config_json, json_path):
                       for i in range(n_layers)]
     centroids_init = [feature[np.random.randint(len_feature, size=M[i]), :] for i in range(n_layers)]
 
-    coeffs_init    = [torch.from_numpy(coeffs_init[i]).double() for i in range(n_layers)]
-    widths_init    = [torch.from_numpy(widths_init[i]).double() for i in range(n_layers)]
-    centroids_init = [centroids_init[i] for i in range(n_layers)]
+    # move everything to DEVICE
+    coeffs_init    = [torch.from_numpy(coeffs_init[i]).float().to(DEVICE) for i in range(n_layers)]
+    widths_init    = [torch.from_numpy(widths_init[i]).float().to(DEVICE) for i in range(n_layers)]
+    centroids_init = [centroids_init[i].to(DEVICE) for i in range(n_layers)]
 
     lam_coeffs  = config_json["coeffs_reg_lambda"]
     lam_widths  = config_json["widths_reg_lambda"]
@@ -256,11 +262,12 @@ def training_loop(seed, data_train_tot, config_json, json_path):
     print('Initial loss:')
     loss_value = 0
     nplm_loss_value = NLL(pred)
-    print("nplm ", nplm_loss_value.detach().numpy())
+    print("nplm ", nplm_loss_value.detach().cpu().numpy())
     if lam_coeffs and coeffs_regularizer is not None:
-        print("coeff", coeffs_regularizer(model.get_coeffs()).detach().numpy())
+        print("coeff", coeffs_regularizer(model.get_coeffs()).detach().cpu().numpy())
     if lam_entropy:
-        print("entropy", CentroidsEntropyRegularizer(model.get_centroids_entropy()).detach().numpy())
+        print("entropy", CentroidsEntropyRegularizer(model.get_centroids_entropy()).detach().cpu().numpy())
+
 
     loss_value += nplm_loss_value
     if lam_coeffs and coeffs_regularizer is not None:
@@ -278,10 +285,10 @@ def training_loop(seed, data_train_tot, config_json, json_path):
     loss_history      = np.zeros(max_monitor)
     epochs_history    = np.zeros(max_monitor)
 
-    widths_history[0, :, :]  = model.get_widths().detach().numpy()
-    centroids_history[0, :, :] = model.get_centroids().detach().numpy()
-    coeffs_history[0, :]     = model.get_coeffs().detach().numpy().reshape((np.sum(M)))
-    loss_history[0]          = loss_value.detach().numpy()
+    widths_history[0, :, :]  = model.get_widths().detach().cpu().numpy()
+    centroids_history[0, :, :] = model.get_centroids().detach().cpu().numpy()
+    coeffs_history[0, :]     = model.get_coeffs().detach().cpu().numpy().reshape((np.sum(M)))
+    loss_history[0]          = loss_value.detach().cpu().numpy()
     epochs_history[0]        = 0
 
     # training
@@ -337,10 +344,10 @@ def training_loop(seed, data_train_tot, config_json, json_path):
             model.clip_coeffs()
 
             if not (i % patience):
-                widths_history[monitor_idx, :, :]    = model.get_widths().detach().numpy()
-                centroids_history[monitor_idx, :, :] = model.get_centroids().detach().numpy()
-                coeffs_history[monitor_idx, :]       = model.get_coeffs().detach().numpy().reshape((np.sum(M)))
-                loss_history[monitor_idx]            = loss_value.detach().numpy()
+                widths_history[monitor_idx, :, :]    = model.get_widths().detach().cpu().numpy()
+                centroids_history[monitor_idx, :, :] = model.get_centroids().detach().cpu().numpy()
+                coeffs_history[monitor_idx, :]       = model.get_coeffs().detach().cpu().numpy().reshape((np.sum(M)))
+                loss_history[monitor_idx]            = loss_value.detach().cpu().numpy()
                 epochs_history[monitor_idx]          = monitor_idx
                 monitor_idx += 1
                 print('epoch: %i, NLL loss: %f, COEFFS: %f' %
@@ -372,9 +379,10 @@ def training_loop(seed, data_train_tot, config_json, json_path):
     nplm_loss_final = NLL(pred)
 
     # save test statistic
+    t_value = float((-2 * nplm_loss_final).detach().cpu().item())
     with open(os.path.join(output_folder, 't.txt'), 'w') as t_file:
-        t_file.write("%f\n" % (-2 * nplm_loss_final))
-    print('NPLM test at the end of training: ', "%f" % (-2 * nplm_loss_final))
+        t_file.write("%f\n" % t_value)
+    print('NPLM test at the end of training: ', "%f" % t_value)
 
     # save exec time
     with open(os.path.join(output_folder, 'time.txt'), 'w') as t_file:
