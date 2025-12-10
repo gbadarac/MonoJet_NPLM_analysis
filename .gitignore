@@ -47,3 +47,4 @@
 __pycache__/
 *.py[cod]
 *.pyo
+Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/

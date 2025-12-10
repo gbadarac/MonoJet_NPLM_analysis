@@ -2,8 +2,13 @@
 #SBATCH --job-name=sparker_2gmm
 #SBATCH --array=0-0
 #SBATCH --time=08:00:00
-#SBATCH --cpus-per-task=2
-#SBATCH --mem=8G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
+
+# >>> adapt these two lines to your cluster if needed <<<
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:1
+
 #SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/logs/sparker_%A_%a.out
 #SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/logs/sparker_%A_%a.err
 
@@ -13,7 +18,7 @@ mkdir -p /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train
 # Activate environment
 # =============================
 source /work/gbadarac/miniforge3/bin/activate
-conda activate kernels_env   # or nf_env/nplm_env if that's where SparKer deps live
+conda activate kernels_env
 
 # =============================
 # USER PARAMETERS (like NF)
@@ -35,3 +40,4 @@ python EstimationKernels.py \
     --data_path "${DATA_PATH}" \
     --outdir "${BASE_OUTDIR}" \
     --seed "${SLURM_ARRAY_TASK_ID}"
+

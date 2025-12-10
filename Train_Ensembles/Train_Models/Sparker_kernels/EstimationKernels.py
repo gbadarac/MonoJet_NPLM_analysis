@@ -15,12 +15,6 @@ from torch.utils.data import DataLoader, Dataset, random_split, Subset
 import torchvision.transforms as transforms
 from mpl_toolkits.axes_grid1 import ImageGrid
 
-import matplotlib as mpl
-mpl.use('Agg')   # important: before importing pyplot on the cluster
-import matplotlib.pyplot as plt
-import matplotlib.font_manager as font_manager
-import matplotlib.patches as patches
-
 from torch.autograd.functional import hessian
 from torch.autograd import grad
 
@@ -37,6 +31,14 @@ from Sparker_utils.GENutils import *
 from Sparker_utils.sampler_mixture import *
 from Sparker_utils.losses import *
 from Sparker_utils.regularizers import *
+
+from plot_utils import (
+    plot_loss,
+    plot_centroids_history,
+    plot_coeffs_history,
+    plot_model_marginals_and_heatmap,
+    plot_gt_heatmap,
+)
 
 # -------------------------------------------------------------------
 # Args
@@ -92,22 +94,22 @@ def create_config_file(config_table, output_dir):
     return config_path
 
 config_json = {
-    "N"   : 10000,  # bootstrap size per WiFi component
+    "N"   : 100000,  # bootstrap size per WiFi component
     "model": 'Soft-SparKer2',
     "output_directory": None,  # filled below
-    "learning_rate": 0.01,
+    "learning_rate": 0.01, #Adam learning rate 
     "coeffs_reg": "unit1",
-    "epochs": [2000 for _ in range(15)],
-    "patience": 500,
-    "plt_patience": 2000,
+    "epochs": [2000 for _ in range(10)], #epochs per layer (L = 10 layers)
+    "patience": 500, # monitor/save every 500 steps
+    "plt_patience": 2000, # make plots every 2000 steps
     "plot": True,
-    "width_init": [4 for _ in range(15)],
-    "width_fin":[0.1 for _ in range(15)],
+    "width_init": [4 for _ in range(10)], # initial kernel widths (bandwidths)
+    "width_fin":[0.1 for _ in range(10)], # final target widths (annealed)
     "t_ini": 0,
     "decay_epochs": 0.9,
-    "coeffs_init": [0 for _ in range(15)],
-    "coeffs_clip": 100,
-    "number_centroids": [4 for _ in range(15)],
+    "coeffs_init": [0 for _ in range(10)], # initial kernel coefficients (amplitudes)
+    "coeffs_clip": 100, # clip |coeff| to this value during training
+    "number_centroids": [4 for _ in range(10)], # kernels per layer (here 4)
     "coeffs_reg_lambda":  0,
     "widths_reg_lambda":  0,
     "entropy_reg_lambda": 0,
@@ -121,8 +123,8 @@ config_json = {
 # --------------------------
 # Build a compact trial name
 # --------------------------
-d = data_train_tot.shape[1]
-total_M = int(np.sum(config_json["number_centroids"]))
+d = data_train_tot.shape[1] #data dimension (here d=2)
+total_M = int(np.sum(config_json["number_centroids"])) #total number of kernels across all layers 
 
 trial_name = (
     f"N_{N_train_tot}_dim_{d}_kernels_"
@@ -152,8 +154,10 @@ def training_loop(seed, data_train_tot, config_json, json_path):
     print('Random seed:', seed)
 
     # CPU only for now (set cuda=True if you want to use GPUs later)
-    cuda = False
+    # CPU or GPU depending on availability
+    cuda = torch.cuda.is_available()
     DEVICE = torch.device("cuda" if cuda else "cpu")
+    print("Using device:", DEVICE)
 
     with open(json_path, 'r') as jsonfile:
         config_json = json.load(jsonfile)
@@ -168,7 +172,7 @@ def training_loop(seed, data_train_tot, config_json, json_path):
 
     # bootstrap data
     indices = np.random.choice(np.arange(len(data_train_tot)), size=N_train, replace=True)
-    feature = torch.from_numpy(data_train_tot[indices])
+    feature = torch.from_numpy(data_train_tot[indices]).to(DEVICE)
 
     # model definition
     model_type   = config_json["model"]
@@ -181,7 +185,7 @@ def training_loop(seed, data_train_tot, config_json, json_path):
     train_widths    = config_json["train_widths"]
     train_centroids = config_json["train_centroids"]
 
-    M = config_json["number_centroids"]  # list
+    M = config_json["number_centroids"]  # list of kernels per layer
     d = feature.shape[1]
     print('Problem dimensions:', d)
     len_feature = feature.shape[0]
@@ -347,119 +351,18 @@ def training_loop(seed, data_train_tot, config_json, json_path):
             if ((i % plt_patience) or (i == 0)) and (i != (total_epochs[n] - 1)):
                 continue
 
-            # --------- plots ---------
-            font = font_manager.FontProperties(family='serif', size=18)
+            # --------- plots (delegated to plot_utils) ---------
+            total_M = int(np.sum(M))
+            plot_loss(epochs_history, loss_history, monitor_idx, output_folder)
+            plot_centroids_history(epochs_history, centroids_history,
+                                   monitor_idx, d, total_M, output_folder)
+            plot_coeffs_history(epochs_history, coeffs_history,
+                                monitor_idx, total_M, output_folder)
+            plot_model_marginals_and_heatmap(model, n, output_folder)
 
-            # loss
-            fig = plt.figure(figsize=(9, 6))
-            fig.patch.set_facecolor('white')
-            ax = fig.add_axes([0.15, 0.1, 0.78, 0.8])
-            plt.plot(epochs_history[2:monitor_idx], loss_history[2:monitor_idx], label='loss')
-            plt.legend(prop=font, loc='best')
-            plt.ylabel('Loss', fontsize=18, fontname='serif')
-            plt.xlabel('Epochs', fontsize=18, fontname='serif')
-            plt.xticks(fontsize=16, fontname='serif')
-            plt.yticks(fontsize=16, fontname='serif')
-            plt.grid()
-            plt.savefig(os.path.join(output_folder, 'loss.pdf'))
-            plt.close(fig)
-
-            # centroids
-            for k in range(d):
-                fig = plt.figure(figsize=(9, 6))
-                fig.patch.set_facecolor('white')
-                ax = fig.add_axes([0.15, 0.1, 0.78, 0.8])
-                for m in range(np.sum(M)):
-                    plt.plot(epochs_history[:monitor_idx],
-                             centroids_history[:monitor_idx, m, k:k+1],
-                             label='%i' % m)
-                plt.ylabel('Centroid loc', fontsize=18, fontname='serif')
-                plt.xlabel('Epochs', fontsize=18, fontname='serif')
-                plt.xticks(fontsize=16, fontname='serif')
-                plt.yticks(fontsize=16, fontname='serif')
-                plt.grid()
-                plt.savefig(os.path.join(output_folder, 'centroids_dim%i.pdf' % k))
-                plt.close(fig)
-
-            # coeffs
-            fig = plt.figure(figsize=(9, 6))
-            fig.patch.set_facecolor('white')
-            ax = fig.add_axes([0.15, 0.1, 0.78, 0.8])
-            for m in range(np.sum(M)):
-                plt.plot(epochs_history[:monitor_idx], coeffs_history[:monitor_idx, m], label='%i' % m)
-            plt.ylabel('Coeffs', fontsize=18, fontname='serif')
-            plt.xlabel('Epochs', fontsize=18, fontname='serif')
-            plt.xticks(fontsize=16, fontname='serif')
-            plt.yticks(fontsize=16, fontname='serif')
-            plt.grid()
-            plt.savefig(os.path.join(output_folder, 'coeffs.pdf'))
-            plt.close(fig)
-
-            # model marginals + centroids heatmap
-            with torch.no_grad():
-                colors = ['#ffffd9','#edf8b1','#c7e9b4','#7fcdbb','#41b6c4',
-                          '#1d91c0','#225ea8','#253494','#081d58'] + ['#081d58' for _ in range(20)]
-
-                x0 = torch.arange(-1.5, 0.5, 0.01).double()
-                x1 = torch.arange(-0.5, 4.5, 0.005).double()
-                X0, X1 = torch.meshgrid(x0, x1, indexing='xy')
-                grid = torch.stack([X0.flatten(), X1.flatten()], dim=1)
-
-                Y = model.call(grid).detach()[n, :, 0] / model.get_norm()[n]
-                model_on_grid = model.call(grid).detach().numpy() / model.get_norm()
-
-                fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharey=True)
-
-                for ni in range(n + 1):
-                    axes[0].hist(grid[:, 0].numpy(),
-                                 weights=model_on_grid[ni, :, 0],
-                                 lw=2,
-                                 bins=x0[::10],
-                                 color=colors[ni],
-                                 histtype='step',
-                                 label='layer %i' % ni)
-                axes[0].set_xlabel("x_0")
-                axes[0].set_ylabel("Model output")
-
-                for ni in range(n + 1):
-                    axes[1].hist(grid[:, 1].numpy(),
-                                 weights=model_on_grid[ni, :, 0],
-                                 bins=x1[::10],
-                                 lw=2,
-                                 color=colors[ni],
-                                 histtype='step',
-                                 label='layer %i' % ni)
-                axes[1].set_xlabel("x_1")
-                plt.legend()
-                plt.tight_layout()
-                plt.savefig(os.path.join(output_folder, 'marginals.png'))
-                plt.close(fig)
-
-                fig = plt.figure(figsize=(4, 3))
-                plt.scatter(grid[:, 0], grid[:, 1], c=Y, edgecolors='none', s=1)
-                centr = model.get_centroids().detach().numpy()
-                ampl  = model.get_coeffs().detach().numpy()[:, 0]
-                centr = centr[ampl > 0]
-                plt.scatter(centr[:, 0], centr[:, 1], color='black')
-                plt.colorbar()
-                plt.xlim(-1.5, 0.5)
-                plt.ylim(-0.5, 4.5)
-                plt.tight_layout()
-                plt.savefig(os.path.join(output_folder, '2Dheatmap_%i.png' % n))
-                plt.close(fig)
 
     # GT heatmap
-    fig = plt.figure(figsize=(4, 3))
-    x0 = torch.arange(-1.5, 0.5, 0.1).double()
-    x1 = torch.arange(-0.5, 4.5, 0.05).double()
-    plt.hist2d(feature[:, 0].numpy(), feature[:, 1].numpy(),
-               bins=[x0.numpy(), x1.numpy()], density=True)
-    plt.colorbar()
-    plt.xlim(-1.5, 0.5)
-    plt.ylim(-0.5, 4.5)
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_folder, '2Dheatmap_GT.png'))
-    plt.close(fig)
+    plot_gt_heatmap(feature, output_folder)
 
     t2 = time.time()
     print('End training')
