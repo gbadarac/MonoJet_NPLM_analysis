@@ -59,24 +59,9 @@ args = parser.parse_args()
 # --------------------------------------------------------------------------------
 
 data_file = args.data_path
-# Optional: analytic mean file (not strictly needed for training)
-mu_file   = os.path.join(os.path.dirname(data_file), "mu_2d_gaussian_heavy_tail_target.npy")
-
-data_train_tot = np.load(data_file).astype('float32')   # shape (N, 2)
+data_train_tot = np.load(data_file).astype("float32")   # shape (N, 2)
 N_train_tot = data_train_tot.shape[0]
-print("Loaded target data:", data_train_tot.shape)
-
-if os.path.exists(mu_file):
-    mu_target = np.load(mu_file)
-    print("Loaded analytic mu_target:", mu_target)
-else:
-    mu_target = None
-    print("mu_target file not found, continuing without it.")
-
-# Quick kernel-width diagnostics (median pairwise distance)
-dist_matrix = cdist(data_train_tot[:1000], data_train_tot[:1000], metric='euclidean')
-print("Median pairwise distance:", np.median(dist_matrix))
-print("Quantiles:", np.quantile(dist_matrix, [0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99]))
+print(f"Loaded target data from {data_file} with shape {data_train_tot.shape}")
 
 # Base output directory: like NF "trial_dir"
 BASE_OUTPUT_DIRECTORY = args.outdir  # e.g. .../EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail
@@ -84,7 +69,6 @@ BASE_OUTPUT_DIRECTORY = args.outdir  # e.g. .../EstimationKernels_outputs/2_dim/
 # --------------------------------------------------------------------------------
 # Config and output directory
 # --------------------------------------------------------------------------------
-
 def create_config_file(config_table, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     config_path = os.path.join(output_dir, 'config.json')
@@ -139,7 +123,6 @@ OUTPUT_DIRECTORY = os.path.join(BASE_OUTPUT_DIRECTORY, trial_name)
 
 config_json["output_directory"] = OUTPUT_DIRECTORY
 json_path = create_config_file(config_json, OUTPUT_DIRECTORY)
-
 
 # --------------------------------------------------------------------------------
 # NLL and training loop

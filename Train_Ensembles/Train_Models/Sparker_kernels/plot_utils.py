@@ -14,7 +14,6 @@ import matplotlib.font_manager as font_manager
 
 FONT = font_manager.FontProperties(family="serif", size=18)
 
-
 def _setup_ax(fig):
     fig.patch.set_facecolor("white")
     ax = fig.add_axes([0.15, 0.1, 0.78, 0.8])
