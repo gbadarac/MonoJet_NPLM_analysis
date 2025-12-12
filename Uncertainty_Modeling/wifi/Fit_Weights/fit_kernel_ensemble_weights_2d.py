@@ -15,6 +15,8 @@ from torchmin import minimize
 from torch.autograd.functional import hessian
 import gc
 
+from Uncertainty_Modeling.wifi.utils_kernel_wifi import plot_ensemble_marginals_2d_kernel, profile_likelihood_scan
+
 # -------------------------------------------------------------------
 # Point Python to Sparker_utils so we can import the ensemble builder
 # -------------------------------------------------------------------
@@ -96,169 +98,152 @@ def compute_sandwich_covariance(H, w, model_probs, lam=1.0):
 # -------------------------------------------------------------------
 # Plot helpers
 # -------------------------------------------------------------------
+from pathlib import Path
+import numpy as np
+import torch
+import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
+
 def plot_final_marginals_and_ratio(
-    ensemble, x_data, grid, x0, x1, Y, outdir, tag=""
+    ensemble, x_data, grid, x0, x1, Y, outdir, tag="",
+    max_members=8, lw_member=1.2, lw_ens=2.0
 ):
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+
     colors = [
-        "#ffffd9",
-        "#edf8b1",
-        "#c7e9b4",
-        "#7fcdbb",
-        "#41b6c4",
-        "#1d91c0",
-        "#225ea8",
-        "#253494",
-        "#081d58",
-        "purple",
+        "#ffffd9", "#edf8b1", "#c7e9b4", "#7fcdbb", "#41b6c4",
+        "#1d91c0", "#225ea8", "#253494", "#081d58", "purple",
     ]
 
-    bins0 = x0[::10].numpy()
-    bins1 = x1[::10].numpy()
+    # --- grid geometry (meshgrid(indexing="xy"))
+    Nx = len(x0)
+    Ny = len(x1)
+    dx0 = float((x0[1] - x0[0]).detach().cpu())
+    dx1 = float((x1[1] - x1[0]).detach().cpu())
 
-    fig = plt.figure(figsize=(10, 6))
-    gs = GridSpec(2, 2, height_ratios=[3, 1], hspace=0.05, wspace=0.25)
-    ax_top_left = fig.add_subplot(gs[0, 0])
-    ax_top_right = fig.add_subplot(gs[0, 1], sharey=ax_top_left)
-    ax_bot_left = fig.add_subplot(gs[1, 0], sharex=ax_top_left)
-    ax_bot_right = fig.add_subplot(gs[1, 1], sharex=ax_top_right)
+    x0_np = x0.detach().cpu().numpy()
+    x1_np = x1.detach().cpu().numpy()
 
-    # Individual ensemble members
-    ni = 0
-    for model in ensemble.ensemble:
-        model_on_grid = (
-            model.call(grid)[-1, :, 0] / model.get_norm()[-1]
-        ).detach().cpu().numpy()
-        ax_top_left.hist(
-            grid[:, 0].cpu().numpy(),
-            weights=model_on_grid,
-            lw=3,
-            bins=bins0,
-            color=colors[ni],
-            histtype="step",
-            label=f"member {ni}",
-            density=True,
-        )
-        ax_top_right.hist(
-            grid[:, 1].cpu().numpy(),
-            weights=model_on_grid,
-            lw=3,
-            bins=bins1,
-            color=colors[ni],
-            histtype="step",
-            label=f"member {ni}",
-            density=True,
-        )
-        ni += 1
-        if ni >= len(colors):
-            break
-
-    # Raw counts for Poisson errors
-    x_data_np = x_data.cpu().numpy()
-    h_boot0, _ = np.histogram(x_data_np[:, 0], bins=bins0)
-    h_boot1, _ = np.histogram(x_data_np[:, 1], bins=bins1)
-
-    h_ens0, _ = np.histogram(
-        grid[:, 0].cpu().numpy(), bins=bins0, weights=Y.cpu().numpy()
-    )
-    h_ens1, _ = np.histogram(
-        grid[:, 1].cpu().numpy(), bins=bins1, weights=Y.cpu().numpy()
-    )
-
-    # Visual normalized histograms
-    H_data0 = ax_top_left.hist(
-        x_data_np[:, 0],
-        bins=bins0,
-        density=True,
-        color="orange",
-        alpha=0.5,
-        label="data",
-    )[0]
-
-    H_data1 = ax_top_right.hist(
-        x_data_np[:, 1],
-        bins=bins1,
-        density=True,
-        color="orange",
-        alpha=0.5,
-        label="data",
-    )[0]
-    
-    H_ens0 = ax_top_left.hist(
-        grid[:, 0].cpu().numpy(),
-        weights=Y.cpu().numpy(),
-        lw=3,
-        bins=bins0,
-        color="black",
-        histtype="step",
-        label="Ensemble",
-        density=True,
-    )[0]
-    H_ens1 = ax_top_right.hist(
-        grid[:, 1].cpu().numpy(),
-        weights=Y.cpu().numpy(),
-        lw=3,
-        bins=bins1,
-        color="black",
-        histtype="step",
-        label="Ensemble",
-        density=True,
-    )[0]
-
-    # Ratios + errors
-    mask0 = H_ens0 > 0
-    mask1 = H_ens1 > 0
-    ratio0 = np.zeros_like(H_data0, dtype=float)
-    ratio1 = np.zeros_like(H_data1, dtype=float)
-    ratio0[mask0] = H_data0[mask0] / H_ens0[mask0]
-    ratio1[mask1] = H_data1[mask1] / H_ens1[mask1]
-
-    err_ens0 = np.sqrt(h_ens0)
-    err_boot0 = np.sqrt(h_boot0)
-    err_ens1 = np.sqrt(h_ens1)
-    err_boot1 = np.sqrt(h_boot1)
-
-    ratio_err0 = np.zeros_like(ratio0)
-    ratio_err1 = np.zeros_like(ratio1)
-    mask_counts0 = (h_ens0 > 0) & (h_boot0 > 0)
-    mask_counts1 = (h_ens1 > 0) & (h_boot1 > 0)
-    ratio_err0[mask_counts0] = ratio0[mask_counts0] * np.sqrt(
-        (err_ens0[mask_counts0] / h_ens0[mask_counts0]) ** 2
-        + (err_boot0[mask_counts0] / h_boot0[mask_counts0]) ** 2
-    )
-    ratio_err1[mask_counts1] = ratio1[mask_counts1] * np.sqrt(
-        (err_ens1[mask_counts1] / h_ens1[mask_counts1]) ** 2
-        + (err_boot1[mask_counts1] / h_boot1[mask_counts1]) ** 2
-    )
+    # Keep your binning style (~ every 10 grid points)
+    bins0 = x0_np[::10]
+    bins1 = x1_np[::10]
+    # make sure last edge included
+    if bins0[-1] < x0_np[-1]:
+        bins0 = np.append(bins0, x0_np[-1])
+    if bins1[-1] < x1_np[-1]:
+        bins1 = np.append(bins1, x1_np[-1])
 
     centers0 = 0.5 * (bins0[:-1] + bins0[1:])
     centers1 = 0.5 * (bins1[:-1] + bins1[1:])
+    bw0 = np.diff(bins0)
+    bw1 = np.diff(bins1)
 
-    ax_bot_left.errorbar(
-        centers0, ratio0, yerr=ratio_err0, fmt="o", color="black", capsize=2
-    )
-    ax_bot_right.errorbar(
-        centers1, ratio1, yerr=ratio_err1, fmt="o", color="black", capsize=2
-    )
+    # Helper: turn grid-sampled marginal (on x-grid) into binned density per bin
+    def bin_from_grid(xgrid, pgrid, bins, dx):
+        out = np.zeros(len(bins) - 1, dtype=float)
+        for k in range(len(out)):
+            lo, hi = bins[k], bins[k + 1]
+            # include right edge in last bin
+            if k < len(out) - 1:
+                mask = (xgrid >= lo) & (xgrid < hi)
+            else:
+                mask = (xgrid >= lo) & (xgrid <= hi)
+            if np.any(mask):
+                integral = pgrid[mask].sum() * dx
+                out[k] = integral / (hi - lo)  # convert to density
+        return out
+
+    # --- Build FIG (same layout as yours)
+    fig = plt.figure(figsize=(10, 6))
+    gs = GridSpec(2, 2, height_ratios=[3, 1], hspace=0.05, wspace=0.25)
+    ax_top_left  = fig.add_subplot(gs[0, 0])
+    ax_top_right = fig.add_subplot(gs[0, 1], sharey=ax_top_left)
+    ax_bot_left  = fig.add_subplot(gs[1, 0], sharex=ax_top_left)
+    ax_bot_right = fig.add_subplot(gs[1, 1], sharex=ax_top_right)
+
+    # --- DATA hist (same look)
+    x_data_np = x_data.detach().cpu().numpy()
+    counts0, _ = np.histogram(x_data_np[:, 0], bins=bins0)
+    counts1, _ = np.histogram(x_data_np[:, 1], bins=bins1)
+    Ndata = len(x_data_np)
+
+    H_data0 = counts0 / (Ndata * bw0)
+    H_data1 = counts1 / (Ndata * bw1)
+
+    ax_top_left.bar(centers0, H_data0, width=bw0, color="orange", alpha=0.5, label="data")
+    ax_top_right.bar(centers1, H_data1, width=bw1, color="orange", alpha=0.5, label="data")
+
+    # --- ENSEMBLE marginal from 2D grid density (FIXED)
+    Y2 = Y.detach().cpu().view(Ny, Nx)          # (Ny, Nx)
+    marg0 = (Y2.sum(dim=0) * dx1).numpy()       # p(x0) on x0 grid
+    marg1 = (Y2.sum(dim=1) * dx0).numpy()       # p(x1) on x1 grid
+
+    H_ens0 = bin_from_grid(x0_np, marg0, bins0, dx0)
+    H_ens1 = bin_from_grid(x1_np, marg1, bins1, dx1)
+
+    ax_top_left.step(centers0, H_ens0, where="mid", color="black", lw=lw_ens, label="Ensemble")
+    ax_top_right.step(centers1, H_ens1, where="mid", color="black", lw=lw_ens, label="Ensemble")
+
+    # --- Individual members (same vibe as before, but FIXED marginal + thinner lines + no legend spam)
+    n_to_plot = min(max_members, len(ensemble.ensemble), len(colors))
+    for ni in range(n_to_plot):
+        m = ensemble.ensemble[ni]
+        with torch.no_grad():
+            z = (m.call(grid)[-1, :, 0] / m.get_norm()[-1]).detach().cpu().view(Ny, Nx)
+            m0 = (z.sum(dim=0) * dx1).numpy()
+            m1 = (z.sum(dim=1) * dx0).numpy()
+        H_m0 = bin_from_grid(x0_np, m0, bins0, dx0)
+        H_m1 = bin_from_grid(x1_np, m1, bins1, dx1)
+
+        ax_top_left.step(centers0, H_m0, where="mid", lw=lw_member, color=colors[ni], alpha=0.9)
+        ax_top_right.step(centers1, H_m1, where="mid", lw=lw_member, color=colors[ni], alpha=0.9)
+
+    # --- Legends: keep simple (fix labels)
+    ax_top_left.set_ylabel("Density")
+    ax_top_left.legend(loc="upper left", frameon=False)
+    ax_top_right.legend(loc="upper left", frameon=False)
+
+    # --- Ratio + errors (keep same style)
+    mask0 = H_ens0 > 0
+    mask1 = H_ens1 > 0
+    ratio0 = np.full_like(H_data0, np.nan, dtype=float)
+    ratio1 = np.full_like(H_data1, np.nan, dtype=float)
+    ratio0[mask0] = H_data0[mask0] / H_ens0[mask0]
+    ratio1[mask1] = H_data1[mask1] / H_ens1[mask1]
+
+    # Poisson on data only (keeps your look, but avoids mixing grid-count pseudo-errors)
+    err_data0 = np.zeros_like(H_data0)
+    err_data1 = np.zeros_like(H_data1)
+    nonzero0 = counts0 > 0
+    nonzero1 = counts1 > 0
+    err_data0[nonzero0] = np.sqrt(counts0[nonzero0]) / (Ndata * bw0[nonzero0])
+    err_data1[nonzero1] = np.sqrt(counts1[nonzero1]) / (Ndata * bw1[nonzero1])
+
+    ratio_err0 = np.full_like(ratio0, np.nan, dtype=float)
+    ratio_err1 = np.full_like(ratio1, np.nan, dtype=float)
+    ratio_err0[mask0] = err_data0[mask0] / H_ens0[mask0]
+    ratio_err1[mask1] = err_data1[mask1] / H_ens1[mask1]
+
+    ax_bot_left.errorbar(centers0, ratio0, yerr=ratio_err0, fmt="o", color="black", capsize=2, ms=4)
+    ax_bot_right.errorbar(centers1, ratio1, yerr=ratio_err1, fmt="o", color="black", capsize=2, ms=4)
     ax_bot_left.axhline(1.0, color="gray", linestyle="--")
     ax_bot_right.axhline(1.0, color="gray", linestyle="--")
 
-    ax_top_left.set_ylabel("Density")
     ax_bot_left.set_ylabel("Data / Ensemble")
     ax_bot_left.set_xlabel("x₀")
     ax_bot_right.set_xlabel("x₁")
 
-    ax_top_right.legend(bbox_to_anchor=(1, 1))
     ax_bot_left.set_ylim(0.5, 1.5)
     ax_bot_right.set_ylim(0.5, 1.5)
 
     plt.setp(ax_top_left.get_xticklabels(), visible=False)
     plt.setp(ax_top_right.get_xticklabels(), visible=False)
 
-    plt.tight_layout()
+    fig.set_constrained_layout(True)
     fname = f"marginals_ratio{('_' + tag) if tag else ''}.png"
     fig.savefig(outdir / fname, dpi=200)
     plt.close(fig)
-
 
 # -------------------------------------------------------------------
 # Main
@@ -390,6 +375,10 @@ def main():
     N, M = model_probs.shape
     print("model_probs shape:", model_probs.shape)
 
+    print("model_probs min, max:", model_probs.min().item(), model_probs.max().item())
+    print("fraction model_probs < 0:", (model_probs < 0).double().mean().item())
+    print("fraction non finite:", (~torch.isfinite(model_probs)).double().mean().item())
+
     # ------------------------------------------------------------------
     # Define NLL(w) as in NF WiFi:
     #   -log( sum_j w_j f_j(x_n) ).mean_n + lambda_norm * (sum_j w_j - 1)
@@ -413,21 +402,77 @@ def main():
     torch.cuda.empty_cache()
     gc.collect()
 
-    res = minimize(
-        nll_weights,
-        w0,
-        method="newton-exact",
-        options={"disp": False, "max_iter": 300},
-    )
+    attempt = 0
+    max_attempts = 50
+    best = None
 
-    if not res.success:
-        raise RuntimeError(f"Weight optimisation failed: {res.message}")
+    w_i_initial = np.ones(M) / M
 
-    w_final = res.x.detach()
+    while attempt < max_attempts:
+        w0 = torch.tensor(w_i_initial, dtype=torch.float64, requires_grad=True)
+        w0 = (w0 + 1e-2 * torch.randn_like(w0)).detach().clone().requires_grad_()
+        print("w0:", w0)
+
+        try:
+            loss0 = nll_weights(w0)
+            if not torch.isfinite(loss0):
+                print(f"Attempt {attempt+1} skipped, non finite loss {loss0.item()}")
+                attempt += 1
+                continue
+
+            print(f"Attempt {attempt+1}, start loss {loss0.item():.4f}")
+
+            torch.cuda.empty_cache()
+            gc.collect()
+
+            res = minimize(
+                nll_weights,
+                w0,
+                method="newton-exact",
+                options={"disp": False, "max_iter": 300},
+            )
+
+            if not res.success:
+                print(f"Attempt {attempt+1} failed, {res.message}")
+                attempt += 1
+                continue
+
+            w_try = res.x.detach()
+
+            # NF style sanity check, are we relying on clamp to hide p(x)<=0
+            p_try = (model_probs * w_try.view(1, -1)).sum(dim=1)
+            frac_bad = (p_try <= 0).double().mean().item()
+            pmin = p_try.min().item()
+            print(
+                f"Attempt {attempt+1} done, frac p<=0 {frac_bad:.3e}, pmin {pmin:.3e}, sumw {w_try.sum().item():.6f}"
+            )
+
+            if frac_bad < 1e-6:
+                best = w_try
+                break
+
+            if best is None:
+                best = w_try
+
+            attempt += 1
+
+        except Exception as e:
+            print(f"Attempt {attempt+1} exception {e}")
+            attempt += 1
+
+    if best is None:
+        raise RuntimeError("Optimization failed after multiple attempts.")
+
+    w_final = best
     final_loss = nll_weights(w_final).item()
     print("Final loss (NLL):", final_loss)
     print("Final weights:", w_final)
     print("Sum of weights:", w_final.sum().item())
+
+    p_final = (model_probs * w_final.view(1, -1)).sum(dim=1)
+    print("p(x) min, mean:", p_final.min().item(), p_final.mean().item())
+    print("fraction p(x) <= 0:", (p_final <= 0).double().mean().item())
+    print("min weight:", w_final.min().item())
 
     # ------------------------------------------------------------------
     # Copy final weights into ensemble module and save
@@ -442,6 +487,33 @@ def main():
     np.save(results_dir / "final_weights.npy", final_weights)
     print("Saved final_weights.npy")
 
+    # ------------------------------------------------------------------
+    # Hessian + sandwich covariance (same nll as optimisation)
+    # ------------------------------------------------------------------
+    if args.compute_covariance:
+        print("Computing Hessian of NLL wrt weights (autograd)...")
+        w_for_hess = w_final.detach().clone().requires_grad_()
+        H = hessian(nll_weights, w_for_hess).detach()
+        H_np = H.cpu().numpy()
+        np.save(results_dir / "Hessian_weights.npy", H_np)
+        print("Saved Hessian_weights.npy")
+
+        print("Computing sandwich covariance...")
+        # model_probs already computed above, on CPU float64
+        cov_w = compute_sandwich_covariance(
+            H, w_final.double(), model_probs, lam=1.0
+        )
+        cov_w_np = cov_w.detach().cpu().numpy()
+        np.save(results_dir / "cov_weights.npy", cov_w_np)
+        print("Saved cov_weights.npy")
+
+        if not args.no_plots:
+            fig, ax = plt.subplots(figsize=(6, 5))
+            im = ax.imshow(cov_w_np, interpolation="none")
+            fig.colorbar(im, ax=ax)
+            fig.tight_layout()
+            fig.savefig(plots_dir / "cov_weights_matrix.png", dpi=200)
+            plt.close(fig)
 
     # ------------------------------------------------------------------
     # Build grid & evaluate final ensemble for plots
@@ -451,6 +523,8 @@ def main():
         x1 = torch.arange(-1.0, 2.0, 0.005, device=device, dtype=torch.float64)
         X0, X1 = torch.meshgrid(x0, x1, indexing="xy")
         grid = torch.stack([X0.flatten(), X1.flatten()], dim=1)
+
+        cov_w_np = np.load(results_dir / "cov_weights.npy") if args.compute_covariance else None
 
         with torch.no_grad():
             Y = ensemble(grid) / ensemble.weights.sum()
@@ -479,7 +553,7 @@ def main():
         plt.colorbar(sc)
         plt.xlim(-2, 3)
         plt.ylim(-1, 2)
-        plt.tight_layout()
+        fig.tight_layout()
         fig.savefig(plots_dir / "ensemble_heatmap.png", dpi=200)
         plt.close(fig)
 
@@ -494,41 +568,23 @@ def main():
             density=True,
         )
         plt.colorbar()
-        plt.tight_layout()
+        fig.tight_layout()
         fig.savefig(plots_dir / "data_hist2d.png", dpi=200)
         plt.close(fig)
 
-    # ------------------------------------------------------------------
-    # Hessian + sandwich covariance (same nll as optimisation)
-    # ------------------------------------------------------------------
-    if args.compute_covariance:
-        print("Computing Hessian of NLL wrt weights (autograd)...")
-        w_for_hess = w_final.detach().clone().requires_grad_()
-        H = hessian(nll_weights, w_for_hess).detach()
-        H_np = H.cpu().numpy()
-        np.save(results_dir / "Hessian_weights.npy", H_np)
-        print("Saved Hessian_weights.npy")
+        feature_names = ["Feature 1", "Feature 2"]
 
-        print("Computing sandwich covariance...")
-        # model_probs already computed above, on CPU float64
-        cov_w = compute_sandwich_covariance(
-            H, w_final.double(), model_probs, lam=1.0
+        plot_ensemble_marginals_2d_kernel(
+            kernel_models=ensemble.ensemble,
+            x_data=x_data.float(),                  # (N,2)
+            weights=w_final.detach().cpu(),         # (M,)
+            cov_w=cov_w_np,                         # (M,M) or None
+            feature_names=feature_names,
+            outdir=str(plots_dir),
+            bins=40,
         )
-        cov_w_np = cov_w.detach().cpu().numpy()
-        np.save(results_dir / "cov_weights.npy", cov_w_np)
-        print("Saved cov_weights.npy")
-
-        if not args.no_plots:
-            fig = plt.figure()
-            plt.imshow(cov_w_np, interpolation="none")
-            plt.colorbar()
-            plt.tight_layout()
-            fig.savefig(plots_dir / "cov_weights_matrix.png", dpi=200)
-            plt.close(fig)
-
 
     print("All done.")
-
 
 if __name__ == "__main__":
     main()

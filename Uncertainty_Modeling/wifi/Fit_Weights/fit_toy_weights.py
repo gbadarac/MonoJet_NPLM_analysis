@@ -7,7 +7,7 @@ import torch
 import torch.optim as optim
 import numpy as np
 import argparse
-from utils_wifi import probs, plot_gaussian_toy_marginals
+from Uncertainty_Modeling.wifi.utils_NF_wifi import probs, plot_gaussian_toy_marginals
 import matplotlib
 import matplotlib.pyplot as plt
 matplotlib.use('Agg')  # ensure it works on clusters without displaying plots

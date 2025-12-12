@@ -32,12 +32,14 @@ from Sparker_utils.sampler_mixture import *
 from Sparker_utils.losses import *
 from Sparker_utils.regularizers import *
 
+
 from plot_utils import (
     plot_loss,
     plot_centroids_history,
     plot_coeffs_history,
     plot_model_marginals_and_heatmap,
     plot_gt_heatmap,
+    plot_kernel_marginals,
 )
 
 # -------------------------------------------------------------------
@@ -52,6 +54,12 @@ parser.add_argument("--outdir", type=str, required=True,
                     help="Base output directory for this trial")
 parser.add_argument("--seed", type=int, default=default_seed,
                     help="Random seed / component index (defaults to SLURM_ARRAY_TASK_ID)")
+parser.add_argument("--n_layers", type=int, default=10,
+                    help="Number of kernel layers")
+parser.add_argument("--kernels_per_layer", type=int, default=4,
+                    help="Number of kernels per layer (constant across layers)")
+parser.add_argument("--n_models", type=int, default=None,
+                    help="Number of models in the SLURM array, used only for naming")
 args = parser.parse_args()
 
 # --------------------------------------------------------------------------------
@@ -77,43 +85,65 @@ def create_config_file(config_table, output_dir):
             json.dump(config_table, outfile, indent=4)
     return config_path
 
+N_LAYERS = args.n_layers
+K_PER_L  = args.kernels_per_layer
+N_MODELS = args.n_models  # can be None
+
 config_json = {
-    "N"   : 100000,  # bootstrap size per WiFi component
-    "model": 'Soft-SparKer2',
-    "output_directory": None,  # filled below
-    "learning_rate": 0.01, #Adam learning rate 
+    "N": 100000,
+    "model": "Soft-SparKer2",
+    "output_directory": None,
+    "learning_rate": 0.1,
     "coeffs_reg": "unit1",
-    "epochs": [2000 for _ in range(10)], #epochs per layer (L = 10 layers)
-    "patience": 500, # monitor/save every 500 steps
-    "plt_patience": 2000, # make plots every 2000 steps
+
+    "epochs": [10000 for _ in range(N_LAYERS)],
+    "width_init": [4 for _ in range(N_LAYERS)],
+    "width_fin":  [0.1 for _ in range(N_LAYERS)],
+    "coeffs_init": [0 for _ in range(N_LAYERS)],
+    "number_centroids": [K_PER_L for _ in range(N_LAYERS)],
+
+    "patience": 500,
+    "plt_patience": 2000,
     "plot": True,
-    "width_init": [4 for _ in range(10)], # initial kernel widths (bandwidths)
-    "width_fin":[0.1 for _ in range(10)], # final target widths (annealed)
+    "plot_marginals": True,
+
     "t_ini": 0,
     "decay_epochs": 0.9,
-    "coeffs_init": [0 for _ in range(10)], # initial kernel coefficients (amplitudes)
-    "coeffs_clip": 100, # clip |coeff| to this value during training
-    "number_centroids": [10 for _ in range(10)], # kernels per layer (here 4)
-    "coeffs_reg_lambda":  0,
-    "widths_reg_lambda":  0,
+    "coeffs_clip": 1000,
+
+    "coeffs_reg_lambda": 0,
+    "widths_reg_lambda": 0,
     "entropy_reg_lambda": 0,
+
     "resolution_scale": [0],
     "resolution_const": [0],
+
     "train_coeffs": True,
     "train_widths": False,
     "train_centroids": True,
+
+    # purely metadata, nice to keep
+    "n_layers": N_LAYERS,
+    "kernels_per_layer": K_PER_L,
+    "n_models": N_MODELS,
 }
 
 # --------------------------
 # Build a compact trial name
 # --------------------------
-d = data_train_tot.shape[1] #data dimension (here d=2)
-total_M = int(np.sum(config_json["number_centroids"])) #total number of kernels across all layers 
+d = data_train_tot.shape[1]
+total_M = int(np.sum(config_json["number_centroids"]))
+n_layers = len(config_json["number_centroids"])
+k_per_l = config_json["number_centroids"][0] if n_layers > 0 else 0
+
+n_models_str = f"models{N_MODELS}_" if N_MODELS is not None else ""
 
 trial_name = (
-    f"N_{N_train_tot}_dim_{d}_kernels_"
-    f"{config_json['model']}_M{total_M}_"
-    f"Nboot{config_json['N']}_lr{config_json['learning_rate']}"
+    f"N_{N_train_tot}_dim_{d}_kernels_{config_json['model']}_"
+    f"{n_models_str}"
+    f"L{n_layers}_K{k_per_l}_M{total_M}_"
+    f"Nboot{config_json['N']}_lr{config_json['learning_rate']}_"
+    f"clip_10000"
 )
 
 # Final output directory for this trial:
@@ -151,6 +181,7 @@ def training_loop(seed, data_train_tot, config_json, json_path):
         config_json = json.load(jsonfile)
 
     plot    = config_json["plot"]
+    plot_marginals = config_json.get("plot_marginals", False)
     N_train = config_json["N"]
 
     # output path
@@ -343,16 +374,17 @@ def training_loop(seed, data_train_tot, config_json, json_path):
 
             # --------- plots (delegated to plot_utils) ---------
             total_M = int(np.sum(M))
+            
             plot_loss(epochs_history, loss_history, monitor_idx, output_folder)
             plot_centroids_history(epochs_history, centroids_history,
                                    monitor_idx, d, total_M, output_folder)
             plot_coeffs_history(epochs_history, coeffs_history,
                                 monitor_idx, total_M, output_folder)
-            plot_model_marginals_and_heatmap(model, n, output_folder)
-
+            #plot_model_marginals_and_heatmap(model, n, output_folder)
+            
 
     # GT heatmap
-    plot_gt_heatmap(feature, output_folder)
+    #plot_gt_heatmap(feature, output_folder)
 
     t2 = time.time()
     print('End training')
@@ -370,6 +402,17 @@ def training_loop(seed, data_train_tot, config_json, json_path):
     # save exec time
     with open(os.path.join(output_folder, 'time.txt'), 'w') as t_file:
         t_file.write("%f\n" % (t2 - t1))
+
+    if plot_marginals:
+        feature_names = ["Feature 1", "Feature 2"]
+        plot_kernel_marginals(
+            model=model,
+            x_data=feature,                 # bootstrapped data used for training
+            feature_names=feature_names,
+            output_folder=output_folder,
+            num_samples=20000,              # adjust as you like
+            filename="marginals_kernel.png"
+        )
 
     # save monitoring metrics
     np.save(os.path.join(output_folder, 'loss_history.npy'),      loss_history)

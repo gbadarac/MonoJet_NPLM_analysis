@@ -23,8 +23,14 @@ cd /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/F
 # Make sure logs directory exists
 mkdir -p results_fit_weights_kernel/logs
 
-FOLDER_PATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_kernels_Soft-SparKer2_M100_Nboot100000_lr0.01
+FOLDER_PATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_kernels_Soft-SparKer2_M40_Nboot100000_lr0.01
 DATA_PATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_heavy_tail_target_set.npy
+
+# -----------------------
+# Ensure Python can find utils_wifi.py
+# -----------------------
+export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis:$PYTHONPATH
+export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:32
 
 python fit_kernel_ensemble_weights_2d.py \
   --folder_path "${FOLDER_PATH}" \

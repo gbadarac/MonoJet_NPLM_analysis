@@ -7,7 +7,7 @@ import torch
 import torch.optim as optim
 import numpy as np
 import argparse
-from utils_wifi import probs
+from Uncertainty_Modeling.wifi.utils_NF_wifi import probs
 from utils_flows import make_flow
 import matplotlib
 import matplotlib.pyplot as plt

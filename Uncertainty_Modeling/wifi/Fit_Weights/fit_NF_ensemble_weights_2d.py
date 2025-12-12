@@ -7,7 +7,7 @@ import torch
 import torch.optim as optim
 import numpy as np
 import argparse
-from utils_wifi import probs, plot_ensemble_marginals_2d, plot_ensemble_marginals_4d, profile_likelihood_scan
+from Uncertainty_Modeling.wifi.utils_NF_wifi import probs, plot_ensemble_marginals_2d, plot_ensemble_marginals_4d, profile_likelihood_scan
 from utils_flows import make_flow
 import matplotlib
 matplotlib.use('Agg')
@@ -17,7 +17,6 @@ import mplhep as hep
 from torchmin import minimize 
 import traceback
 import gc  # Add this at the top with other imports
-
 
 # Use CMS style for plots
 hep.style.use("CMS")

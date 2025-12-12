@@ -192,3 +192,170 @@ def plot_gt_heatmap(feature, output_folder):
     fig.savefig(os.path.join(output_folder, "2Dheatmap_GT.png"))
     plt.close(fig)
 
+def _final_layer_pdf(model, x, batch_size=200000):
+    """
+    Evaluate the final layer pdf on x, returning a 1D CPU numpy array of length N.
+    Uses model.call(x) and normalises by model.get_norm() like your other plotting code.
+    """
+    model.eval()
+
+    ref = model.get_centroids()
+    device = ref.device
+    dtype = ref.dtype
+
+    x = x.to(device=device, dtype=dtype)
+
+    out_list = []
+    with torch.no_grad():
+        norm = model.get_norm()  # [n_layers] tensor on device
+        n_last = int(norm.shape[0]) - 1
+        norm_last = norm[n_last]
+
+        N = x.shape[0]
+        for start in range(0, N, batch_size):
+            xb = x[start:start + batch_size]
+            out_all = model.call(xb)         # [n_layers, Nb, 1]
+            pdf = (out_all[n_last, :, 0] / norm_last).clamp_min(0.0)
+            out_list.append(pdf.detach().cpu())
+
+    return torch.cat(out_list, dim=0).numpy()
+
+
+def sample_from_kernel_model_rejection(
+    model,
+    num_samples,
+    bounds,
+    batch_proposals=50000,
+    pmax_probe=200000,
+    safety=1.2,
+):
+    """
+    Rejection sample from the final layer pdf in a bounding box.
+
+    bounds: list/array like [[x0_min, x0_max], [x1_min, x1_max], ...]
+    returns: (num_samples, d) torch tensor on CPU
+    """
+    ref = model.get_centroids()
+    device = ref.device
+    dtype = ref.dtype
+
+    bounds = np.asarray(bounds, dtype=np.float64)
+    d = bounds.shape[0]
+    lo = bounds[:, 0]
+    hi = bounds[:, 1]
+
+    # Estimate pmax from random probes
+    probe = lo + (hi - lo) * np.random.rand(pmax_probe, d)
+    probe_t = torch.from_numpy(probe).to(device=device, dtype=dtype)
+    p_probe = _final_layer_pdf(model, probe_t)
+    pmax = float(np.max(p_probe)) * float(safety)
+    if not np.isfinite(pmax) or pmax <= 0.0:
+        raise RuntimeError("Could not estimate a valid pmax for rejection sampling.")
+
+    accepted = []
+    n_acc = 0
+
+    while n_acc < num_samples:
+        props = lo + (hi - lo) * np.random.rand(batch_proposals, d)
+        props_t = torch.from_numpy(props).to(device=device, dtype=dtype)
+
+        p = _final_layer_pdf(model, props_t)
+        u = np.random.rand(batch_proposals)
+
+        keep = u < (p / pmax)
+        if np.any(keep):
+            acc = props[keep]
+            accepted.append(acc)
+            n_acc += acc.shape[0]
+
+    samples = np.concatenate(accepted, axis=0)[:num_samples]
+    return torch.from_numpy(samples).float().cpu()
+
+
+def plot_kernel_marginals(
+    model,
+    x_data,
+    feature_names,
+    output_folder,
+    num_samples=20000,
+    bounds=None,
+    bins=80,
+    filename="marginals_kernel.png",
+):
+    """
+    Plot 1D marginals, data vs samples from kernel model.
+    Saves a single figure with one subplot per dimension.
+
+    x_data: torch tensor or numpy array, shape (N, d)
+    """
+    if isinstance(x_data, np.ndarray):
+        x_data_t = torch.from_numpy(x_data).float()
+    else:
+        x_data_t = x_data.detach().cpu().float()
+
+    d = x_data_t.shape[1]
+    if feature_names is None or len(feature_names) != d:
+        feature_names = [f"Feature {i+1}" for i in range(d)]
+
+    # Default bounds from data, with a small margin
+    if bounds is None:
+        x_np = x_data_t.numpy()
+        mins = x_np.min(axis=0)
+        maxs = x_np.max(axis=0)
+        span = maxs - mins
+        mins = mins - 0.05 * span
+        maxs = maxs + 0.05 * span
+        bounds = [[float(mins[i]), float(maxs[i])] for i in range(d)]
+
+    # Sample from the kernel model
+    samples_t = sample_from_kernel_model_rejection(
+        model,
+        num_samples=num_samples,
+        bounds=bounds,
+    )
+    samples_np = samples_t.numpy()
+    data_np = x_data_t.numpy()
+
+    # Plot
+    fig, axes = plt.subplots(1, d, figsize=(5 * d, 4))
+    if d == 1:
+        axes = [axes]
+
+    for k in range(d):
+        ax = axes[k]
+        ax.hist(
+            data_np[:, k],
+            bins=bins,
+            density=True,
+            histtype="step",
+            linewidth=2,
+            label="data",
+        )
+        ax.hist(
+            samples_np[:, k],
+            bins=bins,
+            density=True,
+            histtype="step",
+            linewidth=2,
+            label="kernel model",
+        )
+        ax.set_xlabel(feature_names[k])
+        ax.set_ylabel("Density")
+        ax.grid(True)
+        ax.legend(
+            loc="upper right",      # or "best"
+            fontsize=11,            # smaller text
+            frameon=True,
+            framealpha=0.85,        # slightly transparent box
+            borderpad=0.3,
+            labelspacing=0.25,
+            handlelength=1.2,
+            handletextpad=0.5,
+        )
+
+    fig.tight_layout()
+    fig.savefig(os.path.join(output_folder, filename))
+    plt.close(fig)
+
+
+
