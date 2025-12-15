@@ -92,7 +92,7 @@ def plot_individual_marginals(models, x_data, feature_names, outdir, num_samples
             feature_label = feature_names[i]
 
             # Consistent binning
-            bins = 40
+            bins = 80
             all_data = np.concatenate([model_feature, target_feature])
             low, high = np.min(all_data), np.max(all_data)
             bin_edges = np.linspace(low, high, bins + 1)

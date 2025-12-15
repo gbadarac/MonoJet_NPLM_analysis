@@ -168,10 +168,16 @@ class KernelMethod(nn.Module):
         self.probability_coeffs=probability_coeffs
 
     def call(self, x):
-        K_x, _ = self.kernel_layer.call(x) # [n, M] 
-        W_x = self.coeffs  # [M, 1 ] 
-        if self.probability_coeffs==True and W_x.sum(): 
-            W_x=self.softmax(W_x, 0)
+        K_x, _ = self.kernel_layer.call(x)  # [n, M]
+
+        # local copy of coeffs with correct dtype and device
+        W_x = self.coeffs
+        if W_x.dtype != K_x.dtype or W_x.device != K_x.device:
+            W_x = W_x.to(dtype=K_x.dtype, device=K_x.device)
+
+        if self.probability_coeffs and (W_x.sum().abs().item() > 0.0):
+            W_x = self.softmax(W_x, 0)
+
         out = torch.tensordot(K_x, W_x, dims=([1], [0]))
         return out
 

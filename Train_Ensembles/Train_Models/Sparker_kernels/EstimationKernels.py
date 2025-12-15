@@ -91,10 +91,10 @@ N_MODELS = args.n_models  # can be None
 
 config_json = {
     "N": 100000,
-    "model": "Soft-SparKer2",
+    "model": "SparKer",
     "output_directory": None,
     "learning_rate": 0.1,
-    "coeffs_reg": "unit1",
+    "coeffs_reg": "unit1", #either "L1" or "L2" or ""     
 
     "epochs": [10000 for _ in range(N_LAYERS)],
     "width_init": [4 for _ in range(N_LAYERS)],
@@ -109,7 +109,7 @@ config_json = {
 
     "t_ini": 0,
     "decay_epochs": 0.9,
-    "coeffs_clip": 1000,
+    "coeffs_clip": 1e12,
 
     "coeffs_reg_lambda": 0,
     "widths_reg_lambda": 0,
@@ -143,7 +143,7 @@ trial_name = (
     f"{n_models_str}"
     f"L{n_layers}_K{k_per_l}_M{total_M}_"
     f"Nboot{config_json['N']}_lr{config_json['learning_rate']}_"
-    f"clip_10000"
+    f"clip_{int(config_json['coeffs_clip']):d}"
 )
 
 # Final output directory for this trial:
@@ -281,7 +281,6 @@ def training_loop(seed, data_train_tot, config_json, json_path):
         print("coeff", coeffs_regularizer(model.get_coeffs()).detach().cpu().numpy())
     if lam_entropy:
         print("entropy", CentroidsEntropyRegularizer(model.get_centroids_entropy()).detach().cpu().numpy())
-
 
     loss_value += nplm_loss_value
     if lam_coeffs and coeffs_regularizer is not None:

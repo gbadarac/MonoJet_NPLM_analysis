@@ -29,7 +29,7 @@ BASE_OUTDIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/T
 mkdir -p "${BASE_OUTDIR}"
 
 N_LAYERS=15
-KERNELS_PER_LAYER=4
+KERNELS_PER_LAYER=10
 
 N_MODELS=${SLURM_ARRAY_TASK_COUNT}
 
