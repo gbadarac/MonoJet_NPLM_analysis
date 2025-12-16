@@ -28,9 +28,7 @@ DATA_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Gen
 BASE_OUTDIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail"
 mkdir -p "${BASE_OUTDIR}"
 
-N_LAYERS=15
-KERNELS_PER_LAYER=10
-
+CENTROIDS_PER_LAYER="40,30,20,10,5"
 N_MODELS=${SLURM_ARRAY_TASK_COUNT}
 
 # =============================
@@ -44,7 +42,6 @@ echo "Running seed = $SLURM_ARRAY_TASK_ID"
 python EstimationKernels.py \
     --data_path "${DATA_PATH}" \
     --outdir "${BASE_OUTDIR}" \
-    --seed "${SLURM_ARRAY_TASK_ID}"\
-    --n_layers "${N_LAYERS}" \
-    --kernels_per_layer "${KERNELS_PER_LAYER}" \
+    --seed "${SLURM_ARRAY_TASK_ID}" \
+    --centroids_per_layer "${CENTROIDS_PER_LAYER}" \
     --n_models "${N_MODELS}"

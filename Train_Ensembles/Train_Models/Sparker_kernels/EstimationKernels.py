@@ -54,12 +54,10 @@ parser.add_argument("--outdir", type=str, required=True,
                     help="Base output directory for this trial")
 parser.add_argument("--seed", type=int, default=default_seed,
                     help="Random seed / component index (defaults to SLURM_ARRAY_TASK_ID)")
-parser.add_argument("--n_layers", type=int, default=10,
-                    help="Number of kernel layers")
-parser.add_argument("--kernels_per_layer", type=int, default=4,
-                    help="Number of kernels per layer (constant across layers)")
 parser.add_argument("--n_models", type=int, default=None,
                     help="Number of models in the SLURM array, used only for naming")
+parser.add_argument("--centroids_per_layer", type=str, default=None,
+                    help="Comma separated list, e.g. 40,30,20,10,5. Overrides n_layers and kernels_per_layer.")
 args = parser.parse_args()
 
 # --------------------------------------------------------------------------------
@@ -85,31 +83,50 @@ def create_config_file(config_table, output_dir):
             json.dump(config_table, outfile, indent=4)
     return config_path
 
-N_LAYERS = args.n_layers
-K_PER_L  = args.kernels_per_layer
+# Decide per layer centroids
+if args.centroids_per_layer is not None:
+    number_centroids = [int(x) for x in args.centroids_per_layer.split(",")]
+    N_LAYERS = len(number_centroids)
+    K_PER_L = number_centroids[0]
+else:
+    N_LAYERS = args.n_layers
+    K_PER_L = args.kernels_per_layer
+    number_centroids = [K_PER_L for _ in range(N_LAYERS)]
+
 N_MODELS = args.n_models  # can be None
+
+# Width schedule like Gaia's, only if nlayers = 5 and a list was intended
+if N_LAYERS == 5:
+    width_fin_list = [0.05, 0.1, 0.15, 0.2, 0.25][::-1]
+else:
+    # Generic schedule that still ends at 0.05
+    width_fin_list = np.linspace(0.25, 0.05, N_LAYERS).tolist()[::-1]
 
 config_json = {
     "N": 100000,
     "model": "SparKer",
     "output_directory": None,
-    "learning_rate": 0.1,
-    "coeffs_reg": "unit1", #either "L1" or "L2" or ""     
 
-    "epochs": [10000 for _ in range(N_LAYERS)],
-    "width_init": [4 for _ in range(N_LAYERS)],
-    "width_fin":  [0.1 for _ in range(N_LAYERS)],
-    "coeffs_init": [0 for _ in range(N_LAYERS)],
-    "number_centroids": [K_PER_L for _ in range(N_LAYERS)],
+    # Gaia style hyperparams
+    "learning_rate": 0.05,
+    "coeffs_reg": "unit1",
 
-    "patience": 500,
-    "plt_patience": 2000,
+    "epochs": [5000 for _ in range(N_LAYERS)],
+    "patience": 1000,
+    "plt_patience": 6000,
     "plot": True,
     "plot_marginals": True,
 
+    "width_init": [3 for _ in range(N_LAYERS)],
+    "width_fin": width_fin_list,
+
     "t_ini": 0,
-    "decay_epochs": 0.9,
-    "coeffs_clip": 1e12,
+    "decay_epochs": 0.8,
+
+    "coeffs_init": [0 for _ in range(N_LAYERS)],
+    "coeffs_clip": 1000,
+
+    "number_centroids": number_centroids,
 
     "coeffs_reg_lambda": 0,
     "widths_reg_lambda": 0,
@@ -122,7 +139,7 @@ config_json = {
     "train_widths": False,
     "train_centroids": True,
 
-    # purely metadata, nice to keep
+    # metadata
     "n_layers": N_LAYERS,
     "kernels_per_layer": K_PER_L,
     "n_models": N_MODELS,
@@ -148,7 +165,7 @@ trial_name = (
 
 # Final output directory for this trial:
 # .../EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/
-#     N_100000_dim_2_kernels_Soft-SparKer2_M60_Nboot10000_lr0.01
+#N_100000_dim_2_kernels_Soft-SparKer2_M60_Nboot10000_lr0.01
 OUTPUT_DIRECTORY = os.path.join(BASE_OUTPUT_DIRECTORY, trial_name)
 
 config_json["output_directory"] = OUTPUT_DIRECTORY
@@ -220,7 +237,7 @@ def training_loop(seed, data_train_tot, config_json, json_path):
 
     # init
     width_ini = config_json["width_init"]
-    width_fin = np.sort(config_json["width_fin"])[::-1]
+    width_fin = config_json["width_fin"]
     print('Widths:', width_fin)
     t_ini        = config_json["t_ini"]
     decay_epochs = config_json["decay_epochs"]
@@ -429,6 +446,5 @@ def training_loop(seed, data_train_tot, config_json, json_path):
 if __name__ == "__main__":
     print(f"Running training for seed = {args.seed}")
     training_loop(args.seed, data_train_tot, config_json, json_path)
-
 
 

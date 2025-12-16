@@ -155,10 +155,16 @@ class KernelMethod(nn.Module):
         else:
             self.cmin=-coeffs_clip
             self.cmax=coeffs_clip
-        self.coeffs = Variable(
-            coeffs.reshape((-1, 1)).to(dtype=torch.float32),
-            requires_grad=train_coeffs
-        )  # [M, 1]
+        # keep coeffs dtype consistent with inputs
+        if isinstance(coeffs, torch.Tensor):
+            dtype = coeffs.dtype
+            device = coeffs.device
+        else:
+            dtype = torch.float64
+            device = torch.device("cpu")
+
+        self.coeffs = Variable(coeffs.reshape((-1, 1)).to(device=device, dtype=dtype),
+                            requires_grad=train_coeffs)
                                                                                
         self.kernel_layer = KernelLayer(input_shape=input_shape, centroids=centroids, widths=widths,
                                         train_centroids=train_centroids, train_widths=train_widths,
@@ -166,18 +172,11 @@ class KernelMethod(nn.Module):
                                         name='kernel_layer')
         self.softmax = torch.softmax
         self.probability_coeffs=probability_coeffs
-
     def call(self, x):
-        K_x, _ = self.kernel_layer.call(x)  # [n, M]
-
-        # local copy of coeffs with correct dtype and device
-        W_x = self.coeffs
-        if W_x.dtype != K_x.dtype or W_x.device != K_x.device:
-            W_x = W_x.to(dtype=K_x.dtype, device=K_x.device)
-
-        if self.probability_coeffs and (W_x.sum().abs().item() > 0.0):
-            W_x = self.softmax(W_x, 0)
-
+        K_x, _ = self.kernel_layer.call(x) # [n, M] 
+        W_x = self.coeffs  # [M, 1 ] 
+        if self.probability_coeffs==True and W_x.sum(): 
+            W_x=self.softmax(W_x, 0)
         out = torch.tensordot(K_x, W_x, dims=([1], [0]))
         return out
 
@@ -329,9 +328,16 @@ class KernelLayer(nn.Module):
         else:
             device = torch.device("cpu")
 
-        # Make sure centroids and widths are tensors on the same device
-        centroids = torch.as_tensor(centroids, dtype=torch.float32, device=device)
-        widths    = torch.as_tensor(widths,    dtype=torch.float32, device=device)
+        # keep dtype consistent with inputs
+        if isinstance(centroids, torch.Tensor):
+            dtype = centroids.dtype
+        elif isinstance(widths, torch.Tensor):
+            dtype = widths.dtype
+        else:
+            dtype = torch.float64  # safe default
+
+        centroids = torch.as_tensor(centroids, dtype=dtype, device=device)
+        widths    = torch.as_tensor(widths,    dtype=dtype, device=device)
 
         # width is a tensor (scalar or [d]-vector) on the right device
         self.width = widths[0]              # shape [d] or scalar
