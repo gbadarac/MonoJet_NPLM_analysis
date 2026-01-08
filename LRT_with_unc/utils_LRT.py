@@ -61,7 +61,7 @@ class TAU(nn.Module):
     """
     def __init__(self, input_shape, ensemble_probs, weights_init, weights_cov, weights_mean, 
                  gaussian_center, gaussian_coeffs,
-                 lambda_regularizer=1e5, lambda_net=1e-6, gaussian_sigma=0.1, train_centers=False,
+                 lambda_regularizer, lambda_net, gaussian_sigma, train_centers=False,
                  train_weights=True, train_net=True, 
                  model='TAU', name=None, **kwargs):
         super(TAU, self).__init__()
@@ -161,56 +161,54 @@ class TAU(nn.Module):
         return self.aux_model.log_prob(self.weights) 
     
     def normalization_constraint_term(self):
-        # somma pesi w_i
         sum_w = torch.sum(self.weights)
-        # somma ampiezze a_j se la rete esiste, altrimenti 0
         if self.train_net:
             sum_a = torch.sum(self.network.get_coefficients())
-            if self.train_weights:
-                denom = self.weights.shape[0] + self.network.get_coefficients().shape[0]
-            else:
-                denom = self.network.get_coefficients().shape[0] 
         else:
             sum_a = torch.tensor(0.0, dtype=self.weights.dtype, device=self.weights.device)
-            denom = self.weights.shape[0]
-        denom = max(1, int(denom))
-        print("denom=", denom)
         total = sum_w + sum_a
-
-        # <<< simple debug print >>>
-        print(f"[norm] sum_w={sum_w.item():.6f}, sum_a={sum_a.item():.6f}, total={total.item():.6f}", flush=True)
-
-        return ((total - 1.0) ** 2) / denom
+        return (total - 1.0) ** 2
 
     def loglik(self, x):
-        aux = self.log_auxiliary_term()
+        aux = self.log_auxiliary_term() if (self.aux_model is not None) else 0.0
+
         if self.train_net:
-            ensemble, net_out = self.call(x)          # ensemble: (N,1) ; net_out: (N,)
-            p = ensemble[:, 0] + net_out
-            return torch.log(p).sum() + aux.sum()
+            ensemble, net_out = self.call(x)  # ensemble: (N,1), net_out: (N,)
+            denom = torch.sum(self.weights) + torch.sum(self.network.get_coefficients())
+            p = (ensemble[:, 0] + net_out) / (denom + 1e-12)
         else:
-            p = self.call(x)                           # (N,1)
-        out = torch.log(p).sum() 
-        if self.train_weights:
+            ensemble = self.call(x)  # (N,1)
+            denom = torch.sum(self.weights)
+            p = ensemble[:, 0] / (denom + 1e-12)
+
+        p = torch.clamp(p, min=1e-12)
+        out = torch.log(p).sum()
+
+        if self.train_weights and self.aux_model is not None:
             out = out + aux.sum()
-        return out 
+        return out
 
     def loss(self, x):
-        aux = self.log_auxiliary_term()
+        aux = self.log_auxiliary_term() if (self.aux_model is not None) else 0.0
+
         if self.train_net:
             ensemble, net_out = self.call(x)
-            p = self.relu(ensemble[:, 0] + net_out)
-            out = -torch.log(p).sum() + self.lambda_regularizer * self.normalization_constraint_term() \
+            p = ensemble[:, 0] + net_out
+            p = torch.clamp(p, min=1e-12)
+            out = -torch.log(p).mean() \
+                + self.lambda_regularizer * self.normalization_constraint_term() \
                 + self.lambda_net * self.net_constraint_term()
-            if self.train_weights:
-                out = out - aux.sum()
-            return out 
+            if self.train_weights and self.aux_model is not None:
+                out = out - aux.mean()
+            return out
         else:
-            p = self.relu(self.call(x))
-            out = -torch.log(p).sum() + self.lambda_regularizer * self.normalization_constraint_term()
-            if self.train_weights:
-                out = out - aux.sum() 
-            return out 
+            ensemble = self.call(x)[:, 0]
+            p = torch.clamp(ensemble, min=1e-12)
+            out = -torch.log(p).mean() \
+                + self.lambda_regularizer * self.normalization_constraint_term()
+            if self.train_weights and self.aux_model is not None:
+                out = out - aux.mean()
+            return out
 
 
         

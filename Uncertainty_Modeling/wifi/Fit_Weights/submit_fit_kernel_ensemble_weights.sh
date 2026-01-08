@@ -23,7 +23,7 @@ cd /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/F
 # Make sure logs directory exists
 mkdir -p results_fit_weights_kernel/logs
 
-FOLDER_PATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_kernels_SparKer_models10_L15_K10_M150_Nboot100000_lr0.1_clip_1000000000000
+FOLDER_PATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_kernels_SparKer_models20_L1_K100_M100_Nboot100000_lr0.05_clip_10000000
 DATA_PATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_heavy_tail_target_set.npy
 
 # -----------------------
@@ -35,9 +35,9 @@ export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:32
 python fit_kernel_ensemble_weights_2d.py \
   --folder_path "${FOLDER_PATH}" \
   --data_path "${DATA_PATH}" \
-  --n_wifi_components 10 \
+  --n_wifi_components 20 \
   --epochs 2000 \
-  --patience 100 \
-  --lr 0.1 \
+  --patience 10 \
+  --lr 0.05 \
   --seed_bootstrap 1234 \
   --compute_covariance

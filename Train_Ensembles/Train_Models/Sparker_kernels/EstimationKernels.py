@@ -32,7 +32,6 @@ from Sparker_utils.sampler_mixture import *
 from Sparker_utils.losses import *
 from Sparker_utils.regularizers import *
 
-
 from plot_utils import (
     plot_loss,
     plot_centroids_history,
@@ -46,7 +45,6 @@ from plot_utils import (
 # Args
 # -------------------------------------------------------------------
 default_seed = int(os.environ.get("SLURM_ARRAY_TASK_ID", 0))
-
 parser = argparse.ArgumentParser()
 parser.add_argument("--data_path", type=str, required=True,
                     help="Path to .npy file with 2D target data")
@@ -95,12 +93,6 @@ else:
 
 N_MODELS = args.n_models  # can be None
 
-# Width schedule like Gaia's, only if nlayers = 5 and a list was intended
-if N_LAYERS == 5:
-    width_fin_list = [0.05, 0.1, 0.15, 0.2, 0.25][::-1]
-else:
-    # Generic schedule that still ends at 0.05
-    width_fin_list = np.linspace(0.25, 0.05, N_LAYERS).tolist()[::-1]
 
 config_json = {
     "N": 100000,
@@ -111,20 +103,20 @@ config_json = {
     "learning_rate": 0.05,
     "coeffs_reg": "unit1",
 
-    "epochs": [5000 for _ in range(N_LAYERS)],
-    "patience": 1000,
-    "plt_patience": 6000,
+    "epochs": [2000],
+    "patience": 10,
+    "plt_patience": 1000,
     "plot": True,
     "plot_marginals": True,
 
-    "width_init": [3 for _ in range(N_LAYERS)],
-    "width_fin": width_fin_list,
+    "width_init": [0.1],
+    "width_fin": [0.1],
 
     "t_ini": 0,
-    "decay_epochs": 0.8,
+    "decay_epochs": 0.5,
 
     "coeffs_init": [0 for _ in range(N_LAYERS)],
-    "coeffs_clip": 1000,
+    "coeffs_clip": 10000000,
 
     "number_centroids": number_centroids,
 
@@ -308,7 +300,10 @@ def training_loop(seed, data_train_tot, config_json, json_path):
         loss_value += lam_entropy * CentroidsEntropyRegularizer(model.get_centroids_entropy())
 
     # history
-    max_monitor = int(np.sum(1 + total_epochs / patience))
+    store_every = 10
+    store_step = store_every * patience
+    max_monitor = int(np.sum(1 + total_epochs / store_step))
+
     widths_history    = np.zeros((max_monitor, np.sum(M), d))
     centroids_history = np.zeros((max_monitor, np.sum(M), d))
     coeffs_history    = np.zeros((max_monitor, np.sum(M)))
@@ -373,15 +368,17 @@ def training_loop(seed, data_train_tot, config_json, json_path):
             optimizer.step()
             model.clip_coeffs()
 
-            if not (i % patience):
+            if not (i % store_step):
                 widths_history[monitor_idx, :, :]    = model.get_widths().detach().cpu().numpy()
                 centroids_history[monitor_idx, :, :] = model.get_centroids().detach().cpu().numpy()
                 coeffs_history[monitor_idx, :]       = model.get_coeffs().detach().cpu().numpy().reshape((np.sum(M)))
                 loss_history[monitor_idx]            = loss_value.detach().cpu().numpy()
-                epochs_history[monitor_idx]          = monitor_idx
+                epochs_history[monitor_idx]          = i + 1
+
                 monitor_idx += 1
+
                 print('epoch: %i, NLL loss: %f, COEFFS: %f' %
-                      (int(i + 1), nplm_loss_value, loss_value - nplm_loss_value))
+                    (int(i + 1), nplm_loss_value, loss_value - nplm_loss_value))
 
             if not plot:
                 continue
@@ -396,8 +393,7 @@ def training_loop(seed, data_train_tot, config_json, json_path):
                                    monitor_idx, d, total_M, output_folder)
             plot_coeffs_history(epochs_history, coeffs_history,
                                 monitor_idx, total_M, output_folder)
-            #plot_model_marginals_and_heatmap(model, n, output_folder)
-            
+            #plot_model_marginals_and_heatmap(model, n, output_folder) 
 
     # GT heatmap
     #plot_gt_heatmap(feature, output_folder)

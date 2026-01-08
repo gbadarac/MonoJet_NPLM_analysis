@@ -286,3 +286,194 @@ def plot_ensemble_marginals_2d_kernel(
         plt.savefig(outpath)
         plt.close()
 
+
+# -------------------------------------------------------------------
+# Plot helpers
+# -------------------------------------------------------------------
+from pathlib import Path
+import numpy as np
+import torch
+import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
+
+def plot_final_marginals_and_ratio(
+    ensemble, x_data, grid, x0, x1, Y, outdir, tag="",
+    max_members=8, lw_member=1.2, lw_ens=2.0,
+    nbins=40, pad_frac=0.05
+):
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    colors = [
+        "#ffffd9", "#edf8b1", "#c7e9b4", "#7fcdbb", "#41b6c4",
+        "#1d91c0", "#225ea8", "#253494", "#081d58", "purple",
+    ]
+
+    Nx = len(x0)
+    Ny = len(x1)
+    dx0 = float((x0[1] - x0[0]).detach().cpu())
+    dx1 = float((x1[1] - x1[0]).detach().cpu())
+
+    x0_np = x0.detach().cpu().numpy()
+    x1_np = x1.detach().cpu().numpy()
+    x_data_np = x_data.detach().cpu().numpy()
+
+    # ------------------------------------------------------------
+    # RANGE, show the whole distribution
+    # Use UNION of data and grid ranges, then clamp to grid support
+    # ------------------------------------------------------------
+    x0_data_lo, x0_data_hi = float(x_data_np[:, 0].min()), float(x_data_np[:, 0].max())
+    x1_data_lo, x1_data_hi = float(x_data_np[:, 1].min()), float(x_data_np[:, 1].max())
+
+    x0_grid_lo, x0_grid_hi = float(x0_np.min()), float(x0_np.max())
+    x1_grid_lo, x1_grid_hi = float(x1_np.min()), float(x1_np.max())
+
+    x0_lo = min(x0_data_lo, x0_grid_lo)
+    x0_hi = max(x0_data_hi, x0_grid_hi)
+    x1_lo = min(x1_data_lo, x1_grid_lo)
+    x1_hi = max(x1_data_hi, x1_grid_hi)
+
+    # padding, but do not exceed grid range (ensemble not defined outside)
+    x0_pad = pad_frac * (x0_hi - x0_lo + 1e-12)
+    x1_pad = pad_frac * (x1_hi - x1_lo + 1e-12)
+
+    x0_lo = max(x0_lo - x0_pad, x0_grid_lo)
+    x0_hi = min(x0_hi + x0_pad, x0_grid_hi)
+    x1_lo = max(x1_lo - x1_pad, x1_grid_lo)
+    x1_hi = min(x1_hi + x1_pad, x1_grid_hi)
+
+    # ------------------------------------------------------------
+    # BINNING, same number of bins for both features
+    # ------------------------------------------------------------
+    bins0 = np.linspace(x0_lo, x0_hi, nbins + 1, dtype=float)
+    bins1 = np.linspace(x1_lo, x1_hi, nbins + 1, dtype=float)
+
+    centers0 = 0.5 * (bins0[:-1] + bins0[1:])
+    centers1 = 0.5 * (bins1[:-1] + bins1[1:])
+    bw0 = np.diff(bins0)
+    bw1 = np.diff(bins1)
+
+    # ------------------------------------------------------------
+    # Helper, bin a marginal sampled on the x-grid into histogram bins
+    # ------------------------------------------------------------
+    def bin_from_grid(xgrid, pgrid, bins, dx):
+        out = np.zeros(len(bins) - 1, dtype=float)
+        for k in range(len(out)):
+            lo, hi = bins[k], bins[k + 1]
+            if k < len(out) - 1:
+                mask = (xgrid >= lo) & (xgrid < hi)
+            else:
+                mask = (xgrid >= lo) & (xgrid <= hi)
+            if np.any(mask):
+                integral = pgrid[mask].sum() * dx
+                out[k] = integral / (hi - lo)
+        return out
+
+    # ------------------------------------------------------------
+    # Figure layout
+    # ------------------------------------------------------------
+    fig = plt.figure(figsize=(10, 6))
+    gs = GridSpec(2, 2, height_ratios=[3, 1], hspace=0.05, wspace=0.25)
+    ax_top_left  = fig.add_subplot(gs[0, 0])
+    ax_top_right = fig.add_subplot(gs[0, 1], sharey=ax_top_left)
+    ax_bot_left  = fig.add_subplot(gs[1, 0], sharex=ax_top_left)
+    ax_bot_right = fig.add_subplot(gs[1, 1], sharex=ax_top_right)
+
+    # ------------------------------------------------------------
+    # Data histograms
+    # ------------------------------------------------------------
+    counts0, _ = np.histogram(x_data_np[:, 0], bins=bins0)
+    counts1, _ = np.histogram(x_data_np[:, 1], bins=bins1)
+    Ndata = len(x_data_np)
+
+    H_data0 = counts0 / (Ndata * bw0)
+    H_data1 = counts1 / (Ndata * bw1)
+
+    ax_top_left.bar(centers0, H_data0, width=bw0, color="orange", alpha=0.5, label="data")
+    ax_top_right.bar(centers1, H_data1, width=bw1, color="orange", alpha=0.5, label="data")
+
+    # ------------------------------------------------------------
+    # Ensemble marginals from 2D grid density
+    # ------------------------------------------------------------
+    Y2 = Y.detach().cpu().view(Ny, Nx)          # (Ny, Nx)
+
+    marg0 = (Y2.sum(dim=0) * dx1).numpy()       # p(x0) evaluated on x0 grid
+    marg1 = (Y2.sum(dim=1) * dx0).numpy()       # p(x1) evaluated on x1 grid
+
+    H_ens0 = bin_from_grid(x0_np, marg0, bins0, dx0)
+    H_ens1 = bin_from_grid(x1_np, marg1, bins1, dx1)
+
+    ax_top_left.step(centers0, H_ens0, where="mid", color="black", lw=lw_ens, label="Ensemble")
+    ax_top_right.step(centers1, H_ens1, where="mid", color="black", lw=lw_ens, label="Ensemble")
+
+    # ------------------------------------------------------------
+    # Individual members
+    # ------------------------------------------------------------
+    n_to_plot = min(max_members, len(ensemble.ensemble), len(colors))
+    for ni in range(n_to_plot):
+        m = ensemble.ensemble[ni]
+        with torch.no_grad():
+            z = (m.call(grid)[-1, :, 0] / m.get_norm()[-1]).detach().cpu().view(Ny, Nx)
+            m0 = (z.sum(dim=0) * dx1).numpy()
+            m1 = (z.sum(dim=1) * dx0).numpy()
+
+        H_m0 = bin_from_grid(x0_np, m0, bins0, dx0)
+        H_m1 = bin_from_grid(x1_np, m1, bins1, dx1)
+
+        ax_top_left.step(centers0, H_m0, where="mid", lw=lw_member, color=colors[ni], alpha=0.9)
+        ax_top_right.step(centers1, H_m1, where="mid", lw=lw_member, color=colors[ni], alpha=0.9)
+
+    # ------------------------------------------------------------
+    # Axes limits, force full range
+    # ------------------------------------------------------------
+    ax_top_left.set_xlim(bins0[0], bins0[-1])
+    ax_bot_left.set_xlim(bins0[0], bins0[-1])
+    ax_top_right.set_xlim(bins1[0], bins1[-1])
+    ax_bot_right.set_xlim(bins1[0], bins1[-1])
+
+    # ------------------------------------------------------------
+    # Ratio + Poisson errors on data only
+    # ------------------------------------------------------------
+    mask0 = H_ens0 > 0
+    mask1 = H_ens1 > 0
+
+    ratio0 = np.full_like(H_data0, np.nan, dtype=float)
+    ratio1 = np.full_like(H_data1, np.nan, dtype=float)
+    ratio0[mask0] = H_data0[mask0] / H_ens0[mask0]
+    ratio1[mask1] = H_data1[mask1] / H_ens1[mask1]
+
+    err_data0 = np.zeros_like(H_data0)
+    err_data1 = np.zeros_like(H_data1)
+    nonzero0 = counts0 > 0
+    nonzero1 = counts1 > 0
+    err_data0[nonzero0] = np.sqrt(counts0[nonzero0]) / (Ndata * bw0[nonzero0])
+    err_data1[nonzero1] = np.sqrt(counts1[nonzero1]) / (Ndata * bw1[nonzero1])
+
+    ratio_err0 = np.full_like(ratio0, np.nan, dtype=float)
+    ratio_err1 = np.full_like(ratio1, np.nan, dtype=float)
+    ratio_err0[mask0] = err_data0[mask0] / H_ens0[mask0]
+    ratio_err1[mask1] = err_data1[mask1] / H_ens1[mask1]
+
+    ax_bot_left.errorbar(centers0, ratio0, yerr=ratio_err0, fmt="o", color="black", capsize=2, ms=4)
+    ax_bot_right.errorbar(centers1, ratio1, yerr=ratio_err1, fmt="o", color="black", capsize=2, ms=4)
+    ax_bot_left.axhline(1.0, color="gray", linestyle="--")
+    ax_bot_right.axhline(1.0, color="gray", linestyle="--")
+
+    ax_top_left.set_ylabel("Density")
+    ax_bot_left.set_ylabel("Data / Ensemble")
+    ax_bot_left.set_xlabel("x₀")
+    ax_bot_right.set_xlabel("x₁")
+
+    ax_bot_left.set_ylim(0.5, 1.5)
+    ax_bot_right.set_ylim(0.5, 1.5)
+
+    ax_top_left.legend(loc="upper left", frameon=False)
+    ax_top_right.legend(loc="upper left", frameon=False)
+
+    plt.setp(ax_top_left.get_xticklabels(), visible=False)
+    plt.setp(ax_top_right.get_xticklabels(), visible=False)
+
+    fig.set_constrained_layout(True)
+    fname = f"marginals_ratio{('_' + tag) if tag else ''}.png"
+    fig.savefig(outdir / fname, dpi=200)
+    plt.close(fig)

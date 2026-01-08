@@ -47,13 +47,14 @@ calibration = args.calibration.lower() == "true"
 # -------- Load optional reference weights (float32) --------
 w_init = np.load(args.w_path).astype(np.float32).reshape(-1) if args.w_path else None
 w_cov  = np.load(args.w_cov_path).astype(np.float32)         if args.w_cov_path else None
-if (w_init is None) ^ (w_cov is None):
-    # If only one is given, ignore both to avoid half-configured state
-    w_init, w_cov = None, None
-
+# After loading w_init, w_cov (torch tensors on CPU)
 if w_init is not None and w_cov is not None:
-    w_init = torch.from_numpy(w_init).float()
-    w_cov  = torch.from_numpy(w_cov).float()
+    w_centralv = w_init.clone()  # this is the prior mean
+    noise_scale_init = w_cov.diagonal().abs().mean().sqrt().item()
+    # draw a toy-specific starting point
+    w_start = w_centralv + noise_scale_init * torch.randn_like(w_centralv)
+else:
+    w_centralv, w_start = None, None
 
 # -------- Output dir: <base>/<mode>/toy_<seed> --------
 mode = "calibration" if calibration else "comparison"
@@ -199,20 +200,21 @@ max_time_min = 55
 t0 = time.time()
 
 # Make sure w_init/w_cov are on device if present
-w_init_dev = w_init.to(device) if isinstance(w_init, torch.Tensor) else w_init
-w_cov_dev  = w_cov.to(device)  if isinstance(w_cov,  torch.Tensor)  else w_cov
+w_start_dev    = w_start.to(device)    if w_start is not None else None
+w_centralv_dev = w_centralv.to(device) if w_centralv is not None else None
+w_cov_dev      = w_cov.to(device)      if w_cov is not None else None
 
 # Denominator: no extra kernels
 model_den = TAU(
     (None, 2),
     ensemble_probs=model_probs,
-    weights_init=w_init_dev,
+    weights_init=w_start_dev,
     weights_cov=w_cov_dev,
-    weights_mean=w_init_dev,
+    weights_mean=w_centralv_dev,
     gaussian_center=[],
     gaussian_coeffs=[],
     gaussian_sigma=None,
-    lambda_regularizer=1e6,
+    lambda_regularizer=1.0,
     train_net=False).to(device)
 
 # Numerator: pass ensemble_probs=model_probs (NOT None)
@@ -223,51 +225,35 @@ coeffs  = torch.ones((n_kernels,), dtype=torch.float32, device=device) / n_kerne
 model_num = TAU(
     (None, 2),
     ensemble_probs=model_probs,
-    weights_init=w_init_dev,
+    weights_init=w_start_dev,
     weights_cov=w_cov_dev,
-    weights_mean=w_init_dev,
+    weights_mean=w_centralv_dev,
     gaussian_center=centers,
     gaussian_coeffs=coeffs,
-    gaussian_sigma=1.0,
-    lambda_regularizer=1e6,
-    lambda_net=0,
+    gaussian_sigma=0.4,
+    lambda_regularizer=1.0,
+    lambda_net=1.0,
     train_net=True).to(device)
 
 # ------------------ Train Function ------------------
-def train_loop(model, name, lr=1e-4):
+def train_loop(model, name, lr, epochs, patience):
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     loss_hist, epoch_hist = [], []
-    best = float("inf")
-    bad = 0
 
     for epoch in range(1, epochs + 1):
         opt.zero_grad(set_to_none=True)
-        loss = model.loss(x_data)   # runs on device
+        loss = model.loss(x_data)
         loss.backward()
         opt.step()
 
-        # log + early stop checks every 100 iters
-        if epoch % 100 == 0:
+        if (epoch % patience) == 0:
             cur = float(loss.detach().item())
             print(f"[{name}] epoch {epoch} loss {cur:.6f}", flush=True)
             loss_hist.append(cur)
             epoch_hist.append(epoch)
 
-            if cur + tol < best:
-                best = cur
-                bad = 0
-            else:
-                bad += 1
-                if bad >= patience:
-                    print(f"[{name}] early stopping at epoch {epoch} best {best:.6f}", flush=True)
-                    break
-
-        # time budget: stop cleanly before SLURM wall time
-        if (time.time() - t0) / 60.0 > max_time_min:
-            print(f"[{name}] stopping due to time budget at epoch {epoch}", flush=True)
-            break
-
     return np.array(epoch_hist, np.int32), np.array(loss_hist, np.float32)
+
 
 model_den.ensemble_probs = model_probs
 model_num.ensemble_probs = model_probs
