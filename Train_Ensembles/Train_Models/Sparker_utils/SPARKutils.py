@@ -1,8 +1,7 @@
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
-from torch.optim.lr_scheduler import _LRScheduler
 import math 
+
 
 def pairwise_dist(X, P):
     X2 = (X ** 2).sum(dim=1, keepdim=True) # (n x 1)                                                            
@@ -140,98 +139,63 @@ class Hierarchical(nn.Module):
             self.layers[j].clip_coeffs()
 
 class KernelMethod(nn.Module):
-    '''    
-    return: coeff * exp(-0.5(x-mu)**2/scale**2)  
-    '''
-    def __init__(self, input_shape, centroids, widths, coeffs, resolution_const, resolution_scale, coeffs_clip,
+    def __init__(self, input_shape, centroids, widths, coeffs,
+                 resolution_const, resolution_scale, coeffs_clip,
                  train_centroids=False, train_widths=False, train_coeffs=True,
                  positive_coeffs=False, probability_coeffs=False,
-                 name=None, **kwargs):
-        super(KernelMethod, self).__init__()
-        self.positive_coeffs=positive_coeffs
-        if self.positive_coeffs:
-            self.cmin=0
-            self.cmax=coeffs_clip
-        else:
-            self.cmin=-coeffs_clip
-            self.cmax=coeffs_clip
-        # keep coeffs dtype consistent with inputs
-        if isinstance(coeffs, torch.Tensor):
-            dtype = coeffs.dtype
-            device = coeffs.device
-        else:
-            dtype = torch.float64
-            device = torch.device("cpu")
+                 mask_thr=3.0, eps=1e-8, **kwargs):
+        super().__init__()
+        self.eps = eps
+        self.mask_thr = mask_thr
+        self.probability_coeffs = probability_coeffs
 
-        self.coeffs = Variable(coeffs.reshape((-1, 1)).to(device=device, dtype=dtype),
-                            requires_grad=train_coeffs)
-                                                                               
-        self.kernel_layer = KernelLayer(input_shape=input_shape, centroids=centroids, widths=widths,
-                                        train_centroids=train_centroids, train_widths=train_widths,
-                                        resolution_const=resolution_const, resolution_scale=resolution_scale,
-                                        name='kernel_layer')
-        self.softmax = torch.softmax
-        self.probability_coeffs=probability_coeffs
+        self.cmin, self.cmax = (0, coeffs_clip) if positive_coeffs else (-coeffs_clip, coeffs_clip)
 
-    def mask_inactive_kernels(self, K_x):
-        # Same logic as supervisor, but dtype/device safe
+        # IMPORTANT: match supervisor dtype (double) for stability
+        dev = centroids.device if isinstance(centroids, torch.Tensor) else torch.device("cpu")
+        self.coeffs = nn.Parameter(torch.as_tensor(coeffs, dtype=torch.double, device=dev).reshape(-1, 1),
+                                   requires_grad=train_coeffs)
 
-        total_kernel_activation = torch.sum(K_x, dim=0).unsqueeze(1)  # [M, 1]
-
-        total_kernel_activation = torch.abs(
-            total_kernel_activation - torch.mean(total_kernel_activation)
-        ) / (torch.std(total_kernel_activation) + 1e-8)
-
-        mask_non_active_kernels = (total_kernel_activation < 3)
-
-        # Make mask compatible with coeffs tensor
-        mask_non_active_kernels = mask_non_active_kernels.to(
-            device=self.coeffs.data.device,
-            dtype=self.coeffs.data.dtype
+        self.kernel_layer = KernelLayer(
+            input_shape=input_shape, centroids=centroids, widths=widths,
+            train_centroids=train_centroids, train_widths=train_widths,
+            resolution_const=resolution_const, resolution_scale=resolution_scale,
+            name="kernel_layer",
         )
 
-        # In-place like supervisor
-        self.coeffs.data = self.coeffs.data * mask_non_active_kernels
-        return
+    def _activity_mask(self, K_x):
+        # K_x: [n, M]
+        total = torch.sum(K_x, dim=0, keepdim=True).T  # [M,1]
+        z = torch.abs(total - total.mean()) / (total.std() + self.eps)
+        return (z < self.mask_thr).to(dtype=K_x.dtype, device=K_x.device)  # [M,1]
 
     def call(self, x):
-        K_x, _ = self.kernel_layer.call(x)  # [n, M]
+        K_x, _ = self.kernel_layer.call(x)  # [n,M]
 
-        # add this line
-        self.mask_inactive_kernels(K_x)
+        # compute mask but DO NOT overwrite params
+        mask = self._activity_mask(K_x).detach()  # hard mask, no grad through it
 
-        W_x = self.coeffs  # [M, 1]
-        if self.probability_coeffs == True and W_x.sum():
-            W_x = self.softmax(W_x, 0)
+        W = self.coeffs
+        # ensure dtype/device consistent
+        if W.dtype != K_x.dtype or W.device != K_x.device:
+            W = W.to(dtype=K_x.dtype, device=K_x.device)
 
-        out = torch.tensordot(K_x, W_x, dims=([1], [0]))
+        W = W * mask  # <-- key change (no in-place on self.coeffs)
+
+        if self.probability_coeffs and (W.sum() != 0):
+            W = torch.softmax(W, dim=0)
+
+        out = torch.tensordot(K_x, W, dims=([1], [0]))  # [n,1]
         return out
 
-    def get_centroids_entropy(self):
-        return self.kernel_layer.get_centroids_entropy()
-
-    def get_coeffs(self):
-        return self.coeffs
-
-    def get_centroids(self):
-        return self.kernel_layer.get_centroids()
-
-    def get_widths(self):
-        return self.kernel_layer.get_widths()
-
-    def set_width(self, width):
-        self.kernel_layer.set_width(width)
-        return
-
-    def get_widths_tilde(self):
-        return self.kernel_layer.get_widths_tilde()
-
-    def clip_centroids(self):
-        self.kernel_layer.clip_centroids()
-        return
-
     def clip_coeffs(self):
-        self.coeffs.data = self.coeffs.data.clamp(self.cmin,self.cmax)
+        self.coeffs.data.clamp_(self.cmin, self.cmax)
+
+    def get_coeffs(self): return self.coeffs
+    def get_centroids(self): return self.kernel_layer.get_centroids()
+    def get_widths(self): return self.kernel_layer.get_widths()
+    def set_width(self, width): self.kernel_layer.set_width(width)
+
 
 class KernelMethod_SoftMax_2(nn.Module):
     '''                              
@@ -251,8 +215,12 @@ class KernelMethod_SoftMax_2(nn.Module):
         else:
             self.cmin=-coeffs_clip
             self.cmax=coeffs_clip
-        self.coeffs = Variable(self.coeffs.reshape((-1, 1)).type(torch.double),
-                               requires_grad=train_coeffs) # [M, 1]                                                                                  
+        # infer device from centroids if tensor, else CPU
+        dev = centroids.device if isinstance(centroids, torch.Tensor) else torch.device("cpu")
+        self.coeffs = nn.Parameter(
+            torch.as_tensor(coeffs, dtype=torch.double, device=dev).reshape(-1, 1),
+            requires_grad=train_coeffs
+        )                                                                              
         self.kernel_layer = KernelLayer(input_shape=input_shape, centroids=centroids, widths=widths,
                                         train_centroids=train_centroids, train_widths=train_widths,
                                         resolution_const=resolution_const, resolution_scale=resolution_scale,
@@ -277,19 +245,19 @@ class KernelMethod_SoftMax_2(nn.Module):
         ) / (torch.std(total_kernel_activation) + 1e-8)
 
         # mask for "active" kernels, same dtype/device as W_x
-        mask_non_active_kernels = (total_kernel_activation < 2).to(
+        mask_non_active_kernels = (total_kernel_activation < 3).to(
             dtype=W_x.dtype, device=W_x.device
         )
 
         # update the *leaf* tensor in-place via .data, keep optimizer happy
-        self.coeffs.data = self.coeffs.data * mask_non_active_kernels.to(
-            self.coeffs.data.dtype
-        )
+        self.coeffs.data.mul_(mask_non_active_kernels.to(self.coeffs.data.dtype))
+        W_x = self.coeffs  # <-- IMPORTANT: use the masked coeffs
 
         if self.probability_coeffs:
             W_x = self.softmax(W_x, 0)
 
-        out = torch.tensordot(K_x * K_x, W_x, dims=([1], [0]))  # [n, 1]
+        out = torch.tensordot(K_x * K_x, W_x, dims=([1], [0]))
+
         out = out / Z  # [n, 1]
         return out
 
@@ -367,13 +335,10 @@ class KernelLayer(nn.Module):
         widths    = torch.as_tensor(widths,    dtype=dtype, device=device)
 
         # width is a tensor (scalar or [d]-vector) on the right device
-        self.width = widths[0]              # shape [d] or scalar
-        self.centroids = Variable(
-            centroids,
-            requires_grad=train_centroids
-        )                                   # [M, d]
-
-        self.cov_diag = self.width ** 2
+        self.centroids = nn.Parameter(centroids, requires_grad=train_centroids)
+        self.width     = nn.Parameter(widths[0].clone(), requires_grad=train_widths)
+        # don't store cov_diag as a plain tensor attribute; compute from self.width when needed
+                                    # [M, d]
 
     def call(self, x):
         if self.beta==None:
@@ -384,11 +349,19 @@ class KernelLayer(nn.Module):
             return out, arg, out2, arg
 
     def transform_widths(self):
-        # transform width variable to account for resolution boundaries (quadrature sum)        
-        widths = torch.add(self.widths**2, self.resolution_const**2) # [M, d]  
-        widths+= torch.multiply(self.centroids, self.resolution_scale)**2 # [M, d]
-        widths = torch.sqrt(widths) # [M, d] 
-        return widths
+        # opzionale, ma consistente: restituisce (M,d)
+        widths = self.get_widths()
+        widths = widths**2 + self.resolution_const**2 + (self.centroids * self.resolution_scale)**2
+        return torch.sqrt(widths)
+
+    def set_widths(self, widths):
+        # accetta widths shape (M,d) oppure (d,) oppure scalare
+        widths = torch.as_tensor(widths, device=self.width.device, dtype=self.width.dtype)
+        if widths.ndim == 2:
+            widths = widths[0]          # (d,)
+        with torch.no_grad():
+            self.width.copy_(widths)    # mantiene nn.Parameter
+        return
 
     def get_widths(self):
         return self.width * torch.ones(
@@ -396,29 +369,18 @@ class KernelLayer(nn.Module):
             device=self.width.device,
             dtype=self.width.dtype,
         )
-
-
-    def set_widths(self, widths):
-        self.widths.data = widths
-        self.compute_cov_diag()
-        return
-
+    
     def set_width(self, width):
-        """
-        Ensure self.width is always a torch.Tensor on the same
-        device/dtype as the existing width.
-        """
-        # If width is not a tensor, wrap it
         if not isinstance(width, torch.Tensor):
-            width = torch.tensor(
-                width,
-                device=self.width.device if isinstance(self.width, torch.Tensor) else self.centroids.device,
-                dtype=self.width.dtype if isinstance(self.width, torch.Tensor) else self.centroids.dtype,
-            )
+            width = torch.tensor(width, device=self.width.device, dtype=self.width.dtype)
+        else:
+            width = width.to(device=self.width.device, dtype=self.width.dtype)
 
-        self.width = width
-        self.compute_cov_diag()
+        with torch.no_grad():
+            self.width.copy_(width)   # keeps self.width as nn.Parameter
+
         return
+
 
     def get_centroids(self):
         return self.centroids #[M, d]
@@ -438,23 +400,16 @@ class KernelLayer(nn.Module):
         entropy = torch.sum(torch.multiply(K_mu, torch.log(K_mu)))
         return entropy
 
-    def compute_cov_diag(self):
-        self.cov_diag = self.width**2
-        return
-
     def gauss_const(self):
-        # self.width is a tensor on the correct device
-        det_sigma_sqrt = self.width.pow(self.d)
+        # width può essere scalare o vettore (d,)
+        w = self.width
+        if w.ndim == 0:
+            det_sigma_sqrt = w.pow(self.d)
+        else:
+            det_sigma_sqrt = torch.prod(w)  # prodotto sui d assi
 
-        two_pi = torch.tensor(
-            2 * math.pi,
-            device=self.width.device,
-            dtype=self.width.dtype,
-        )
-
-        const = 1.0 / (det_sigma_sqrt * two_pi.pow(0.5 * self.d))
-        const = torch.unique(const)  # optional, to mimic old behavior
-        return const
+        two_pi = torch.tensor(2 * math.pi, device=w.device, dtype=w.dtype)
+        return 1.0 / (det_sigma_sqrt * two_pi.pow(0.5 * self.d))
 
     def Kernel(self,x):
         """  
@@ -465,7 +420,7 @@ class KernelLayer(nn.Module):
         # return.shape = [N,M]   
         """
         dist_sq  = torch.subtract(x[:, None, :], self.centroids[None, :, :])**2 # [N, M, d]  
-        arg = -0.5*torch.sum(dist_sq/self.cov_diag,axis=2) # [N, M]                                                      
+        arg = -0.5 * torch.sum(dist_sq / (self.width**2), axis=2)                          
         kernel = self.gauss_const()*torch.exp(arg)
         if self.beta!=None:
             arg2 = -1*self.beta*torch.sum(dist_sq, axis=2) #[N, M] 

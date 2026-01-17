@@ -11,7 +11,7 @@ mpl.use("Agg")  # non-interactive backend for cluster
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 
-from torchmin import minimize
+from torch.autograd import grad
 from torch.autograd.functional import hessian
 import gc
 import mplhep as hep
@@ -41,30 +41,12 @@ RESULTS_BASE_DIR = THIS_DIR / "results_fit_weights_kernel"
 # Hessian and covariance helpers
 # -------------------------------------------------------------------
 def get_hessian(loss, weights):
-    from torch.autograd import grad as torch_grad
-
-    grad1 = torch_grad(loss, weights, create_graph=True, allow_unused=False)[0]
+    grad1 = grad(loss, weights, create_graph=True, allow_unused=False)[0]
     H_rows = []
-    for i in range(len(weights)):
-        grad2 = torch_grad(grad1[i], weights, retain_graph=True)[0]
+    for i in range(weights.numel()):
+        grad2 = grad(grad1[i], weights, retain_graph=True, allow_unused=False)[0]
         H_rows.append(grad2)
     return torch.stack(H_rows)
-
-def nll(x, weights, ensemble):
-
-    """
-    NLL for fixed kernel components and free weights, matching NF WiFi:
-        -log p(x; w).mean() + lambda_norm * (sum w_i - 1)
-    """
-    # model_probs(x) for each ensemble member -> (N, M)
-    outs = torch.stack(
-        [m.call(x)[-1, :, 0] / m.get_norm()[-1] for m in ensemble.ensemble], dim=1
-    )  # (N, M)
-    weighted = outs * weights.view(1, -1)
-    p = weighted.sum(dim=1)  # (N,)
-    lambda_norm=1.0
-    reg = lambda_norm * (weights.sum() - 1.0)
-    return -torch.log(p + 1e-12).mean() + reg
 
 def compute_sandwich_covariance(H, w, model_probs, lam=1.0):
     """
@@ -101,7 +83,7 @@ def compute_sandwich_covariance(H, w, model_probs, lam=1.0):
 def compute_sandwich_covariance_no_penalty(H, w, model_probs):
     M = len(w)
     N = model_probs.shape[0]
-    eye = torch.eye(M, dtype=torch.float64)
+    eye = torch.eye(M, dtype=torch.float64, device=H.device)
     V = torch.linalg.solve(H, eye)
 
     f = (model_probs * w.view(1, -1)).sum(dim=1)
@@ -112,9 +94,6 @@ def compute_sandwich_covariance_no_penalty(H, w, model_probs):
 
     cov_w = V @ U @ V.T
     return cov_w / N
-
-
-
 
 # -------------------------------------------------------------------
 # Main
@@ -209,7 +188,7 @@ def main():
     print("Loaded target data:", data_train_tot.shape)
 
     # ------------------------------------------------------------------
-    # Build ensemble (shared logic)
+    # Build ensemble
     # ------------------------------------------------------------------
     ensemble, config_json = build_wifi_ensemble(
         folder_path=folder_path,
@@ -223,27 +202,27 @@ def main():
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Make sure ensemble is on the right device and dtype
     ensemble = ensemble.to(device=device, dtype=torch.float64)
 
-    N_train = config_json["N"]
+    N_train = int(config_json["N"])
     print("Training size N from config:", N_train)
 
     print("Trainable parameters in ensemble:")
     ensemble.count_trainable_parameters(verbose=True)
 
     # ------------------------------------------------------------------
-    # Use full dataset (no bootstrap, like NF WiFi)
-    # ------------------------------------------------------------------
     # Bootstrap sample, matches supervisor notebook
-    N_train = int(config_json["N"])  # bootstrap size used in training
+    # ------------------------------------------------------------------
     rng = np.random.default_rng(args.seed_bootstrap)
     idx = rng.integers(0, len(data_train_tot), size=N_train)
-    bootstrap_np = data_train_tot[idx]  # (N_train, d)
+    bootstrap_np = data_train_tot[idx]
 
     bootstrap_sample = torch.from_numpy(bootstrap_np).to(device=device, dtype=torch.float64)
 
-    # Make sure ensemble is on same device and in float64
-    ensemble = ensemble.to(device=device, dtype=torch.float64)
+    # Optional sanity check, remove later
+    # print("device check", bootstrap_sample.device, next(ensemble.parameters()).device)
 
     opt = torch.optim.Adam(ensemble.parameters(), lr=args.lr)
 
@@ -257,7 +236,16 @@ def main():
         opt.zero_grad(set_to_none=True)
 
         # This is the core change: use the Ensemble.loss exactly like notebook
-        loss = ensemble.loss(bootstrap_sample)
+        # NF-style explicit loss on ensemble.weights (linear penalty, no square)
+        outs = torch.stack(
+            [m.call(bootstrap_sample)[-1, :, 0] / m.get_norm()[-1] for m in ensemble.ensemble],
+            dim=1,
+        )  # (N, M)
+
+        p = (outs * ensemble.weights.view(1, -1)).sum(dim=1)
+        p = torch.clamp_min(p, 1e-12)
+
+        loss = -torch.log(p).mean() + float(args.lambda_norm) * (ensemble.weights.sum() - 1.0)
 
         loss.backward()
         opt.step()
@@ -287,28 +275,35 @@ def main():
     # Hessian + sandwich covariance (same nll as optimisation)
     # ------------------------------------------------------------------
     if args.compute_covariance:
+        # 1) compute model_probs ONCE (constants wrt weights)
         with torch.no_grad():
             model_probs = torch.stack(
                 [m.call(bootstrap_sample)[-1, :, 0] / m.get_norm()[-1] for m in ensemble.ensemble],
                 dim=1,
-            ).detach().cpu().to(dtype=torch.float64)  # (N, M)
+            ).detach().to(dtype=torch.float64, device="cpu")  # (N, M)
 
-        w_final = ensemble.weights.detach().cpu().to(dtype=torch.float64)
-
+        # 2) take weights on CPU float64 for Hessian stability
         lambda_norm = float(args.lambda_norm)
 
+        w_for_hess = ensemble.weights.detach().to(dtype=torch.float64, device="cpu").clone()
+        w_for_hess.requires_grad_(True)
+
+        # 3) define NF-style loss in WEIGHT SPACE (no squared term, linear)
         def nll_w(w):
             p = (model_probs * w.view(1, -1)).sum(dim=1)
-            return -torch.log(p + 1e-12).sum() + lambda_norm * (w.sum() - 1.0) ** 2
+            p = torch.clamp_min(p, 1e-12)
+            return -torch.log(p).mean() + lambda_norm * (w.sum() - 1.0)
 
-        w_for_hess = w_final.detach().clone().requires_grad_(True)
-        H = hessian(nll_w, w_for_hess).detach()
+        # 4) Hessian with your manual routine
+        y = nll_w(w_for_hess)
+        H = get_hessian(y, w_for_hess).detach()  # (M, M)
+
         np.save(results_dir / "Hessian_weights.npy", H.numpy())
 
-        # sandwich covariance: event-wise grads WITHOUT penalty term
+        # 5) sandwich covariance
+        w_final = w_for_hess.detach()  # <-- use same point as Hessian, CPU float64
         cov_w = compute_sandwich_covariance_no_penalty(H, w_final, model_probs)
-        cov_w_np = cov_w.detach().cpu().numpy()
-        np.save(results_dir / "cov_weights.npy", cov_w_np)
+        np.save(results_dir / "cov_weights.npy", cov_w.detach().numpy())
 
     # ------------------------------------------------------------------
     # Build grid & evaluate final ensemble for plots
