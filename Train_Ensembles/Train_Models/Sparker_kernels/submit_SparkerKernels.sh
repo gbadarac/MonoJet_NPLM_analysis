@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=sparker_2gmm
-#SBATCH --array=0-19
+#SBATCH --array=0-9
 #SBATCH --time=08:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
@@ -28,7 +28,7 @@ DATA_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Gen
 BASE_OUTDIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail"
 mkdir -p "${BASE_OUTDIR}"
 
-CENTROIDS_PER_LAYER="100"
+CENTROIDS_PER_LAYER="40,30,20,10,5"
 N_MODELS=${SLURM_ARRAY_TASK_COUNT}
 
 # =============================

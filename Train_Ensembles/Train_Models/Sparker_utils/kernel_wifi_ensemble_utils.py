@@ -102,29 +102,6 @@ class Ensemble(nn.Module):
         if verbose:
             print(f"Total trainable parameters: {total}")
         return total
-    
-    def loss(self, x):
-        """
-        Notebook-style objective:
-        L(w) = - sum_n log( sum_i w_i f_i(x_n) ) + lambda_norm * (sum_i w_i - 1)^2
-        """
-        outs = torch.stack(
-            [m.call(x)[-1, :, 0] / m.get_norm()[-1] for m in self.ensemble],
-            dim=1,
-        )  # (N, M)
-
-        if self.weights_activation == "softmax":
-            w = self.softmax(self.weights.view(1, -1), dim=1)
-        else:
-            w = self.weights.view(1, -1)
-
-        p = (outs * w).sum(dim=1)  # (N,)
-        nll = -torch.log(p + 1e-12).sum()
-
-        # penalty on the *actual* weights used in p(x)
-        pen = self.lambda_norm * (w.sum() - 1.0) ** 2
-        return nll + pen
-
 
 # -------------------------------------------------------------------
 # Internal helpers to load config + members
@@ -154,47 +131,45 @@ def _load_kernel_config(folder_path: Path):
         coeffs_clip,
         model_type,
     )
-    
-def _last_valid_monitor_idx(widths_history: np.ndarray) -> int:
-    """
-    widths_history: (T, M, d)
-    Returns last index where the history is non-zero (not padded).
-    Matches supervisor notebook logic.
-    """
-    valid = np.where(np.abs(widths_history[:, 0, :]).sum(axis=1) > 0)[0]
-    return int(valid[-1]) if len(valid) else 0
+
 
 def _load_kernel_members(folder_path: Path, n_wifi_components, split_indices, n_layers):
     centroids_init, coefficients_init, widths_init = [], [], []
 
     for i in range(n_wifi_components):
-        # ADD THIS LINE (seed_dir was missing)
+        # use zero-padded seed directories: seed000, seed001, ...
         seed_dir = folder_path / f"seed{i:03d}"
 
-        tmp_w = np.load(seed_dir / "widths_history.npy")  # (T, M, d)
-        idx = _last_valid_monitor_idx(tmp_w)
+        widths_hist = np.load(seed_dir / "widths_history.npy")
 
-        centroids_flat = np.load(seed_dir / "centroids_history.npy")[idx]  # (M, d)
-        coeffs_flat    = np.load(seed_dir / "coeffs_history.npy")[idx]     # (M,) or (M,1)
-        widths_flat    = tmp_w[idx]                                        # (M, d)
+        # find last non-zero step
+        count = -1
+        for j in range(widths_hist.shape[0]):
+            if widths_hist[j][0].sum() != 0:
+                count += 1
+            else:
+                break
 
-        centroids_list = np.split(centroids_flat, split_indices, axis=0)
-        coeffs_list    = np.split(coeffs_flat, split_indices, axis=0)
-        widths_list    = np.split(widths_flat, split_indices, axis=0)
+        centroids_hist = np.load(seed_dir / "centroids_history.npy")
+        coeffs_hist = np.load(seed_dir / "coeffs_history.npy")
 
-        centroids_list = [torch.from_numpy(c).double() for c in centroids_list]
+        centroids_i = centroids_hist[count]
+        coeffs_i = coeffs_hist[count]
+        widths_i = widths_hist[count]
 
-        # IMPORTANT: ensure coeffs are at least 2D if Hierarchical expects (m_l, 1)
-        coeffs_list = [
-            torch.from_numpy(a).double().reshape(-1, 1) if a.ndim == 1 else torch.from_numpy(a).double()
-            for a in coeffs_list
-        ]
+        centroids_i = np.split(centroids_i, split_indices, axis=0)
+        coeffs_i = np.split(coeffs_i, split_indices, axis=0)
+        widths_i = np.split(widths_i, split_indices, axis=0)
 
-        widths_list = [torch.from_numpy(s).double() for s in widths_list]
-
-        centroids_init.append(centroids_list)
-        coefficients_init.append(coeffs_list)
-        widths_init.append(widths_list)
+        centroids_init.append(
+            [torch.from_numpy(centroids_i[j]).double() for j in range(n_layers)]
+        )
+        coefficients_init.append(
+            [torch.from_numpy(coeffs_i[j]).double() for j in range(n_layers)]
+        )
+        widths_init.append(
+            [torch.from_numpy(widths_i[j]).double() for j in range(n_layers)]
+        )
 
     return centroids_init, coefficients_init, widths_init
 
