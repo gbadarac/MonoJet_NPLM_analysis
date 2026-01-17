@@ -37,7 +37,9 @@ python fit_kernel_ensemble_weights_2d.py \
   --data_path "${DATA_PATH}" \
   --n_wifi_components 20 \
   --epochs 2000 \
-  --patience 10 \
-  --lr 0.05 \
+  --patience 100 \
+  --lr 0.1 \
   --seed_bootstrap 1234 \
+  --lambda_norm 1000 \
   --compute_covariance
+
