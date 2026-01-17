@@ -56,6 +56,8 @@ parser.add_argument("--n_models", type=int, default=None,
                     help="Number of models in the SLURM array, used only for naming")
 parser.add_argument("--centroids_per_layer", type=str, default=None,
                     help="Comma separated list, e.g. 40,30,20,10,5. Overrides n_layers and kernels_per_layer.")
+parser.add_argument("--n_layers", type=int, default=1)
+parser.add_argument("--kernels_per_layer", type=int, default=100)
 args = parser.parse_args()
 
 # --------------------------------------------------------------------------------
@@ -76,9 +78,8 @@ BASE_OUTPUT_DIRECTORY = args.outdir  # e.g. .../EstimationKernels_outputs/2_dim/
 def create_config_file(config_table, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     config_path = os.path.join(output_dir, 'config.json')
-    if not os.path.exists(config_path):
-        with open(config_path, 'w') as outfile:
-            json.dump(config_table, outfile, indent=4)
+    with open(config_path, "w") as outfile:
+        json.dump(config_table, outfile, indent=4)
     return config_path
 
 # Decide per layer centroids
@@ -365,6 +366,21 @@ def training_loop(seed, data_train_tot, config_json, json_path):
                 loss_value = loss_value + lam_entropy * CentroidsEntropyRegularizer(model.get_centroids_entropy())
 
             loss_value.backward()
+            
+            #------------------------------------------------------------
+            with torch.no_grad():
+                c = model.get_coeffs()
+                frac_nonzero = (c.abs() > 1e-12).float().mean().item()
+            print("coeffs stats:",
+                float(c.min().cpu()), float(c.max().cpu()),
+                "frac_nonzero", frac_nonzero)
+
+            # gradient norm (subito dopo backward, prima optimizer.step)
+            gn = model.get_coeffs().grad
+            if gn is not None:
+                print("grad coeffs norm:", float(gn.norm().cpu()))
+            #------------------------------------------------------------
+
             optimizer.step()
             model.clip_coeffs()
 
