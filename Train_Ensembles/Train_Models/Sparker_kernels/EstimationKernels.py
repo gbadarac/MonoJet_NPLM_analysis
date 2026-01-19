@@ -97,34 +97,33 @@ N_MODELS = args.n_models  # can be None
 
 # Width schedule like Gaia's, only if nlayers = 5 and a list was intended
 if N_LAYERS == 5:
-    width_fin_list = [0.05, 0.1, 0.15, 0.2, 0.25][::-1]
+    #width_fin_list = [0.05, 0.1, 0.15, 0.2, 0.25][::-1]
+    width_fin_list = [0.15, 0.10, 0.07, 0.05, 0.035]
 else:
     # Generic schedule that still ends at 0.05
-    width_fin_list = np.linspace(0.25, 0.05, N_LAYERS).tolist()[::-1]
+    width_fin_list = np.linspace(0.10, 0.02, N_LAYERS).tolist()[::-1]
 
 config_json = {
     "N": 100000,
     "model": "SparKer",
     "output_directory": None,
-
-    # Gaia style hyperparams
     "learning_rate": 0.05,
     "coeffs_reg": "unit1",
 
-    "epochs": [5000 for _ in range(N_LAYERS)],
-    "patience": 1000,
-    "plt_patience": 6000,
+    "epochs": [2000 for _ in range(N_LAYERS)],
+    "patience": 10,
+    "plt_patience": 2000,
     "plot": True,
     "plot_marginals": True,
 
-    "width_init": [3 for _ in range(N_LAYERS)],
+    "width_init": width_fin_list,
     "width_fin": width_fin_list,
 
     "t_ini": 0,
-    "decay_epochs": 0.8,
+    "decay_epochs": 0.5,
 
     "coeffs_init": [0 for _ in range(N_LAYERS)],
-    "coeffs_clip": 1000,
+    "coeffs_clip": 10000000,
 
     "number_centroids": number_centroids,
 

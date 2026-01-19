@@ -153,7 +153,7 @@ def main():
     parser.add_argument(
         "--lambda_norm",
         type=float,
-        default=1000.0,
+        default=1.0,
         help="Weight-sum penalty strength, notebook uses 1000",
     )
 
@@ -237,15 +237,7 @@ def main():
 
         # This is the core change: use the Ensemble.loss exactly like notebook
         # NF-style explicit loss on ensemble.weights (linear penalty, no square)
-        outs = torch.stack(
-            [m.call(bootstrap_sample)[-1, :, 0] / m.get_norm()[-1] for m in ensemble.ensemble],
-            dim=1,
-        )  # (N, M)
-
-        p = (outs * ensemble.weights.view(1, -1)).sum(dim=1)
-        p = torch.clamp_min(p, 1e-12)
-
-        loss = -torch.log(p).mean() + float(args.lambda_norm) * (ensemble.weights.sum() - 1.0)
+        loss = ensemble.loss(bootstrap_sample)
 
         loss.backward()
         opt.step()
@@ -256,8 +248,7 @@ def main():
             print(f"epoch {epoch} loss {cur:.6f} weights {w} sumw {w.sum():.6f}", flush=True)
             loss_hist.append(cur)
 
-            tol = getattr(ensemble, "tol", 0.0)
-            if cur + tol < best:
+            if cur < best:
                 best = cur
                 bad = 0
             else:
@@ -291,8 +282,8 @@ def main():
         # 3) define NF-style loss in WEIGHT SPACE (no squared term, linear)
         def nll_w(w):
             p = (model_probs * w.view(1, -1)).sum(dim=1)
-            p = torch.clamp_min(p, 1e-12)
-            return -torch.log(p).mean() + lambda_norm * (w.sum() - 1.0)
+            return -torch.log(p+1e-12).sum() + lambda_norm * (w.sum() - 1.0) 
+
 
         # 4) Hessian with your manual routine
         y = nll_w(w_for_hess)
@@ -302,7 +293,7 @@ def main():
 
         # 5) sandwich covariance
         w_final = w_for_hess.detach()  # <-- use same point as Hessian, CPU float64
-        cov_w = compute_sandwich_covariance_no_penalty(H, w_final, model_probs)
+        cov_w = compute_sandwich_covariance(H, w_final, model_probs, lam=1.0)
         np.save(results_dir / "cov_weights.npy", cov_w.detach().numpy())
 
     # ------------------------------------------------------------------
