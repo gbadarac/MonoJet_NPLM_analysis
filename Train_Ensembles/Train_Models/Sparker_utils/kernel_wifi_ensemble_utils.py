@@ -74,6 +74,16 @@ class Ensemble(nn.Module):
 
         # Trainable ensemble weights
         self.weights = nn.Parameter(weights_init.float(), requires_grad=train_weights)
+        
+    @torch.no_grad()
+    def member_probs(self, x):
+        """
+        Returns (N, M) tensor with f_j(x_n) for each ensemble member.
+        """
+        return torch.stack(
+            [m.call(x)[-1, :, 0] / m.get_norm()[-1] for m in self.ensemble],
+            dim=1
+        )
 
     def forward(self, x):
         """

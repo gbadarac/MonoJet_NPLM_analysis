@@ -40,6 +40,6 @@ python fit_kernel_ensemble_weights_2d.py \
   --patience 100 \
   --lr 0.1 \
   --seed_bootstrap 1234 \
-  --lambda_norm 1000 \
+  --lambda_norm 1.0 \
   --compute_covariance
 
