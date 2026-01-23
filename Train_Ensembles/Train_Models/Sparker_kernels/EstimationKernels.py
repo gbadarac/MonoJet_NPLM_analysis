@@ -32,7 +32,6 @@ from Sparker_utils.sampler_mixture import *
 from Sparker_utils.losses import *
 from Sparker_utils.regularizers import *
 
-
 from plot_utils import (
     plot_loss,
     plot_centroids_history,
@@ -97,7 +96,6 @@ N_MODELS = args.n_models  # can be None
 
 # Width schedule like Gaia's, only if nlayers = 5 and a list was intended
 if N_LAYERS == 5:
-    #width_fin_list = [0.05, 0.1, 0.15, 0.2, 0.25][::-1]
     width_fin_list = [0.15, 0.10, 0.07, 0.05, 0.035]
 else:
     # Generic schedule that still ends at 0.05
@@ -159,7 +157,8 @@ trial_name = (
     f"{n_models_str}"
     f"L{n_layers}_K{k_per_l}_M{total_M}_"
     f"Nboot{config_json['N']}_lr{config_json['learning_rate']}_"
-    f"clip_{int(config_json['coeffs_clip']):d}"
+    f"clip_{int(config_json['coeffs_clip']):d}_"
+    f"different_seeds"
 )
 
 # Final output directory for this trial:
@@ -178,11 +177,21 @@ def NLL(pred):
     return -torch.log(pred + 1e-10).mean()
 
 def training_loop(seed, data_train_tot, config_json, json_path):
-    # random seed
-    np.random.seed(seed)
-    print('Random seed:', seed)
+    # train kernels on different bootstrapped datasets 
+    # np.random.seed(seed)
+    # print('Random seed:', seed)
+    model_seed = int(seed)
+    bootstrap_seed = int(seed) + 10000
 
-    # CPU only for now (set cuda=True if you want to use GPUs later)
+    print("Seed:", seed)
+    print("  model_seed:", model_seed)
+    print("  bootstrap_seed:", bootstrap_seed)
+
+    # (optional but good) also seed torch for any torch randomness
+    torch.manual_seed(model_seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(model_seed)
+
     # CPU or GPU depending on availability
     cuda = torch.cuda.is_available()
     if cuda:
@@ -205,7 +214,11 @@ def training_loop(seed, data_train_tot, config_json, json_path):
     output_folder = os.path.join(OUTPUT_PATH, f"seed{seed:03d}")
     os.makedirs(output_folder, exist_ok=True)
 
-    # bootstrap data
+    # generate bootstrapped dataset 
+    #indices = np.random.choice(np.arange(len(data_train_tot)), size=N_train, replace=True)
+    #feature = torch.from_numpy(data_train_tot[indices]).to(DEVICE)
+    # generate bootstrapped dataset
+    np.random.seed(bootstrap_seed)
     indices = np.random.choice(np.arange(len(data_train_tot)), size=N_train, replace=True)
     feature = torch.from_numpy(data_train_tot[indices]).to(DEVICE)
 
@@ -242,10 +255,22 @@ def training_loop(seed, data_train_tot, config_json, json_path):
     decay_epochs = config_json["decay_epochs"]
     n_layers     = len(width_ini)
 
-    widths_init    = [np.ones((M[i], d)) * width_ini[i] for i in range(n_layers)]
-    coeffs_init    = [(np.random.binomial(p=0.5, n=1, size=(M[i], 1)) * 2 - 1) * config_json["coeffs_init"][i]
-                      for i in range(n_layers)]
-    centroids_init = [feature[np.random.randint(len_feature, size=M[i]), :] for i in range(n_layers)]
+    #widths_init    = [np.ones((M[i], d)) * width_ini[i] for i in range(n_layers)]
+    #coeffs_init    = [(np.random.binomial(p=0.5, n=1, size=(M[i], 1)) * 2 - 1) * config_json["coeffs_init"][i] for i in range(n_layers)]
+    #centroids_init = [feature[np.random.randint(len_feature, size=M[i]), :] for i in range(n_layers)]
+    
+    widths_init = [np.ones((M[i], d)) * width_ini[i] for i in range(n_layers)]
+
+    np.random.seed(model_seed)
+    coeffs_init = [
+        (np.random.binomial(p=0.5, n=1, size=(M[i], 1)) * 2 - 1) * config_json["coeffs_init"][i]
+        for i in range(n_layers)
+    ]
+    centroids_init = [
+        feature[np.random.randint(len_feature, size=M[i]), :]
+        for i in range(n_layers)
+    ]
+
 
     # move everything to DEVICE
     coeffs_init    = [torch.from_numpy(coeffs_init[i]).float().to(DEVICE) for i in range(n_layers)]

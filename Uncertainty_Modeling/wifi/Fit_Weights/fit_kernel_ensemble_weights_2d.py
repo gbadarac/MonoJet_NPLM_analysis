@@ -95,16 +95,6 @@ def compute_sandwich_covariance_no_penalty(H, w, model_probs):
     cov_w = V @ U @ V.T
     return cov_w / N
 
-@torch.no_grad()
-def project_simplex_(w: torch.Tensor, eps: float = 1e-12):
-    # enforce w_i >= 0 and sum w_i = 1
-    #w.clamp_(min=0.0)
-    s = w.sum()
-    if s < eps:
-        w.fill_(1.0 / w.numel())
-    else:
-        w.div_(s)
-
 # -------------------------------------------------------------------
 # Main
 # -------------------------------------------------------------------
@@ -182,7 +172,7 @@ def main():
     # --------------------------------------------------------------
     trial_name   = folder_path.name
     dataset_tag  = folder_path.parent.name
-    results_dir  = RESULTS_BASE_DIR / f"{trial_name}_{dataset_tag}_clamp_valid_weights_mixture_no_non_negativity"
+    results_dir  = RESULTS_BASE_DIR / f"{trial_name}_{dataset_tag}_clamp_valid_weights_mixture_no_non_negativity_Sean_correction_2"
     results_dir.mkdir(parents=True, exist_ok=True)
     print(f"Storing WiFi fit results in: {results_dir}")
 
@@ -261,8 +251,22 @@ def main():
     lambda_norm = float(args.lambda_norm)
 
     def nll_from_probs(w):
-        p = (model_probs * w.view(1, -1)).sum(dim=1)  # (N,)
-        return -torch.log(p + 1e-12).mean() + lambda_norm * (w.sum() - 1.0)
+        eps = 1e-12
+
+        # effective mixture weights used in the likelihood
+        s = w.sum()
+        w_eff = w / (s + eps)
+
+        # mixture likelihood
+        p = (model_probs * w_eff.view(1, -1)).sum(dim=1)  # (N,)
+        data_term = -torch.log(p + eps).mean()
+
+        # gauge fixing, keeps raw sum close to 1, prevents drift to huge scales
+        # IMPORTANT, use a squared penalty, not linear
+        constraint_term = lambda_norm * (s - 1.0)
+
+        return data_term + constraint_term
+
 
     loss_hist = []
     best = float("inf")
@@ -274,14 +278,34 @@ def main():
         loss = nll_from_probs(weights)
         loss.backward()
         opt.step()
-        project_simplex_(weights.data)
-
 
         if epoch % log_every == 0:
             cur = float(loss.detach().cpu().item())
+            
+            #--------------------------------------
+            # check the gradient of the loss 
+            gnorm = float(weights.grad.detach().norm().cpu().item())
+            print(f"epoch {epoch} loss {cur:.6e} |dL/dw| {gnorm:.3e}", flush=True)
+            #--------------------------------------
+            
             w_np = weights.detach().cpu().numpy()
             print(f"epoch {epoch} loss {cur:.6f} weights {w_np} sumw {w_np.sum():.6f}", flush=True)
             loss_hist.append(cur)
+            
+            with torch.no_grad():
+                w_raw = weights.detach()
+                w_eff = w_raw / (w_raw.sum() + 1e-12)
+
+            w_raw_np = w_raw.cpu().numpy()
+            w_eff_np = w_eff.cpu().numpy()
+
+            print(
+                f"epoch {epoch} loss {cur:.6f} "
+                f"sumw_raw {w_raw_np.sum():.6f} "
+                f"sumw_eff {w_eff_np.sum():.6f}",
+                flush=True
+            )
+            print(f"w_eff {w_eff_np}", flush=True)
 
             if cur < best:
                 best = cur
@@ -292,8 +316,9 @@ def main():
                     print(f"early stopping at epoch {epoch} best {best:.6f}", flush=True)
                     break
 
-    final_weights = weights.detach().cpu().numpy()
-    final_weights = final_weights / (final_weights.sum() + 1e-12)
+    with torch.no_grad():
+        w_raw = weights.detach().cpu()
+        final_weights = (w_raw / (w_raw.sum() + 1e-12)).numpy()
 
     np.save(results_dir / "final_weights.npy", final_weights)
     np.save(results_dir / "loss_history_wifi.npy", np.array(loss_hist, dtype=np.float32))
@@ -318,8 +343,15 @@ def main():
         w_for_hess.requires_grad_(True)
 
         def nll_w(w):
-            p = (model_probs * w.view(1, -1)).sum(dim=1)
-            return -torch.log(p + 1e-12).mean() + lambda_norm * (w.sum() - 1.0)
+            eps = 1e-12
+            s = w.sum()
+            w_eff = w / (s + eps)
+
+            p = (model_probs * w_eff.view(1, -1)).sum(dim=1)
+            data_term = -torch.log(p + eps).mean()
+
+            constraint_term = lambda_norm * (s - 1.0) 
+            return data_term + constraint_term
 
         y = nll_w(w_for_hess)
         H = get_hessian(y, w_for_hess).detach()

@@ -102,12 +102,14 @@ class Ensemble(nn.Module):
         weighted = outs * w  # broadcasting
         return weighted.sum(dim=1)  # (batch,)
     
-    def norm_regularization(self):
-        return self.lambda_norm * (self.weights.sum() - 1.0) 
+    def norm_regularization(self, N: int):
+        return self.lambda_norm * (self.weights.sum() - 1.0) / N
 
     def loss(self, x):
         p = self.forward(x)
-        return -torch.log(p+1e-12).sum() + self.norm_regularization()
+        N = x.shape[0]
+        data_term = -torch.log(p + 1e-12).mean()
+        return data_term + self.norm_regularization(N)
 
     def count_trainable_parameters(self, verbose=False):
         total = 0
