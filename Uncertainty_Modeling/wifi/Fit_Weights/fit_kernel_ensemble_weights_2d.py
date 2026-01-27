@@ -48,7 +48,7 @@ def get_hessian(loss, weights):
         H_rows.append(grad2)
     return torch.stack(H_rows)
 
-def compute_sandwich_covariance(H, w, model_probs):
+def compute_sandwich_covariance(H, w, model_probs, lam=1.0):
     """
     H : (M, M) Hessian of NLL wrt weights
     w : (M,) final weights
@@ -63,7 +63,8 @@ def compute_sandwich_covariance(H, w, model_probs):
 
     # V = H^{-1}
     eye = torch.eye(M, dtype=torch.float64, device=H.device)
-    V = torch.linalg.solve(H, eye)
+    H_reg = H + lam * eye
+    V = torch.linalg.solve(H_reg, eye)
 
     # f(x) = sum_j w_j f_j(x)
     f = (model_probs * w.view(1, -1)).sum(dim=1)  # (N,)
@@ -172,7 +173,7 @@ def main():
     # --------------------------------------------------------------
     trial_name   = folder_path.name
     dataset_tag  = folder_path.parent.name
-    results_dir  = RESULTS_BASE_DIR / f"{trial_name}_{dataset_tag}_clamp_valid_weights_mixture_no_non_negativity_Sean_correction_2"
+    results_dir  = RESULTS_BASE_DIR / f"{trial_name}_{dataset_tag}_Sean_correction"
     results_dir.mkdir(parents=True, exist_ok=True)
     print(f"Storing WiFi fit results in: {results_dir}")
 
@@ -211,15 +212,16 @@ def main():
     rng = np.random.default_rng(args.seed_bootstrap)
     idx = rng.integers(0, len(data_train_tot), size=N_train)
     bootstrap_np = data_train_tot[idx]
-    bootstrap_sample_cpu = torch.from_numpy(bootstrap_np).to(device=device_kernel, dtype=torch.float64)
+    bootstrap_sample = torch.from_numpy(bootstrap_np).to(device=device_kernel, dtype=torch.float64)
+    bootstrap_sample_cpu = bootstrap_sample.detach().cpu().numpy()
 
     # ------------------------------------------------------------
     # 2) Precompute model_probs ONCE on CPU  (N, M)
     # ------------------------------------------------------------
     print("Precomputing model_probs on CPU ...", flush=True)
     with torch.no_grad():
-        model_probs_cpu = ensemble.member_probs(bootstrap_sample_cpu).to(dtype=torch.float64, device="cpu").contiguous()
-        
+        model_probs_cpu = ensemble.member_probs(bootstrap_sample).to(dtype=torch.float64, device="cpu").contiguous()
+
         #----------------------------------------------------------------------
         # --- critical: member "densities" must be nonnegative for a likelihood
         model_probs_cpu = torch.clamp_min(model_probs_cpu, 0.0)
@@ -280,18 +282,26 @@ def main():
         opt.step()
 
         if epoch % log_every == 0:
-            cur = float(loss.detach().cpu().item())
-            
-            #--------------------------------------
-            # check the gradient of the loss 
+            # recompute loss AFTER gauge fixing, with current weights
+            with torch.no_grad():
+                loss_after = nll_from_probs(weights)
+                cur = float(loss_after.detach().cpu().item())
+
+            # gradient norm you print is the grad from the last backward (pre step)
             gnorm = float(weights.grad.detach().norm().cpu().item())
             print(f"epoch {epoch} loss {cur:.6e} |dL/dw| {gnorm:.3e}", flush=True)
-            #--------------------------------------
             
+            g = weights.grad.detach()
+            g_proj = g - g.mean()
+            gnorm_proj = float(g_proj.norm().cpu().item())
+            print(f"epoch {epoch} |g_proj| {gnorm_proj:.3e}", flush=True)
+
             w_np = weights.detach().cpu().numpy()
             print(f"epoch {epoch} loss {cur:.6f} weights {w_np} sumw {w_np.sum():.6f}", flush=True)
+
             loss_hist.append(cur)
-            
+
+            # since you gauge fix sum(w)=1, w_eff == w_raw numerically
             with torch.no_grad():
                 w_raw = weights.detach()
                 w_eff = w_raw / (w_raw.sum() + 1e-12)
@@ -358,7 +368,7 @@ def main():
         np.save(results_dir / "Hessian_weights.npy", H.numpy())
 
         w_final = w_for_hess.detach()
-        cov_w = compute_sandwich_covariance(H, w_final, model_probs)
+        cov_w = compute_sandwich_covariance(H, w_final, model_probs, lam=1.0)
         np.save(results_dir / "cov_weights.npy", cov_w.detach().numpy())
 
     # ------------------------------------------------------------------
@@ -382,13 +392,13 @@ def main():
         grid = torch.stack([X0.flatten(), X1.flatten()], dim=1)
 
         with torch.no_grad():
-            Y = ensemble(grid) 
+            Y = ensemble(grid) / ensemble.weights.sum()
         cov_w_np = np.load(results_dir / "cov_weights.npy") if args.compute_covariance else None
 
         # Marginals + ratio
         plot_final_marginals_and_ratio(
             ensemble,
-            bootstrap_sample_cpu,
+            bootstrap_sample,
             grid,
             x0,
             x1,
@@ -418,8 +428,8 @@ def main():
         x0_h = torch.arange(-2.0, 3.0, 0.09).double().numpy()
         x1_h = torch.arange(-1.0, 2.0, 0.09).double().numpy()
         plt.hist2d(
-            bootstrap_sample_cpu[:, 0].cpu().numpy(),
-            bootstrap_sample_cpu[:, 1].cpu().numpy(),
+            bootstrap_sample[:, 0].cpu().numpy(),
+            bootstrap_sample[:, 1].cpu().numpy(),
             bins=[x0_h, x1_h],
             density=True,
         )
@@ -429,10 +439,10 @@ def main():
         plt.close(fig)
 
         feature_names = ["Feature 1", "Feature 2"]
-
+        
         plot_ensemble_marginals_2d_kernel(
             kernel_models=ensemble.ensemble,
-            x_data=bootstrap_sample_cpu.detach().cpu(),                  # (N,2)
+            x_data=bootstrap_sample.detach().cpu(),                  # (N,2)
             weights=ensemble.weights.detach().cpu(),         # (M,)
             cov_w=cov_w_np,                         # (M,M) or None
             feature_names=feature_names,
