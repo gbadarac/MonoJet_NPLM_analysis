@@ -48,7 +48,7 @@ def get_hessian(loss, weights):
         H_rows.append(grad2)
     return torch.stack(H_rows)
 
-def compute_sandwich_covariance(H, w, model_probs, lam=1.0):
+def compute_sandwich_covariance(H, w, model_probs, lam=1e-6):
     """
     H : (M, M) Hessian of NLL wrt weights
     w : (M,) final weights
@@ -67,12 +67,16 @@ def compute_sandwich_covariance(H, w, model_probs, lam=1.0):
     V = torch.linalg.solve(H_reg, eye)
 
     # f(x) = sum_j w_j f_j(x)
-    f = (model_probs * w.view(1, -1)).sum(dim=1)  # (N,)
+    f_raw = (model_probs * w.view(1, -1)).sum(dim=1)  # (N,)
+    f = torch.clamp_min(f_raw, 0.0)
 
-    grads = torch.zeros((N, M), dtype=torch.float64, device=H.device)
-    for j in range(M):
-        f_j = model_probs[:, j]
-        grads[:, j] = -(f_j / (f + 1e-12)) 
+    eps = 1e-12
+    # gradient of -log(f + eps) wrt w is -(f_j / (f + eps))
+    grads = -(model_probs / (f[:, None] + eps))  # (N, M)
+
+    # BUT: because f = clamp_min(f_raw, 0), gradient is zero where f_raw <= 0
+    mask = (f_raw > 0).to(dtype=torch.float64, device=H.device)  # (N,)
+    grads = grads * mask[:, None]
 
     mean_grad = grads.mean(dim=0, keepdim=True)
     U = ((grads - mean_grad).T @ (grads - mean_grad)) / N
@@ -173,7 +177,7 @@ def main():
     # --------------------------------------------------------------
     trial_name   = folder_path.name
     dataset_tag  = folder_path.parent.name
-    results_dir  = RESULTS_BASE_DIR / f"{trial_name}_{dataset_tag}_Sean_correction"
+    results_dir  = RESULTS_BASE_DIR / f"{trial_name}_{dataset_tag}_latest_Sean_corrections_and_no_penalty"
     results_dir.mkdir(parents=True, exist_ok=True)
     print(f"Storing WiFi fit results in: {results_dir}")
 
@@ -242,11 +246,18 @@ def main():
     # ------------------------------------------------------------
     device_fit = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model_probs = model_probs_cpu.to(device=device_fit, dtype=torch.float64, non_blocking=True)
-
-    weights = torch.nn.Parameter(
-        ensemble.weights.detach().to(device=device_fit, dtype=torch.float64).clone(),
-        requires_grad=True
-    )
+    
+    # start from uniform, add noise, then renormalise to sum 1
+    w0 = ensemble.weights.detach().to(device=device_fit, dtype=torch.float64).clone()
+    w0 = w0 + 1e-2 * torch.randn_like(w0)
+    s = w0.sum()
+    eps=1e-12
+    if s < eps:
+        w0.fill_(1.0 / w0.numel())
+    else:
+        w0.div_(s)
+        
+    weights = torch.nn.Parameter(w0, requires_grad=True)
 
     opt = torch.optim.Adam([weights], lr=args.lr)
 
@@ -255,17 +266,17 @@ def main():
     def nll_from_probs(w):
         eps = 1e-12
 
-        # effective mixture weights used in the likelihood
-        s = w.sum()
-        w_eff = w / (s + eps)
+        # raw mixture (can be negative if weights are negative)
+        p_raw = (model_probs * w.view(1, -1)).sum(dim=1)  # (N,)
 
-        # mixture likelihood
-        p = (model_probs * w_eff.view(1, -1)).sum(dim=1)  # (N,)
+        # clamp probability to avoid log of negative
+        p = torch.clamp_min(p_raw, 0.0)
+
         data_term = -torch.log(p + eps).mean()
 
-        # gauge fixing, keeps raw sum close to 1, prevents drift to huge scales
-        # IMPORTANT, use a squared penalty, not linear
-        constraint_term = lambda_norm * (s - 1.0)
+        # MUST be squared, otherwise loss -> -inf when sum(w) -> -inf
+        s = w.sum()
+        constraint_term = lambda_norm * (s - 1.0) 
 
         return data_term + constraint_term
 
@@ -282,7 +293,6 @@ def main():
         opt.step()
 
         if epoch % log_every == 0:
-            # recompute loss AFTER gauge fixing, with current weights
             with torch.no_grad():
                 loss_after = nll_from_probs(weights)
                 cur = float(loss_after.detach().cpu().item())
@@ -301,21 +311,16 @@ def main():
 
             loss_hist.append(cur)
 
-            # since you gauge fix sum(w)=1, w_eff == w_raw numerically
             with torch.no_grad():
                 w_raw = weights.detach()
-                w_eff = w_raw / (w_raw.sum() + 1e-12)
 
             w_raw_np = w_raw.cpu().numpy()
-            w_eff_np = w_eff.cpu().numpy()
 
             print(
                 f"epoch {epoch} loss {cur:.6f} "
-                f"sumw_raw {w_raw_np.sum():.6f} "
-                f"sumw_eff {w_eff_np.sum():.6f}",
+                f"sumw_raw {w_raw_np.sum():.6f} ",
                 flush=True
             )
-            print(f"w_eff {w_eff_np}", flush=True)
 
             if cur < best:
                 best = cur
@@ -328,7 +333,7 @@ def main():
 
     with torch.no_grad():
         w_raw = weights.detach().cpu()
-        final_weights = (w_raw / (w_raw.sum() + 1e-12)).numpy()
+        final_weights = w_raw.numpy()
 
     np.save(results_dir / "final_weights.npy", final_weights)
     np.save(results_dir / "loss_history_wifi.npy", np.array(loss_hist, dtype=np.float32))
@@ -354,13 +359,15 @@ def main():
 
         def nll_w(w):
             eps = 1e-12
-            s = w.sum()
-            w_eff = w / (s + eps)
 
-            p = (model_probs * w_eff.view(1, -1)).sum(dim=1)
+            p_raw = (model_probs * w.view(1, -1)).sum(dim=1)
+            p = torch.clamp_min(p_raw, 0.0)
+
             data_term = -torch.log(p + eps).mean()
 
-            constraint_term = lambda_norm * (s - 1.0) 
+            s = w.sum()
+            constraint_term = lambda_norm * (s - 1.0)
+
             return data_term + constraint_term
 
         y = nll_w(w_for_hess)
@@ -392,7 +399,7 @@ def main():
         grid = torch.stack([X0.flatten(), X1.flatten()], dim=1)
 
         with torch.no_grad():
-            Y = ensemble(grid) / ensemble.weights.sum()
+            Y = ensemble(grid) 
         cov_w_np = np.load(results_dir / "cov_weights.npy") if args.compute_covariance else None
 
         # Marginals + ratio

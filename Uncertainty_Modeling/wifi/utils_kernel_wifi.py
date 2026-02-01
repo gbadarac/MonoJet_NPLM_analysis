@@ -14,6 +14,9 @@ try:
 except Exception:
     pass
 
+from pathlib import Path
+from matplotlib.gridspec import GridSpec
+
 # ------------------
 # Core helpers (same spirit as utils_wifi.py)
 # ------------------
@@ -26,8 +29,10 @@ def probs(weights, model_probs):
     return (model_probs * weights.view(1, -1)).sum(dim=1)
 
 def log_likelihood(weights, model_probs):
-    p_x = probs(weights, model_probs) + 1e-12
-    return torch.log(p_x).mean()
+    eps = 1e-12
+    p_raw = probs(weights, model_probs)
+    p = torch.clamp_min(p_raw, 0.0)
+    return torch.log(p + eps).mean()
 
 def profile_likelihood_scan(model_probs, w_best, out_dir, n_points=200):
     """
@@ -43,19 +48,13 @@ def profile_likelihood_scan(model_probs, w_best, out_dir, n_points=200):
     n_models = len(w_best)
 
     for i in range(n_models):
-        w_scan = np.linspace(0.0, 1.0, n_points)
+        w_best = np.array(w_best, dtype=float)
+        w_scan = np.linspace(w_best[i] - 2.0, w_best[i] + 2.0, n_points)  # choose range you like
         nll_vals = []
 
-        w_rest = np.delete(w_best, i)
-        s = np.sum(w_rest)
-        if s <= 0:
-            print(f"Skipping w_{i}: sum of rest weights <= 0.")
-            continue
-        w_rest /= s
-
         for w_i_val in w_scan:
-            w_other = (1.0 - w_i_val) * w_rest
-            w_full = np.insert(w_other, i, w_i_val)
+            w_full = w_best.copy()
+            w_full[i] = w_i_val
             w_tensor = torch.tensor(w_full, dtype=torch.float64)
             nll = -log_likelihood(w_tensor, model_probs.double()).item()
             nll_vals.append(nll)
@@ -80,13 +79,11 @@ def profile_likelihood_scan(model_probs, w_best, out_dir, n_points=200):
         plt.close()
 
 def ensemble_pred(weights, model_probs):
-    """
-    weights: (M,) torch
-    model_probs: (B,M) torch
-    returns: (B,) numpy
-    """
+    eps = 1e-12
     w = weights.to(model_probs.device)
-    return (model_probs * w.view(1, -1)).sum(dim=1).detach().cpu().numpy()
+    p_raw = (model_probs * w.view(1, -1)).sum(dim=1)
+    p = torch.clamp_min(p_raw, 0.0)
+    return p.detach().cpu().numpy()
 
 def ensemble_unc(cov_w, model_probs):
     """
@@ -112,9 +109,9 @@ def kernel_eval_probs(kernel_models, x):
         vals = []
         for m in kernel_models:
             p = m.call(x)[-1, :, 0] / m.get_norm()[-1]
+            p = torch.clamp_min(p, 0.0)
             vals.append(p)
         return torch.stack(vals, dim=1)
-
 
 def plot_ensemble_marginals_2d_kernel(
     kernel_models,
@@ -214,11 +211,11 @@ def plot_ensemble_marginals_2d_kernel(
         else:
             f_err = np.zeros_like(f_binned)
 
-        # Normalize over x_i axis
+        # Normalize over x_i axis (critical)
         area = np.sum(f_binned * bin_widths)
-        if area > 0:
+        if area != 0.0:
             f_binned /= area
-            f_err /= area
+            f_err   /= abs(area)
 
         # Save npz like NF code
         out_marginal = os.path.join(outdir, f"marginal_feature_{i+1}_data.npz")
@@ -286,15 +283,9 @@ def plot_ensemble_marginals_2d_kernel(
         plt.savefig(outpath)
         plt.close()
 
-
 # -------------------------------------------------------------------
 # Plot helpers
 # -------------------------------------------------------------------
-from pathlib import Path
-import numpy as np
-import torch
-import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
 
 def plot_final_marginals_and_ratio(
     ensemble, x_data, grid, x0, x1, Y, outdir, tag="",
@@ -396,6 +387,7 @@ def plot_final_marginals_and_ratio(
     # Ensemble marginals from 2D grid density
     # ------------------------------------------------------------
     Y2 = Y.detach().cpu().view(Ny, Nx)          # (Ny, Nx)
+    Y2 = torch.clamp_min(Y2, 0.0)
 
     marg0 = (Y2.sum(dim=0) * dx1).numpy()       # p(x0) evaluated on x0 grid
     marg1 = (Y2.sum(dim=1) * dx0).numpy()       # p(x1) evaluated on x1 grid
@@ -414,6 +406,10 @@ def plot_final_marginals_and_ratio(
         m = ensemble.ensemble[ni]
         with torch.no_grad():
             z = (m.call(grid)[-1, :, 0] / m.get_norm()[-1]).detach().cpu().view(Ny, Nx)
+            z = torch.clamp_min(z, 0.0)
+            Zm = (z.sum() * dx0 * dx1).item()
+            if Zm > 0.0:
+                z = z / Zm
             m0 = (z.sum(dim=0) * dx1).numpy()
             m1 = (z.sum(dim=1) * dx0).numpy()
 
