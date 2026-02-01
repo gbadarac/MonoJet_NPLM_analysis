@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 import matplotlib as mpl
 mpl.use("Agg")  # non-interactive backend for cluster
@@ -177,7 +178,7 @@ def main():
     # --------------------------------------------------------------
     trial_name   = folder_path.name
     dataset_tag  = folder_path.parent.name
-    results_dir  = RESULTS_BASE_DIR / f"{trial_name}_{dataset_tag}_latest_Sean_corrections_and_no_penalty"
+    results_dir  = RESULTS_BASE_DIR / f"{trial_name}_{dataset_tag}_latest_Sean_corrections_and_no_penalty_only_minimizer"
     results_dir.mkdir(parents=True, exist_ok=True)
     print(f"Storing WiFi fit results in: {results_dir}")
 
@@ -242,44 +243,44 @@ def main():
     print(f"model_probs_cpu computed: shape={tuple(model_probs_cpu.shape)}", flush=True)
 
     # ------------------------------------------------------------
-    # 3) Optimize weights on GPU (fast), using model_probs only
+    # 3) Optimize weights on GPU (fast), sum-to-one enforced by construction
+    #    (no penalty, no positivity constraint on weights)
     # ------------------------------------------------------------
     device_fit = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model_probs = model_probs_cpu.to(device=device_fit, dtype=torch.float64, non_blocking=True)
+
+    M = model_probs.shape[1]
+
+    # Initialise from current ensemble weights + small noise
+    w_init = ensemble.weights.detach().to(device=device_fit, dtype=torch.float64).clone()
+    w_init = w_init + 1e-2 * torch.randn_like(w_init)
     
-    # start from uniform, add noise, then renormalise to sum 1
-    w0 = ensemble.weights.detach().to(device=device_fit, dtype=torch.float64).clone()
-    w0 = w0 + 1e-2 * torch.randn_like(w0)
-    s = w0.sum()
-    eps=1e-12
-    if s < eps:
-        w0.fill_(1.0 / w0.numel())
-    else:
-        w0.div_(s)
-        
-    weights = torch.nn.Parameter(w0, requires_grad=True)
+    print("w_init:", w_init.detach().cpu().numpy(), flush=True)
+    print("w_init sum:", float(w_init.sum().detach().cpu().item()), flush=True)
 
-    opt = torch.optim.Adam([weights], lr=args.lr)
+    # Free parameters: u = first M-1 weights
+    u0 = w_init[:-1].clone()
+    u = torch.nn.Parameter(u0, requires_grad=True)
 
-    lambda_norm = float(args.lambda_norm)
+    opt = torch.optim.Adam([u], lr=args.lr)
 
-    def nll_from_probs(w):
+    def build_full_weights(u_vec: torch.Tensor) -> torch.Tensor:
+        # Enforce sum(w)=1 by defining the last weight as 1 - sum(first M-1)
+        w_last = 1.0 - u_vec.sum()
+        return torch.cat([u_vec, w_last.view(1)], dim=0)  # (M,)
+
+    def nll_from_probs(u_vec: torch.Tensor) -> torch.Tensor:
         eps = 1e-12
+        w = build_full_weights(u_vec)  # (M,)
 
-        # raw mixture (can be negative if weights are negative)
+        # raw mixture (can be negative because weights can be negative)
         p_raw = (model_probs * w.view(1, -1)).sum(dim=1)  # (N,)
 
-        # clamp probability to avoid log of negative
-        p = torch.clamp_min(p_raw, 0.0)
+        # IMPORTANT: keep the density positive and differentiable
+        # This does NOT constrain weights to be positive.
+        p = F.softplus(p_raw) + eps
 
-        data_term = -torch.log(p + eps).mean()
-
-        # MUST be squared, otherwise loss -> -inf when sum(w) -> -inf
-        s = w.sum()
-        constraint_term = lambda_norm * (s - 1.0) 
-
-        return data_term + constraint_term
-
+        return -torch.log(p).mean()
 
     loss_hist = []
     best = float("inf")
@@ -288,39 +289,26 @@ def main():
 
     for epoch in range(1, args.epochs + 1):
         opt.zero_grad(set_to_none=True)
-        loss = nll_from_probs(weights)
+        loss = nll_from_probs(u)
         loss.backward()
         opt.step()
 
         if epoch % log_every == 0:
             with torch.no_grad():
-                loss_after = nll_from_probs(weights)
+                loss_after = nll_from_probs(u)
                 cur = float(loss_after.detach().cpu().item())
 
             # gradient norm you print is the grad from the last backward (pre step)
-            gnorm = float(weights.grad.detach().norm().cpu().item())
-            print(f"epoch {epoch} loss {cur:.6e} |dL/dw| {gnorm:.3e}", flush=True)
-            
-            g = weights.grad.detach()
-            g_proj = g - g.mean()
-            gnorm_proj = float(g_proj.norm().cpu().item())
-            print(f"epoch {epoch} |g_proj| {gnorm_proj:.3e}", flush=True)
+            gnorm = float(u.grad.detach().norm().cpu().item())
+            print(f"epoch {epoch} loss {cur:.6e} |dL/du| {gnorm:.3e}", flush=True)
 
-            w_np = weights.detach().cpu().numpy()
-            print(f"epoch {epoch} loss {cur:.6f} weights {w_np} sumw {w_np.sum():.6f}", flush=True)
+            w_sum = float(build_full_weights(u.detach()).sum().detach().cpu().item())
+            print(f"epoch {epoch} sumw {w_sum:.6f}", flush=True)
+            
+            w_now = build_full_weights(u.detach()).cpu().numpy()
+            print(f"epoch {epoch} weights {w_now}", flush=True)
 
             loss_hist.append(cur)
-
-            with torch.no_grad():
-                w_raw = weights.detach()
-
-            w_raw_np = w_raw.cpu().numpy()
-
-            print(
-                f"epoch {epoch} loss {cur:.6f} "
-                f"sumw_raw {w_raw_np.sum():.6f} ",
-                flush=True
-            )
 
             if cur < best:
                 best = cur
@@ -332,13 +320,11 @@ def main():
                     break
 
     with torch.no_grad():
-        w_raw = weights.detach().cpu()
-        final_weights = w_raw.numpy()
+        final_weights = build_full_weights(u.detach()).cpu().numpy()
 
     np.save(results_dir / "final_weights.npy", final_weights)
     np.save(results_dir / "loss_history_wifi.npy", np.array(loss_hist, dtype=np.float32))
     print("Saved final_weights.npy and loss_history_wifi.npy", flush=True)
-
 
     # copy weights back into ensemble (CPU) for any later plotting code that expects ensemble.weights
     with torch.no_grad():

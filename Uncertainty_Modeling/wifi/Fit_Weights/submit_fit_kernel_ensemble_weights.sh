@@ -41,5 +41,6 @@ python fit_kernel_ensemble_weights_2d.py \
   --lr 0.1 \
   --seed_bootstrap 1234 \
   --lambda_norm 1.0 \
-  --compute_covariance
+  --no_plots
+#  --compute_covariance
 
