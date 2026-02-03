@@ -6,8 +6,9 @@
 #SBATCH --mem=16G
 
 # >>> adapt these two lines to your cluster if needed <<<
-#SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
+# #SBATCH --partition=gpu
+# #SBATCH --gres=gpu:1
+
 
 #SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/logs/sparker_%A_%a.out
 #SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/logs/sparker_%A_%a.err

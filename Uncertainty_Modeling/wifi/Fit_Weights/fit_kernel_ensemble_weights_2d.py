@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 import matplotlib as mpl
 mpl.use("Agg")  # non-interactive backend for cluster
@@ -47,53 +48,6 @@ def get_hessian(loss, weights):
         grad2 = grad(grad1[i], weights, retain_graph=True, allow_unused=False)[0]
         H_rows.append(grad2)
     return torch.stack(H_rows)
-
-def compute_sandwich_covariance(H, w, model_probs, lam=1.0):
-    """
-    H : (M, M) Hessian of NLL wrt weights
-    w : (M,) final weights
-    model_probs : (N, M) f_j(x_n)
-    lam : L2 contribution from norm regularization
-    """
-    M = len(w)
-    N = model_probs.shape[0]
-
-    w = w.detach().clone().double().requires_grad_(False)
-    model_probs = model_probs.double()
-
-    # V = H^{-1}
-    eye = torch.eye(M, dtype=torch.float64, device=H.device)
-    V = torch.linalg.solve(H, eye)
-
-    # f(x) = sum_j w_j f_j(x)
-    f = (model_probs * w.view(1, -1)).sum(dim=1)  # (N,)
-
-    grads = torch.zeros((N, M), dtype=torch.float64, device=H.device)
-    for j in range(M):
-        f_j = model_probs[:, j]
-        grads[:, j] = -(f_j / (f + 1e-12)) + lam
-
-    mean_grad = grads.mean(dim=0, keepdim=True)
-    U = ((grads - mean_grad).T @ (grads - mean_grad)) / N
-
-    cov_w = V @ U @ V.T
-    cov_w = cov_w / N
-    return cov_w
-
-def compute_sandwich_covariance_no_penalty(H, w, model_probs):
-    M = len(w)
-    N = model_probs.shape[0]
-    eye = torch.eye(M, dtype=torch.float64, device=H.device)
-    V = torch.linalg.solve(H, eye)
-
-    f = (model_probs * w.view(1, -1)).sum(dim=1)
-    grads = -(model_probs / (f[:, None] + 1e-12))  # (N, M)
-
-    mean_grad = grads.mean(dim=0, keepdim=True)
-    U = ((grads - mean_grad).T @ (grads - mean_grad)) / N
-
-    cov_w = V @ U @ V.T
-    return cov_w / N
 
 # -------------------------------------------------------------------
 # Main
@@ -150,13 +104,6 @@ def main():
         help="Path to .npy file with target data of shape (N, d)",
     )
 
-    parser.add_argument(
-        "--lambda_norm",
-        type=float,
-        default=1.0,
-        help="Weight-sum penalty strength, notebook uses 1000",
-    )
-
     args = parser.parse_args()
 
     folder_path = Path(args.folder_path).resolve()
@@ -172,7 +119,7 @@ def main():
     # --------------------------------------------------------------
     trial_name   = folder_path.name
     dataset_tag  = folder_path.parent.name
-    results_dir  = RESULTS_BASE_DIR / f"{trial_name}_{dataset_tag}"
+    results_dir  = RESULTS_BASE_DIR / f"{trial_name}_{dataset_tag}_latest_Sean_corrections_and_no_penalty_2"
     results_dir.mkdir(parents=True, exist_ok=True)
     print(f"Storing WiFi fit results in: {results_dir}")
 
@@ -193,7 +140,6 @@ def main():
     ensemble, config_json = build_wifi_ensemble(
         folder_path=folder_path,
         n_wifi_components=args.n_wifi_components,
-        lambda_norm=args.lambda_norm,
         train_centroids=False,
         train_coeffs=False,
         train_widths=False,
@@ -201,51 +147,106 @@ def main():
         weights_activation=None,
     )
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # Make sure ensemble is on the right device and dtype
-    ensemble = ensemble.to(device=device, dtype=torch.float64)
+    # ------------------------------------------------------------
+    # 1) Keep SparKer on CPU for evaluation (no SPARKutils changes)
+    # ------------------------------------------------------------
+    device_kernel = torch.device("cpu")
+    ensemble = ensemble.to(device=device_kernel, dtype=torch.float64)
 
     N_train = int(config_json["N"])
-    print("Training size N from config:", N_train)
-
-    print("Trainable parameters in ensemble:")
-    ensemble.count_trainable_parameters(verbose=True)
-
-    # ------------------------------------------------------------------
-    # Bootstrap sample, matches supervisor notebook
-    # ------------------------------------------------------------------
     rng = np.random.default_rng(args.seed_bootstrap)
     idx = rng.integers(0, len(data_train_tot), size=N_train)
     bootstrap_np = data_train_tot[idx]
+    bootstrap_sample = torch.from_numpy(bootstrap_np).to(device=device_kernel, dtype=torch.float64)
+    bootstrap_sample_cpu = bootstrap_sample.detach().cpu().numpy()
 
-    bootstrap_sample = torch.from_numpy(bootstrap_np).to(device=device, dtype=torch.float64)
+    # ------------------------------------------------------------
+    # 2) Precompute model_probs ONCE on CPU  (N, M)
+    # ------------------------------------------------------------
+    print("Precomputing model_probs on CPU ...", flush=True)
+    with torch.no_grad():
+        model_probs_cpu = ensemble.member_probs(bootstrap_sample).to(dtype=torch.float64, device="cpu").contiguous()
 
-    # Optional sanity check, remove later
-    # print("device check", bootstrap_sample.device, next(ensemble.parameters()).device)
+        #----------------------------------------------------------------------
+        # --- critical: member "densities" must be nonnegative for a likelihood
+        model_probs_cpu = torch.clamp_min(model_probs_cpu, 0.0)
 
-    opt = torch.optim.Adam(ensemble.parameters(), lr=args.lr)
+        print(
+            "model_probs stats:",
+            "min", float(model_probs_cpu.min()),
+            "max", float(model_probs_cpu.max()),
+            "finite", bool(torch.isfinite(model_probs_cpu).all()),
+            flush=True
+        )
+        #----------------------------------------------------------------------
+        
+    print(f"model_probs_cpu computed: shape={tuple(model_probs_cpu.shape)}", flush=True)
+
+    # ------------------------------------------------------------
+    # 3) Optimize weights on GPU (fast), sum-to-one enforced by construction
+    #    (no penalty, no positivity constraint on weights)
+    # ------------------------------------------------------------
+    device_fit = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model_probs = model_probs_cpu.to(device=device_fit, dtype=torch.float64, non_blocking=True)
+
+    M = model_probs.shape[1]
+
+    # Initialise from current ensemble weights + small noise
+    w_init = ensemble.weights.detach().to(device=device_fit, dtype=torch.float64).clone()
+    w_init = w_init + 1e-2 * torch.randn_like(w_init)
+    
+    print("w_init:", w_init.detach().cpu().numpy(), flush=True)
+    print("w_init sum:", float(w_init.sum().detach().cpu().item()), flush=True)
+
+    # Free parameters: u = first M-1 weights
+    u0 = w_init[:-1].clone()
+    u = torch.nn.Parameter(u0, requires_grad=True)
+
+    opt = torch.optim.Adam([u], lr=args.lr)
+
+    def build_full_weights(u_vec: torch.Tensor) -> torch.Tensor:
+        # Enforce sum(w)=1 by defining the last weight as 1 - sum(first M-1)
+        w_last = 1.0 - u_vec.sum()
+        return torch.cat([u_vec, w_last.view(1)], dim=0)  # (M,)
+
+    def nll_from_probs(u_vec: torch.Tensor) -> torch.Tensor:
+        eps = 1e-12
+        w = build_full_weights(u_vec)  # (M,)
+
+        # raw mixture (can be negative because weights can be negative)
+        p = (model_probs * w.view(1, -1)).sum(dim=1)  # (N,)
+
+        # IMPORTANT: keep the density positive and differentiable
+        # This does NOT constrain weights to be positive.
+
+        return -torch.log(p).mean()
 
     loss_hist = []
     best = float("inf")
     bad = 0
-
-    log_every = max(1, args.patience)  # notebook prints every `patience`
+    log_every = max(1, args.patience)
 
     for epoch in range(1, args.epochs + 1):
         opt.zero_grad(set_to_none=True)
-
-        # This is the core change: use the Ensemble.loss exactly like notebook
-        # NF-style explicit loss on ensemble.weights (linear penalty, no square)
-        loss = ensemble.loss(bootstrap_sample)
-
+        loss = nll_from_probs(u)
         loss.backward()
         opt.step()
 
         if epoch % log_every == 0:
-            cur = float(loss.detach().cpu().item())
-            w = ensemble.weights.detach().cpu().numpy()
-            print(f"epoch {epoch} loss {cur:.6f} weights {w} sumw {w.sum():.6f}", flush=True)
+            with torch.no_grad():
+                loss_after = nll_from_probs(u)
+                cur = float(loss_after.detach().cpu().item())
+
+            # gradient norm you print is the grad from the last backward (pre step)
+            gnorm = float(u.grad.detach().norm().cpu().item())
+            print(f"epoch {epoch} loss {cur:.6e} |dL/du| {gnorm:.3e}", flush=True)
+
+            w_sum = float(build_full_weights(u.detach()).sum().detach().cpu().item())
+            print(f"epoch {epoch} sumw {w_sum:.6f}", flush=True)
+            
+            w_now = build_full_weights(u.detach()).cpu().numpy()
+            print(f"epoch {epoch} weights {w_now}", flush=True)
+
             loss_hist.append(cur)
 
             if cur < best:
@@ -257,50 +258,87 @@ def main():
                     print(f"early stopping at epoch {epoch} best {best:.6f}", flush=True)
                     break
 
-    final_weights = ensemble.weights.detach().cpu().numpy()
+    with torch.no_grad():
+        final_weights = build_full_weights(u.detach()).cpu().numpy()
+        
     np.save(results_dir / "final_weights.npy", final_weights)
     np.save(results_dir / "loss_history_wifi.npy", np.array(loss_hist, dtype=np.float32))
-    print("Saved final_weights.npy and loss_history_wifi.npy")
+    print("Saved final_weights.npy and loss_history_wifi.npy", flush=True)
+        
+    # ------------------------------------------------------------
+    # DIAGNOSTICS: check saturation + cancellation in weights
+    # ------------------------------------------------------------
+    with torch.no_grad():
+        # Use the same model_probs used in training (GPU if available)
+        w_t = torch.from_numpy(final_weights).to(device=model_probs.device, dtype=torch.float64)
+
+        # raw mixture (can be negative)
+        p_raw = (model_probs * w_t.view(1, -1)).sum(dim=1)  # (N,)
+
+        # the actual density used in training loss
+        p = F.softplus(p_raw) + 1e-12
+
+        # robust stats for p_raw and p
+        p_raw_min = float(p_raw.min().cpu())
+        p_raw_med = float(p_raw.median().cpu())
+        p_raw_max = float(p_raw.max().cpu())
+
+        p_min = float(p.min().cpu())
+        p_med = float(p.median().cpu())
+        p_max = float(p.max().cpu())
+
+        print(f"p_raw min/med/max: {p_raw_min:.3e} / {p_raw_med:.3e} / {p_raw_max:.3e}", flush=True)
+        print(f"p     min/med/max: {p_min:.3e} / {p_med:.3e} / {p_max:.3e}", flush=True)
+
+        # weight cancellation metrics
+        w_np = final_weights
+        print(f"sum(w): {w_np.sum():.6f}", flush=True)
+        print(f"L1(w):  {np.abs(w_np).sum():.6e}", flush=True)
+        print(f"max|w|: {np.max(np.abs(w_np)):.6e}", flush=True)
+
+        # optional: how often p_raw is negative (softplus is "fixing" it)
+        frac_neg = float((p_raw < 0).double().mean().cpu())
+        print(f"fraction p_raw < 0: {frac_neg:.4f}", flush=True)
+
+    # copy weights back into ensemble (CPU) for any later plotting code that expects ensemble.weights
+    with torch.no_grad():
+        ensemble.weights.copy_(
+            torch.from_numpy(final_weights).to(device=device_kernel, dtype=ensemble.weights.dtype)
+        )
+ 
 
     # ------------------------------------------------------------------
     # Hessian + sandwich covariance (same nll as optimisation)
     # ------------------------------------------------------------------
-    if args.compute_covariance:
-        # 1) compute model_probs ONCE (constants wrt weights)
-        with torch.no_grad():
-            model_probs = torch.stack(
-                [m.call(bootstrap_sample)[-1, :, 0] / m.get_norm()[-1] for m in ensemble.ensemble],
-                dim=1,
-            ).detach().to(dtype=torch.float64, device="cpu")  # (N, M)
+    compute_covariance = True
+    if compute_covariance:
 
-        # 2) take weights on CPU float64 for Hessian stability
-        lambda_norm = float(args.lambda_norm)
+        # reuse precomputed model_probs_cpu
+        model_probs = model_probs_cpu  # (N, M) on CPU float64
 
-        w_for_hess = ensemble.weights.detach().to(dtype=torch.float64, device="cpu").clone()
+        w_for_hess = torch.from_numpy(final_weights).to(dtype=torch.float64, device="cpu").clone()
         w_for_hess.requires_grad_(True)
 
-        # 3) define NF-style loss in WEIGHT SPACE (no squared term, linear)
         def nll_w(w):
+            eps = 1e-12
+
             p = (model_probs * w.view(1, -1)).sum(dim=1)
-            return -torch.log(p+1e-12).sum() + lambda_norm * (w.sum() - 1.0) 
+            data_term = -torch.log(p).mean()
+            return data_term
 
-
-        # 4) Hessian with your manual routine
         y = nll_w(w_for_hess)
-        H = get_hessian(y, w_for_hess).detach()  # (M, M)
-
+        H = get_hessian(y, w_for_hess).detach()
         np.save(results_dir / "Hessian_weights.npy", H.numpy())
-
-        # 5) sandwich covariance
-        w_final = w_for_hess.detach()  # <-- use same point as Hessian, CPU float64
-        cov_w = compute_sandwich_covariance(H, w_final, model_probs, lam=1.0)
-        np.save(results_dir / "cov_weights.npy", cov_w.detach().numpy())
+        print("Hessian eigenvalues are", torch.linalg.eigvalsh(H).cpu().numpy(), flush=True)
+        inv_hess = torch.linalg.inv(H)
+        np.save(results_dir / "cov_weights.npy", inv_hess.detach().numpy()/model_probs.shape[0]) # hessian is on average loss, so divide by N to get overall covariance
 
     # ------------------------------------------------------------------
     # Build grid & evaluate final ensemble for plots
     # ------------------------------------------------------------------
+    device_plot = torch.device("cpu")
+
     if not args.no_plots:
-        bootstrap_sample_cpu = bootstrap_sample.detach().cpu().numpy()
         pad = 0.05
 
         x0_lo, x0_hi = bootstrap_sample_cpu[:, 0].min(), bootstrap_sample_cpu[:, 0].max()
@@ -309,15 +347,14 @@ def main():
         x0_pad = pad * (x0_hi - x0_lo + 1e-12)
         x1_pad = pad * (x1_hi - x1_lo + 1e-12)
 
-        x0 = torch.arange(x0_lo - x0_pad, x0_hi + x0_pad + 0.5*0.01, 0.01, device=device, dtype=torch.float64)
-        x1 = torch.arange(x1_lo - x1_pad, x1_hi + x1_pad + 0.5*0.005, 0.005, device=device, dtype=torch.float64)
+        x0 = torch.arange(x0_lo - x0_pad, x0_hi + x0_pad + 0.5*0.01, 0.01, device=device_plot, dtype=torch.float64)
+        x1 = torch.arange(x1_lo - x1_pad, x1_hi + x1_pad + 0.5*0.005, 0.005, device=device_plot, dtype=torch.float64)
 
         X0, X1 = torch.meshgrid(x0, x1, indexing="xy")
         grid = torch.stack([X0.flatten(), X1.flatten()], dim=1)
 
         with torch.no_grad():
-            Y = ensemble(grid) / ensemble.weights.sum()
-
+            Y = ensemble(grid) 
         cov_w_np = np.load(results_dir / "cov_weights.npy") if args.compute_covariance else None
 
         # Marginals + ratio
@@ -337,7 +374,8 @@ def main():
         sc = plt.scatter(
             grid[:, 0].cpu().numpy(),
             grid[:, 1].cpu().numpy(),
-            c=Y.cpu().numpy(),
+            c=torch.clamp_min(Y, 0.0).cpu().numpy(),
+            #c=Y.cpu().numpy(),
             edgecolors="none",
             s=1,
         )
@@ -364,10 +402,10 @@ def main():
         plt.close(fig)
 
         feature_names = ["Feature 1", "Feature 2"]
-
+        
         plot_ensemble_marginals_2d_kernel(
             kernel_models=ensemble.ensemble,
-            x_data=bootstrap_sample.float(),                  # (N,2)
+            x_data=bootstrap_sample.detach().cpu(),                  # (N,2)
             weights=ensemble.weights.detach().cpu(),         # (M,)
             cov_w=cov_w_np,                         # (M,M) or None
             feature_names=feature_names,

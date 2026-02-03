@@ -74,6 +74,16 @@ class Ensemble(nn.Module):
 
         # Trainable ensemble weights
         self.weights = nn.Parameter(weights_init.float(), requires_grad=train_weights)
+        
+    @torch.no_grad()
+    def member_probs(self, x):
+        """
+        Returns (N, M) tensor with f_j(x_n) for each ensemble member.
+        """
+        return torch.stack(
+            [m.call(x)[-1, :, 0] / m.get_norm()[-1] for m in self.ensemble],
+            dim=1
+        )
 
     def forward(self, x):
         """
@@ -93,11 +103,13 @@ class Ensemble(nn.Module):
         return weighted.sum(dim=1)  # (batch,)
     
     def norm_regularization(self):
-        return self.lambda_norm * (self.weights.sum() - 1.0) 
+        s = self.weights.sum()
+        return self.lambda_norm * (s - 1.0) 
 
     def loss(self, x):
         p = self.forward(x)
-        return -torch.log(p+1e-12).sum() + self.norm_regularization()
+        data_term = -torch.log(p + 1e-12).mean()
+        return data_term + self.norm_regularization()
 
     def count_trainable_parameters(self, verbose=False):
         total = 0
