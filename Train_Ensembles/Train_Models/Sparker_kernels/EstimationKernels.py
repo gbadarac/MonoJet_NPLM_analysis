@@ -96,7 +96,11 @@ N_MODELS = args.n_models  # can be None
 
 # Width schedule like Gaia's, only if nlayers = 5 and a list was intended
 if N_LAYERS == 5:
+    # larger widths 
     width_fin_list = [0.15, 0.10, 0.07, 0.05, 0.035]
+    
+    # narrower widths 
+    #width_fin_list = [0.08, 0.06, 0.045, 0.035, 0.025]
 else:
     # Generic schedule that still ends at 0.05
     width_fin_list = np.linspace(0.10, 0.02, N_LAYERS).tolist()[::-1]
@@ -158,7 +162,7 @@ trial_name = (
     f"L{n_layers}_K{k_per_l}_M{total_M}_"
     f"Nboot{config_json['N']}_lr{config_json['learning_rate']}_"
     f"clip_{int(config_json['coeffs_clip']):d}_"
-    f"different_seeds"
+    f"no_masking"
 )
 
 # Final output directory for this trial:

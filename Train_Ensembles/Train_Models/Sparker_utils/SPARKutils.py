@@ -173,32 +173,9 @@ class KernelMethod(nn.Module):
         self.softmax = torch.softmax
         self.probability_coeffs=probability_coeffs
 
-    def mask_inactive_kernels(self, K_x):
-        # Same logic as supervisor, but dtype/device safe
-
-        total_kernel_activation = torch.sum(K_x, dim=0).unsqueeze(1)  # [M, 1]
-
-        total_kernel_activation = torch.abs(
-            total_kernel_activation - torch.mean(total_kernel_activation)
-        ) / (torch.std(total_kernel_activation) + 1e-8)
-
-        mask_non_active_kernels = (total_kernel_activation < 3)
-
-        # Make mask compatible with coeffs tensor
-        mask_non_active_kernels = mask_non_active_kernels.to(
-            device=self.coeffs.data.device,
-            dtype=self.coeffs.data.dtype
-        )
-
-        # In-place like supervisor
-        self.coeffs.data = self.coeffs.data * mask_non_active_kernels
-        return
 
     def call(self, x):
         K_x, _ = self.kernel_layer.call(x)  # [n, M]
-
-        # add this line
-        self.mask_inactive_kernels(K_x)
 
         W_x = self.coeffs  # [M, 1]
         if self.probability_coeffs == True and W_x.sum():
@@ -270,21 +247,6 @@ class KernelMethod_SoftMax_2(nn.Module):
         if W_x.dtype != K_x.dtype or W_x.device != K_x.device:
             W_x = W_x.to(dtype=K_x.dtype, device=K_x.device)
         # ---------------------------------------------------------------------------------------
-
-        total_kernel_activation = torch.sum(K_x, dim=0).unsqueeze(1)  # [M, 1]
-        total_kernel_activation = torch.abs(
-            total_kernel_activation - torch.mean(total_kernel_activation)
-        ) / (torch.std(total_kernel_activation) + 1e-8)
-
-        # mask for "active" kernels, same dtype/device as W_x
-        mask_non_active_kernels = (total_kernel_activation < 2).to(
-            dtype=W_x.dtype, device=W_x.device
-        )
-
-        # update the *leaf* tensor in-place via .data, keep optimizer happy
-        self.coeffs.data = self.coeffs.data * mask_non_active_kernels.to(
-            self.coeffs.data.dtype
-        )
 
         if self.probability_coeffs:
             W_x = self.softmax(W_x, 0)
