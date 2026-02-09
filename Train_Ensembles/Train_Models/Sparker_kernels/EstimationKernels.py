@@ -218,10 +218,6 @@ def training_loop(seed, data_train_tot, config_json, json_path):
     output_folder = os.path.join(OUTPUT_PATH, f"seed{seed:03d}")
     os.makedirs(output_folder, exist_ok=True)
 
-    # generate bootstrapped dataset 
-    #indices = np.random.choice(np.arange(len(data_train_tot)), size=N_train, replace=True)
-    #feature = torch.from_numpy(data_train_tot[indices]).to(DEVICE)
-    # generate bootstrapped dataset
     np.random.seed(bootstrap_seed)
     indices = np.random.choice(np.arange(len(data_train_tot)), size=N_train, replace=True)
     feature = torch.from_numpy(data_train_tot[indices]).to(DEVICE)
@@ -258,10 +254,6 @@ def training_loop(seed, data_train_tot, config_json, json_path):
     t_ini        = config_json["t_ini"]
     decay_epochs = config_json["decay_epochs"]
     n_layers     = len(width_ini)
-
-    #widths_init    = [np.ones((M[i], d)) * width_ini[i] for i in range(n_layers)]
-    #coeffs_init    = [(np.random.binomial(p=0.5, n=1, size=(M[i], 1)) * 2 - 1) * config_json["coeffs_init"][i] for i in range(n_layers)]
-    #centroids_init = [feature[np.random.randint(len_feature, size=M[i]), :] for i in range(n_layers)]
     
     widths_init = [np.ones((M[i], d)) * width_ini[i] for i in range(n_layers)]
 
@@ -274,8 +266,7 @@ def training_loop(seed, data_train_tot, config_json, json_path):
         feature[np.random.randint(len_feature, size=M[i]), :]
         for i in range(n_layers)
     ]
-
-
+    
     # move everything to DEVICE
     coeffs_init    = [torch.from_numpy(coeffs_init[i]).float().to(DEVICE) for i in range(n_layers)]
     widths_init    = [torch.from_numpy(widths_init[i]).float().to(DEVICE) for i in range(n_layers)]
@@ -425,10 +416,7 @@ def training_loop(seed, data_train_tot, config_json, json_path):
             plot_coeffs_history(epochs_history, coeffs_history,
                                 monitor_idx, total_M, output_folder)
             #plot_model_marginals_and_heatmap(model, n, output_folder)
-            
 
-    # GT heatmap
-    #plot_gt_heatmap(feature, output_folder)
 
     t2 = time.time()
     print('End training')
