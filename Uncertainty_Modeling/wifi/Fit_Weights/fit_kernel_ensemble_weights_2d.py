@@ -117,9 +117,14 @@ def main():
     # Final results dir:
     #   results_fit_weights_kernel/N_100000_dim_2_kernels_..._2d_bimodal_gaussian_heavy_tail
     # --------------------------------------------------------------
-    trial_name   = folder_path.name
-    dataset_tag  = folder_path.parent.name
-    results_dir  = RESULTS_BASE_DIR / f"{trial_name}_{dataset_tag}_latest_Sean_corrections_and_no_penalty_2"
+
+    trial_name  = folder_path.name
+    dataset_tag = folder_path.parent.name
+
+    # Include the *fit-time* number of WiFi components in the results name
+    results_dir = RESULTS_BASE_DIR / (
+        f"{trial_name}_{dataset_tag}_ensemblecomponents{args.n_wifi_components}"
+    )
     results_dir.mkdir(parents=True, exist_ok=True)
     print(f"Storing WiFi fit results in: {results_dir}")
 
@@ -215,9 +220,7 @@ def main():
 
         # raw mixture (can be negative because weights can be negative)
         p = (model_probs * w.view(1, -1)).sum(dim=1)  # (N,)
-
-        # IMPORTANT: keep the density positive and differentiable
-        # This does NOT constrain weights to be positive.
+        # This does NOT constrain weights to be positive
 
         return -torch.log(p).mean()
 
@@ -310,7 +313,7 @@ def main():
     # ------------------------------------------------------------------
     # Hessian + sandwich covariance (same nll as optimisation)
     # ------------------------------------------------------------------
-    compute_covariance = True
+    compute_covariance = args.compute_covariance
     if compute_covariance:
 
         # reuse precomputed model_probs_cpu
@@ -368,39 +371,7 @@ def main():
             plots_dir,
             tag="final",
         )
-
-        # 2D heatmap of ensemble density
-        fig = plt.figure()
-        sc = plt.scatter(
-            grid[:, 0].cpu().numpy(),
-            grid[:, 1].cpu().numpy(),
-            c=torch.clamp_min(Y, 0.0).cpu().numpy(),
-            #c=Y.cpu().numpy(),
-            edgecolors="none",
-            s=1,
-        )
-        plt.colorbar(sc)
-        plt.xlim(-2, 3)
-        plt.ylim(-1, 2)
-        fig.tight_layout()
-        fig.savefig(plots_dir / "ensemble_heatmap.png", dpi=200)
-        plt.close(fig)
-
-        # 2D histogram of data
-        fig = plt.figure()
-        x0_h = torch.arange(-2.0, 3.0, 0.09).double().numpy()
-        x1_h = torch.arange(-1.0, 2.0, 0.09).double().numpy()
-        plt.hist2d(
-            bootstrap_sample[:, 0].cpu().numpy(),
-            bootstrap_sample[:, 1].cpu().numpy(),
-            bins=[x0_h, x1_h],
-            density=True,
-        )
-        plt.colorbar()
-        fig.tight_layout()
-        fig.savefig(plots_dir / "data_hist2d.png", dpi=200)
-        plt.close(fig)
-
+        
         feature_names = ["Feature 1", "Feature 2"]
         
         plot_ensemble_marginals_2d_kernel(
