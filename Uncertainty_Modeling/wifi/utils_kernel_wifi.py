@@ -346,29 +346,48 @@ def plot_final_marginals_and_ratio(
 
     # ------------------------------------------------------------
     # Helper, bin a marginal sampled on the x-grid into histogram bins
-    # ------------------------------------------------------------
+    # ------------------------------------------------------------    
     def bin_from_grid(xgrid, pgrid, bins, dx):
-        out = np.zeros(len(bins) - 1, dtype=float)
-        for k in range(len(out)):
-            lo, hi = bins[k], bins[k + 1]
-            if k < len(out) - 1:
-                mask = (xgrid >= lo) & (xgrid < hi)
-            else:
-                mask = (xgrid >= lo) & (xgrid <= hi)
-            if np.any(mask):
-                integral = pgrid[mask].sum() * dx
-                out[k] = integral / (hi - lo)
-        return out
+        # 1. Compute the CDF on the fine grid
+        # We prepend 0 to start the CDF from 0
+        cdf = np.concatenate(([0], np.cumsum(pgrid) * dx))
+        
+        # xgrid also needs a start point for interpolation, let's assume uniform spacing dx
+        xgrid_cdf = np.concatenate(([xgrid[0] - dx], xgrid))
+        
+        # 2. Interpolate CDF values at the bin edges
+        cdf_at_bins = np.interp(bins, xgrid_cdf, cdf)
+        
+        # 3. The mass in each bin is the difference in CDF
+        # Mass = Integral_{lo}^{hi} p(x) dx = CDF(hi) - CDF(lo)
+        bin_masses = np.diff(cdf_at_bins)
+        
+        # 4. Convert mass to density height (Height = Mass / Width)
+        bin_widths = np.diff(bins)
+        return bin_masses / bin_widths
 
     # ------------------------------------------------------------
     # Figure layout
     # ------------------------------------------------------------
     fig = plt.figure(figsize=(10, 6))
-    gs = GridSpec(2, 2, height_ratios=[3, 1], hspace=0.05, wspace=0.25)
+    gs = GridSpec(2, 2, height_ratios=[3, 1], hspace=0.06, wspace=0.22)
     ax_top_left  = fig.add_subplot(gs[0, 0])
     ax_top_right = fig.add_subplot(gs[0, 1], sharey=ax_top_left)
     ax_bot_left  = fig.add_subplot(gs[1, 0], sharex=ax_top_left)
     ax_bot_right = fig.add_subplot(gs[1, 1], sharex=ax_top_right)
+
+    # --- compact typography for 2x2 panel ---
+    fs_label = 16
+    fs_tick  = 12
+    fs_leg   = 14
+
+    for ax in (ax_top_left, ax_top_right, ax_bot_left, ax_bot_right):
+        ax.tick_params(axis="both", which="major", labelsize=fs_tick, length=6)
+        ax.tick_params(axis="both", which="minor", labelsize=fs_tick, length=3)
+
+    # Hide y tick labels on the top right panel (saves space)
+    ax_top_right.tick_params(labelleft=False)
+    ax_bot_right.tick_params(labelleft=False)
 
     # ------------------------------------------------------------
     # Data histograms
@@ -455,21 +474,22 @@ def plot_final_marginals_and_ratio(
     ax_bot_left.axhline(1.0, color="gray", linestyle="--")
     ax_bot_right.axhline(1.0, color="gray", linestyle="--")
 
-    ax_top_left.set_ylabel("Density")
-    ax_bot_left.set_ylabel("Data / Ensemble")
-    ax_bot_left.set_xlabel("x₀")
-    ax_bot_right.set_xlabel("x₁")
+    ax_top_left.set_ylabel("Density", fontsize=fs_label, labelpad=6)
+    ax_bot_left.set_ylabel("Data / Ensemble", fontsize=fs_label, labelpad=6)
+    ax_bot_left.set_xlabel("x₀", fontsize=fs_label, labelpad=6)
+    ax_bot_right.set_xlabel("x₁", fontsize=fs_label, labelpad=6)
 
     ax_bot_left.set_ylim(0.5, 1.5)
     ax_bot_right.set_ylim(0.5, 1.5)
 
-    ax_top_left.legend(loc="upper left", frameon=False)
-    ax_top_right.legend(loc="upper left", frameon=False)
-
+    ax_top_left.legend(loc="upper left", frameon=False, fontsize=fs_leg, handlelength=2.0)
+    ax_top_right.legend(loc="upper left", frameon=False, fontsize=fs_leg, handlelength=2.0)
+    
     plt.setp(ax_top_left.get_xticklabels(), visible=False)
     plt.setp(ax_top_right.get_xticklabels(), visible=False)
 
-    fig.set_constrained_layout(True)
+    fig.tight_layout(pad=0.6)
     fname = f"marginals_ratio{('_' + tag) if tag else ''}.png"
-    fig.savefig(outdir / fname, dpi=200)
+    fig.savefig(outdir / fname, dpi=200, bbox_inches="tight")
+    
     plt.close(fig)
