@@ -5,8 +5,8 @@
 #SBATCH -p gpu
 #SBATCH --account=gpu_gres
 #SBATCH --mem=20000
-#SBATCH -o /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/results/logs/%x-%j.out
-#SBATCH -e /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/results/logs/%x-%j.err
+#SBATCH -o /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Normalizing_Flows/results/logs/%x-%j.out
+#SBATCH -e /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Nomalizing_Flows/results/logs/%x-%j.err
 
 export LD_LIBRARY_PATH=/work/gbadarac/miniforge3/envs/nplm_env/lib:$LD_LIBRARY_PATH
 . /work/gbadarac/miniforge3/etc/profile.d/conda.sh && conda activate nf_env
@@ -23,14 +23,14 @@ export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:32
 
 CALIBRATION=True
 N_TOYS=100
-BASE_OUT="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/results/N_100000_dim_2_seeds_60_4_16_256_15_L2_10_lr_1e-4_kernels_100_sigma_5e-2_epochs_50000_data"
+BASE_OUT="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Normalizing_Flows/results/N_100000_dim_2_seeds_60_4_16_256_15_L2_10_lr_1e-4_kernels_100_sigma_5e-2_epochs_50000_data"
 
 w="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_256_15/w_i_fitted.npy"
 w_cov="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_256_15/cov_w.npy"
 hit_or_miss_data="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/N_100000_dim_2_seeds_60_4_16_256_15/concatenated_ensemble_generated_samples_4_16_256_15.npy"
 ensemble_dir="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/N_100000_dim_2_seeds_60_4_16_256_15"
 
-PY=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/one_toy_LRT_with_unc.py
+PY=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Normalizing_Flows/one_toy_LRT_with_unc.py
 CMD=(python -u "$PY"
      -t "$N_TOYS"
      -c "$CALIBRATION"

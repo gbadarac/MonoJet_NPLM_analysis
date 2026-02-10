@@ -9,8 +9,8 @@
 #SBATCH --partition=qgpu,gpu
 # #SBATCH --partition=standard
 #SBATCH --nodes=1
-#SBATCH -o /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/results/logs/%x-%A_%a.out
-#SBATCH -e /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/results/logs/%x-%A_%a.err
+#SBATCH -o /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Normalizing_Flows/results/logs/%x-%A_%a.out
+#SBATCH -e /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Normalizing_Flows/results/logs/%x-%A_%a.err
 
 # -------------------------
 # Environment
@@ -40,14 +40,14 @@ export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensemb
 # Static config
 # -------------------------
 CALIBRATION=True
-BASE_OUT="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/results/N_100000_dim_2_seeds_60_4_16_128_15_toys_100_bimodal_gaussian_heavy_tail_sigma_1.0"
+BASE_OUT="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Normalizing_Flows/results/N_100000_dim_2_seeds_60_4_16_128_15_toys_100_bimodal_gaussian_heavy_tail_sigma_1.0"
 
 w="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_128_15_bimodal_gaussian_heavy_tail/w_i_fitted.npy"
 w_cov="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_128_15_bimodal_gaussian_heavy_tail/cov_w.npy"
 hit_or_miss_data="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/N_100000_dim_2_seeds_60_4_16_128_15_bimodal_gaussian_heavy_tail/concatenated_ensemble_generated_samples_4_16_128_15_bimodal_gaussian_heavy_tail_N_1000000.npy"
 ensemble_dir="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_seeds_60_4_16_128_15"
 
-PY=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/toys_LRT_with_unc.py
+PY=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Normalizing_Flows/toys_LRT_with_unc.py
 
 # -------------------------
 # Per-task variables
@@ -55,7 +55,7 @@ PY=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/toys_LRT_with_
 TOY_ID=${SLURM_ARRAY_TASK_ID}
 OUT_DIR="${BASE_OUT}"   # Python will append /<mode>/toy_<seed>
 mkdir -p "$OUT_DIR"
-mkdir -p /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT_with_unc/results/logs
+mkdir -p /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Normalizing_Flows/results/logs
 
 echo "[$(date)] Task ${TOY_ID} starting on ${HOSTNAME}"
 python - <<'PY'
