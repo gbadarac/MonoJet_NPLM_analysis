@@ -332,9 +332,26 @@ def main():
         y = nll_w(w_for_hess)
         H = get_hessian(y, w_for_hess).detach()
         np.save(results_dir / "Hessian_weights.npy", H.numpy())
-        print("Hessian eigenvalues are", torch.linalg.eigvalsh(H).cpu().numpy(), flush=True)
+
+        eigs = torch.linalg.eigvalsh(H).cpu().numpy()
+        print("Hessian eigenvalues are", eigs, flush=True)
+
         inv_hess = torch.linalg.inv(H)
-        np.save(results_dir / "cov_weights.npy", inv_hess.detach().numpy()/model_probs.shape[0]) # hessian is on average loss, so divide by N to get overall covariance
+
+        # hessian is on average loss, so divide by N to get overall covariance
+        cov_w = inv_hess / model_probs.shape[0]
+        cov_w_np = cov_w.detach().cpu().numpy()
+        np.save(results_dir / "cov_weights.npy", cov_w_np)
+
+        # print variances + stds
+        var_w = np.diag(cov_w_np)
+        std_w = np.sqrt(np.maximum(var_w, 0.0))  # avoid sqrt of tiny negative numerics
+
+        print("Variance of weights (diag(cov)/N):", var_w, flush=True)
+        print("Std of weights:", std_w, flush=True)
+
+        for i, (v, s) in enumerate(zip(var_w, std_w)):
+            print(f"w[{i}] var={v:.6e}  std={s:.6e}", flush=True)
 
     # ------------------------------------------------------------------
     # Build grid & evaluate final ensemble for plots
