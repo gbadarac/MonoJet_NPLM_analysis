@@ -60,3 +60,40 @@ def compute_bandwidths(data, number_bandwidths):
     lambda_max = dd[(jnp.floor(len(dd) * 0.95).astype(int))] * 2
     bandwidths = jnp.linspace(lambda_min, lambda_max, number_bandwidths)
     return bandwidths
+
+def evaluate_gaussian_components(x, centroids, widths):
+    """
+    Evaluate the probability density of each Gaussian component at input points.
+
+    Parameters
+    ----------
+    x : array-like, shape (N, d)
+        Input samples to evaluate.
+    centroids : array-like, shape (M, d)
+        Centers of each Gaussian component in d dimensions.
+    widths : array-like, shape (M,)
+        Standard deviations for each Gaussian (isotropic per component).
+
+    Returns
+    -------
+    densities : ndarray, shape (N, M)
+        Probability density of each component at each input point.
+    """
+    x = np.asarray(x)
+    centroids = np.asarray(centroids)
+    widths = np.asarray(widths)
+
+    N, d = x.shape
+    M = centroids.shape[0]
+
+    densities = np.zeros((N, M), dtype=np.float64)
+
+    for m in range(M):
+        sigma = widths[m]
+        diff = x - centroids[m]                      # (N, d)
+        squared_dist = np.sum((diff / sigma) ** 2, axis=1)  # (N,)
+
+        normalization = (2.0 * np.pi) ** (-d / 2.0) * (sigma ** (-d))
+        densities[:, m] = normalization * np.exp(-0.5 * squared_dist)
+
+    return densities

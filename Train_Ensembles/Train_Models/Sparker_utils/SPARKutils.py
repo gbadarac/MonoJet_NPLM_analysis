@@ -359,7 +359,6 @@ class KernelLayer(nn.Module):
             dtype=self.width.dtype,
         )
 
-
     def set_widths(self, widths):
         self.widths.data = widths
         self.compute_cov_diag()

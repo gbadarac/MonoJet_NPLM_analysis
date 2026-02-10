@@ -6,8 +6,8 @@
 #SBATCH --time=02:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=4
-#SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
+# #SBATCH --partition=gpu
+# #SBATCH --gres=gpu:1
 
 # >>> Conda setup for non-interactive shell <<<
 # Option A (recommended): use conda.sh
@@ -23,7 +23,7 @@ cd /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/F
 # Make sure logs directory exists
 mkdir -p results_fit_weights_kernel/logs
 
-FOLDER_PATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_kernels_SparKer_models32_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_narrower_widths
+FOLDER_PATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_70_kernels_1_layer_0p08_width
 DATA_PATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_heavy_tail_target_set.npy
 
 # -----------------------
@@ -35,10 +35,9 @@ export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:32
 python fit_kernel_ensemble_weights_2d.py \
   --folder_path "${FOLDER_PATH}" \
   --data_path "${DATA_PATH}" \
-  --n_wifi_components 32 \
+  --n_wifi_components 30 \
   --epochs 2000 \
   --patience 100 \
-  --lr 0.01 \
-  --seed_bootstrap 1234 \
+  --lr 0.001 \
+  --seed_bootstrap 1235 \
   --compute_covariance
-
