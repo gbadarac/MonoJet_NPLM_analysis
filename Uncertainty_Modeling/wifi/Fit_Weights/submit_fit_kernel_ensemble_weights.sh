@@ -39,5 +39,4 @@ python fit_kernel_ensemble_weights_2d.py \
   --epochs 2000 \
   --patience 100 \
   --lr 0.001 \
-  --seed_bootstrap 1235 \
   --compute_covariance
