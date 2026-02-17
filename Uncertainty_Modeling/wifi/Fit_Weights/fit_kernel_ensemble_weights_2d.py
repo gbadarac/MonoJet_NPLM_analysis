@@ -11,7 +11,6 @@ import matplotlib as mpl
 mpl.use("Agg")  # non-interactive backend for cluster
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
-
 from torch.autograd import grad
 from torch.autograd.functional import hessian
 import gc
@@ -91,12 +90,7 @@ def main():
         action="store_true",
         help="If set, do not save any plots (weights & cov only)",
     )
-    parser.add_argument(
-        "--seed_bootstrap",
-        type=int,
-        default=1234,
-        help="Seed for bootstrap resampling",
-    )
+
     parser.add_argument(
         "--data_path",
         type=str,
@@ -122,10 +116,13 @@ def main():
     dataset_tag = folder_path.parent.name
 
     # Include the *fit-time* number of WiFi components in the results name
+
     results_dir = RESULTS_BASE_DIR / (
-        f"{trial_name}_{dataset_tag}_ensemblecomponents{args.n_wifi_components}"
+        f"{trial_name}_{dataset_tag}_ensemblecomponents{args.n_wifi_components}_no_bootstrapping"
     )
+    
     results_dir.mkdir(parents=True, exist_ok=True)
+    
     print(f"Storing WiFi fit results in: {results_dir}")
 
     # Output directory for plots & diagnostics
@@ -157,20 +154,16 @@ def main():
     # ------------------------------------------------------------
     device_kernel = torch.device("cpu")
     ensemble = ensemble.to(device=device_kernel, dtype=torch.float64)
-
-    N_train = int(config_json["N"])
-    rng = np.random.default_rng(args.seed_bootstrap)
-    idx = rng.integers(0, len(data_train_tot), size=N_train)
-    bootstrap_np = data_train_tot[idx]
-    bootstrap_sample = torch.from_numpy(bootstrap_np).to(device=device_kernel, dtype=torch.float64)
-    bootstrap_sample_cpu = bootstrap_sample.detach().cpu().numpy()
+    
+    data = torch.from_numpy(data_train_tot).to(device=device_kernel, dtype=torch.float64)
+    data_np = data.detach().cpu().numpy()
 
     # ------------------------------------------------------------
     # 2) Precompute model_probs ONCE on CPU  (N, M)
     # ------------------------------------------------------------
     print("Precomputing model_probs on CPU ...", flush=True)
     with torch.no_grad():
-        model_probs_cpu = ensemble.member_probs(bootstrap_sample).to(dtype=torch.float64, device="cpu").contiguous()
+        model_probs_cpu = ensemble.member_probs(data).to(dtype=torch.float64, device="cpu").contiguous()
 
         #----------------------------------------------------------------------
         # --- critical: member "densities" must be nonnegative for a likelihood
@@ -309,7 +302,6 @@ def main():
             torch.from_numpy(final_weights).to(device=device_kernel, dtype=ensemble.weights.dtype)
         )
  
-
     # ------------------------------------------------------------------
     # Hessian + sandwich covariance (same nll as optimisation)
     # ------------------------------------------------------------------
@@ -361,8 +353,8 @@ def main():
     if not args.no_plots:
         pad = 0.05
 
-        x0_lo, x0_hi = bootstrap_sample_cpu[:, 0].min(), bootstrap_sample_cpu[:, 0].max()
-        x1_lo, x1_hi = bootstrap_sample_cpu[:, 1].min(), bootstrap_sample_cpu[:, 1].max()
+        x0_lo, x0_hi = data_np[:, 0].min(), data_np[:, 0].max()
+        x1_lo, x1_hi = data_np[:, 1].min(), data_np[:, 1].max()
 
         x0_pad = pad * (x0_hi - x0_lo + 1e-12)
         x1_pad = pad * (x1_hi - x1_lo + 1e-12)
@@ -380,7 +372,7 @@ def main():
         # Marginals + ratio
         plot_final_marginals_and_ratio(
             ensemble,
-            bootstrap_sample,
+            data,
             grid,
             x0,
             x1,
@@ -393,7 +385,7 @@ def main():
         
         plot_ensemble_marginals_2d_kernel(
             kernel_models=ensemble.ensemble,
-            x_data=bootstrap_sample.detach().cpu(),                  # (N,2)
+            x_data=data.detach().cpu(),                  # (N,2)
             weights=ensemble.weights.detach().cpu(),         # (M,)
             cov_w=cov_w_np,                         # (M,M) or None
             feature_names=feature_names,
