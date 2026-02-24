@@ -52,6 +52,7 @@ parser.add_argument('-e', '--nensemble', type=int, help="number of ensembled mod
 parser.add_argument('-n', '--ntest', type=int, help="number of points in the test data", required=True)
 parser.add_argument('-c', '--calibration', type=int, help="is it a calibration toy", required=True)
 parser.add_argument('-s', '--seed', type=int, help="toy seed", required=False, default=None)
+parser.add_argument('--save_arrays', action='store_true', help="If set, also save per-event numerator/denominator/test arrays.")
 args     = parser.parse_args()
 
 # random seed
@@ -109,7 +110,7 @@ run_tag = (
     f"{ensemble_tag}"
     f"_wifi{args.nensemble}"
     f"_Ntest{Ntest}"
-    f"_{mode_tag}"
+    f"_{mode_tag}_weights_history_v2"
 )
 
 # Put your existing detailed hyperparam string one level deeper
@@ -231,10 +232,39 @@ for i in range(n_wifi_components):
 
 # stack across ensemble members -> (Ntest, nensemble)
 model_probs = np.stack(model_probs_members, axis=1)
-model_norm_probs = np.stack(model_norm_probs_members, axis=1)
+model_norm_probs = np.mean(np.stack(model_norm_probs_members, axis=1), axis=1, keepdims=True)  # (N,1)
 
 model_probs = torch.from_numpy(model_probs).double()
 model_norm_probs = torch.from_numpy(model_norm_probs).double()
+
+# ----------------------------------------------------------------------
+# Prevent log(0) / division by 0 inside TAU
+EPS = 1e-300  # safe floor for float64
+model_probs = torch.clamp(model_probs, min=EPS)
+model_norm_probs = torch.clamp(model_norm_probs, min=EPS)
+# ----------------------------------------------------------------------
+
+# ----------------------------------------------------------------------
+# Sanity checks for pdf tensors (catch zeros/underflow/NaNs early)
+def stats(name, t):
+    t = t.detach().cpu()
+    tiny = (t < 1e-300).sum().item()     # float64 danger zone
+    zero = (t == 0).sum().item()
+    neg  = (t < 0).sum().item()
+    print(
+        name,
+        "shape", tuple(t.shape),
+        "finite", torch.isfinite(t).all().item(),
+        "min", t.min().item(),
+        "max", t.max().item(),
+        "neg", neg,
+        "zero", zero,
+        "tiny<1e-300", tiny,
+    )
+
+stats("model_probs", model_probs)
+stats("model_norm_probs", model_norm_probs)
+# ----------------------------------------------------------------------
 
 x_data = torch.from_numpy(bootstrap_sample).double().to(device)
 
@@ -243,6 +273,27 @@ w_init = torch.from_numpy(
     weights_centralv + np.random.normal(scale=noise_scale_init, size=weights_centralv.shape)
 ).double()
 
+# ----------------------------------------------------------------------
+# DIAGNOSTIC: check the *actual* density used by TAU at init
+w0 = w_init.detach().cpu()
+
+print("sum(w_init) =", float(w0.sum()))
+print("w_norm_init =", float(1.0 - w0.sum()))
+
+# p_comb = (model_probs @ w) + (model_norm_probs * w_norm)
+# model_norm_probs is (N,1), so squeeze -> (N,)
+p_comb = (model_probs.detach().cpu() @ w0) + (
+    model_norm_probs.detach().cpu().squeeze(1) * (1.0 - w0.sum())
+)
+
+print(
+    "p_comb finite:", torch.isfinite(p_comb).all().item(),
+    "min", float(p_comb.min()),
+    "max", float(p_comb.max()),
+    "num<=0", int((p_comb <= 0).sum()),
+)
+# ----------------------------------------------------------------------
+
 w_centralv = torch.from_numpy(weights_centralv).double()
 w_cov = torch.from_numpy(weights_cov_init).double()
 
@@ -250,7 +301,7 @@ w_cov = torch.from_numpy(weights_cov_init).double()
 # ------------------ TAU models (float32 everywhere) ------------------
 # Denominator: no extra kernels
 model_den = lrt.TAU(
-    (None, 1),
+    (None, 2),
     ensemble_probs=model_probs.to(device),
     ensemble_norm_probs=model_norm_probs.to(device),
     weights_init=w_init.to(device),
@@ -260,15 +311,32 @@ model_den = lrt.TAU(
     gaussian_coeffs=[],
     gaussian_sigma=None,
     lambda_regularizer=lambda_regularizer,
-    train_net=False
+    train_net=False,
+    train_weights=True
 ).to(device)
 
 model_den = model_den.double()
 
+# ----------------------------------------------------------------------
+# Fail fast: check denominator loglik is finite before training
+with torch.no_grad():
+    den_p0 = model_den.call(x_data)[:, 0]
+    den_p0 = torch.clamp(den_p0, min=model_den.eps)
+    den0 = torch.log(den_p0).sum()
+    print("den0 finite:", torch.isfinite(den0).item(), "den0:", den0.item())
+    if not torch.isfinite(den0):
+        raise RuntimeError("DEN loglik is not finite at init. Likely log(0)/division by 0 in TAU.")
+# ----------------------------------------------------------------------
+
+save_every = 1000
+
 den_epochs, den_losses = lrt.train_loop(
     x_data, model_den, "DEN",
     epochs=epochs_delta, lr=lr_delta,
-    patience=int(patience)
+    patience=int(patience),
+    save_every=save_every,
+    out_dir=out_dir,
+    seed=seed
 )
 
 # Save loss curve
@@ -277,14 +345,15 @@ ax.plot(den_epochs, den_losses)
 ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.set_title("Denominator loss")
 fig.savefig(os.path.join(out_dir, "seed%i_denominator_loss.png"%(seed)), dpi=180, bbox_inches="tight")
 plt.close(fig)
-denominator = model_den.loglik(x_data).detach().cpu().numpy()
+
+#denominator = model_den.loglik(x_data).detach().cpu().numpy()
 
 # Numerator
 centers = x_data[:n_kernels_numerator].clone()  # already on device
 coeffs  = torch.ones((n_kernels_numerator,), dtype=torch.float64, device=device) / n_kernels_numerator
 
 model_num = lrt.TAU(
-    (None, 1),
+    (None, 2),
     ensemble_probs=model_probs.to(device),
     ensemble_norm_probs=model_norm_probs.to(device),
     weights_init=w_init.to(device),
@@ -297,16 +366,56 @@ model_num = lrt.TAU(
     lambda_net=lambda_L2_numerator,
     train_net=True,
     train_centers=train_centers_tau,
-    clip_net_coeffs=clip_tau
+    clip_net_coeffs=clip_tau,
+    train_weights=True
 ).to(device)
 
 model_num = model_num.double()
 
 num_epochs, num_losses = lrt.train_loop(
     x_data, model_num, "NUM",
-    epochs=epochs_tau, lr=lr_tau,
-    patience=patience
+    epochs=epochs_tau,
+    lr=lr_tau,            # single LR supported by this train_loop
+    patience=patience,
+    save_every=save_every,
+    out_dir=out_dir,
+    seed=seed
 )
+
+#-----------------------------------------------------------------------
+# Diagnostic plots for weight evolution (sum(w), w_norm, max|z|, global sigma, tail prob)
+#-----------------------------------------------------------------------
+
+def plot_sumw(tag):
+    e = np.load(os.path.join(out_dir, f"seed{seed}_{tag}_weights_epoch_hist.npy"))
+    s = np.load(os.path.join(out_dir, f"seed{seed}_{tag}_weights_sum_hist.npy"))
+    wn = np.load(os.path.join(out_dir, f"seed{seed}_{tag}_weights_wnorm_hist.npy"))
+
+    # Plot sum(w)
+    fig, ax = plt.subplots()
+    ax.plot(e, s)
+    ax.axhline(1.0, linestyle="--")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("sum(weights)")
+    ax.set_title(f"{tag}: sum(weights) vs epoch")
+    fig.savefig(os.path.join(out_dir, f"seed{seed}_{tag}_sumw_vs_epoch.png"),
+                dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+    # Plot w_norm
+    fig, ax = plt.subplots()
+    ax.plot(e, wn)
+    ax.axhline(0.0, linestyle="--")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("w_norm = 1 - sum(weights)")
+    ax.set_title(f"{tag}: w_norm vs epoch")
+    fig.savefig(os.path.join(out_dir, f"seed{seed}_{tag}_wnorm_vs_epoch.png"),
+                dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+plot_sumw("DEN")
+plot_sumw("NUM")
+#-----------------------------------------------------------------------
 
 # Save loss curve (linear y-scale)
 fig, ax = plt.subplots()
@@ -314,23 +423,41 @@ ax.plot(num_epochs, num_losses)
 ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.set_title("Numerator loss")
 fig.savefig(os.path.join(out_dir, "seed%i_numerator_loss.png"%(seed)), dpi=180, bbox_inches="tight")
 plt.close(fig)
-numerator = model_num.loglik(x_data).detach().cpu().numpy()
 
-test = numerator - denominator
-print('numerator:', numerator,
-      #model_num.normalization_constraint_term(),
-      #model_num.network.coefficients, model_num.network.coefficients.sum(),
-      #model_num.weights, model_num.weights.sum()
-)
-print('denominator:', denominator,
-      #model_den.normalization_constraint_term(),
-      #model_den.weights, model_den.weights.sum()
-)
-print('test: ', test)
-# save test statistic                                                             
-t_file = open(out_dir + 'seed%i_t.txt' % (seed), 'w')
-t_file.write("%f,%f,%f\n" % (test, numerator, denominator))
-t_file.close()
+#numerator = model_num.loglik(x_data).detach().cpu().numpy()
 
-np.save(out_dir + 'seed%i_coeffs.npy' % (seed),
+# ----------------------------------------------------------------------
+# Compute per-event log densities (so test is an array of length Ntest)
+with torch.no_grad():
+    # Denominator: p_den(x) = ensemble mixture (N,)
+    den_p = model_den.call(x_data)[:, 0]
+    den_p = torch.clamp(den_p, min=model_den.eps)
+    denominator = torch.log(den_p).detach().cpu().numpy()   # (N,)
+
+    # Numerator: p_num(x) = ensemble mixture + kernel correction (N,)
+    ens_p, net_out = model_num.call(x_data)                 # ens_p: (N,1), net_out: (N,)
+    num_p = ens_p[:, 0] + net_out
+    num_p = torch.clamp(num_p, min=model_num.eps)
+    numerator = torch.log(num_p).detach().cpu().numpy()     # (N,)
+# ----------------------------------------------------------------------
+
+test = numerator - denominator          # (N,)
+T = float(test.sum())                  # scalar LRT stat for this toy
+T_mean = float(test.mean())            # optional, scale-free
+
+print(f"T = sum_i log(p_num/p_den) = {T:.6f}")
+print(f"mean per-event log LR = {T_mean:.6f}")
+
+# Always save scalar T
+with open(os.path.join(out_dir, f"seed{seed}_T.txt"), "w") as f:
+    f.write(f"{T}\n")
+
+np.save(os.path.join(out_dir, f"seed{seed}_T.npy"), np.array(T, dtype=np.float64))
+
+if args.save_arrays:
+    np.save(os.path.join(out_dir, f"seed{seed}_test.npy"), test)
+    np.save(os.path.join(out_dir, f"seed{seed}_numerator.npy"), numerator)
+    np.save(os.path.join(out_dir, f"seed{seed}_denominator.npy"), denominator)
+
+np.save(os.path.join(out_dir, f"seed{seed}_coeffs.npy"),
         model_num.network.get_coefficients().detach().cpu().numpy())
