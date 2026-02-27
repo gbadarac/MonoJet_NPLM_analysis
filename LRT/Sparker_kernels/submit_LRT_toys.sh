@@ -4,10 +4,10 @@
 #SBATCH --time=08:00:00
 #SBATCH --mem=20G
 #SBATCH --ntasks=1
-# #SBATCH --gres=gpu:1
-# #SBATCH --account=gpu_gres
-# #SBATCH --partition=qgpu,gpu
-#SBATCH --partition=standard
+#SBATCH --gres=gpu:1
+#SBATCH --account=gpu_gres
+#SBATCH --partition=qgpu,gpu
+# #SBATCH --partition=standard
 #SBATCH --nodes=1
 #SBATCH -o /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Sparker_kernels/results/logs/%x-%A_%a.out
 #SBATCH -e /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Sparker_kernels/results/logs/%x-%A_%a.err
@@ -21,7 +21,6 @@ export LD_LIBRARY_PATH="/work/gbadarac/miniforge3/envs/nplm_env/lib${LD_LIBRARY_
 
 . /work/gbadarac/miniforge3/etc/profile.d/conda.sh
 conda activate nf_env
-
 
 CUDA_PATH=$(python - <<'PY'
 import torch
@@ -46,9 +45,9 @@ PY="$REPO_ROOT/LRT/Sparker_kernels/LRT.py"
 ENSEMBLE_DIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking"
 
 # WiFi fitted weights (kernel WiFi)
-W_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernel/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents60/final_weights.npy"
+W_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernel/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents60_no_bootstrapping/final_weights.npy"
 
-W_COV_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernel/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents60/cov_weights.npy"
+W_COV_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernel/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents60_no_bootstrapping/cov_weights.npy"
 
 # Output base (script will create subfolders inside)
 OUT_BASE="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Sparker_kernels/results"
