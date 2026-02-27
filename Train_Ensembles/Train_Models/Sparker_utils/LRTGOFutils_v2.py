@@ -200,7 +200,7 @@ class TAU(nn.Module):
         p = torch.clamp(p, min=self.eps)
         out = torch.log(p).sum() 
         if self.train_weights:
-            out = out - aux.sum()
+            out = out + aux.sum()
         return out
     
     def monitor(self, x):

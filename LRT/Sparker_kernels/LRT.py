@@ -76,7 +76,7 @@ lambda_regularizer = 0
 n_kernels_numerator = 100
 
 epochs_tau   = 200000
-epochs_delta = 20000
+epochs_delta = 200000
 patience = 1000
 
 kernel_width_numerator = 0.08
@@ -110,7 +110,7 @@ run_tag = (
     f"{ensemble_tag}"
     f"_wifi{args.nensemble}"
     f"_Ntest{Ntest}"
-    f"_{mode_tag}_weights_history_v2"
+    f"_{mode_tag}_weights_history_claude_v2"
 )
 
 # Put your existing detailed hyperparam string one level deeper
@@ -139,7 +139,6 @@ for i in range(n_wifi_components):
     for j in range(tmp.shape[0]):
         if tmp[j][0].sum(): count+=1
         else: 
-            print(count)
             break
     centroids_all_i = np.load(os.path.join(seed_dir, "centroids_history.npy"))[count]
     coeffs_all_i    = np.load(os.path.join(seed_dir, "coeffs_history.npy"))[count]
@@ -427,26 +426,39 @@ plt.close(fig)
 #numerator = model_num.loglik(x_data).detach().cpu().numpy()
 
 # ----------------------------------------------------------------------
-# Compute per-event log densities (so test is an array of length Ntest)
 with torch.no_grad():
-    # Denominator: p_den(x) = ensemble mixture (N,)
+    N = x_data.shape[0]
+
+    # ---------- data terms ----------
     den_p = model_den.call(x_data)[:, 0]
     den_p = torch.clamp(den_p, min=model_den.eps)
-    denominator = torch.log(den_p).detach().cpu().numpy()   # (N,)
+    den_log_data = torch.log(den_p)                     # (N,)
 
-    # Numerator: p_num(x) = ensemble mixture + kernel correction (N,)
-    ens_p, net_out = model_num.call(x_data)                 # ens_p: (N,1), net_out: (N,)
+    ens_p, net_out = model_num.call(x_data)             # ens_p: (N,1), net_out: (N,)
     num_p = ens_p[:, 0] + net_out
     num_p = torch.clamp(num_p, min=model_num.eps)
-    numerator = torch.log(num_p).detach().cpu().numpy()     # (N,)
+    num_log_data = torch.log(num_p)                     # (N,)
+
+    # ---------- auxiliary terms (global) ----------
+    aux_num = model_num.log_auxiliary_term()            # scalar
+    aux_den = model_den.log_auxiliary_term()            # scalar
+
+    # Training maximizes MAP = sum log p(x) + log P(w | prior)
+    # Consistent LRT: T = [sum num_log_data + aux_num] - [sum den_log_data + aux_den]
+    T_tensor = (num_log_data.sum() + aux_num) - (den_log_data.sum() + aux_den)
+    T = float(T_tensor.detach().cpu().item())
+
+    # Build per event array whose sum equals T by spreading aux difference evenly
+    test = (num_log_data - den_log_data) + ((aux_num - aux_den) / N)
+
+    # Save arrays in numpy
+    numerator   = num_log_data.detach().cpu().numpy()
+    denominator = den_log_data.detach().cpu().numpy()
+    test_np     = test.detach().cpu().numpy()
+
+print(f"T = {T:.6f}")
+print(f"mean per-event log LR = {float(test.mean()):.6f}")
 # ----------------------------------------------------------------------
-
-test = numerator - denominator          # (N,)
-T = float(test.sum())                  # scalar LRT stat for this toy
-T_mean = float(test.mean())            # optional, scale-free
-
-print(f"T = sum_i log(p_num/p_den) = {T:.6f}")
-print(f"mean per-event log LR = {T_mean:.6f}")
 
 # Always save scalar T
 with open(os.path.join(out_dir, f"seed{seed}_T.txt"), "w") as f:
@@ -455,7 +467,7 @@ with open(os.path.join(out_dir, f"seed{seed}_T.txt"), "w") as f:
 np.save(os.path.join(out_dir, f"seed{seed}_T.npy"), np.array(T, dtype=np.float64))
 
 if args.save_arrays:
-    np.save(os.path.join(out_dir, f"seed{seed}_test.npy"), test)
+    np.save(os.path.join(out_dir, f"seed{seed}_test.npy"), test_np)
     np.save(os.path.join(out_dir, f"seed{seed}_numerator.npy"), numerator)
     np.save(os.path.join(out_dir, f"seed{seed}_denominator.npy"), denominator)
 
