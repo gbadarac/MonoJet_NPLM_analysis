@@ -46,22 +46,23 @@ The pipeline has four components.
 
 ```text
 MonoJet_NPLM_analysis/
-├─ Generate_Gaussian_Controlled_Toy/      # 2D Gaussian toy (controlled cross-check dataset)
 ├─ Generate_Ensemble_Data_Hit_or_Miss_MC/ # Accept–reject sampling for toys/reference draws
-├─ Normalizing_Flows/                     # Experiments with NFs
 ├─ Train_Ensembles/                       # Orchestration for NF ensembles (arrays, logs)
 │  ├─ Generate_Data/                      # Prepare training splits and ensemble datasets
 │  └─ Train_Models/                       # Train individual ensemble members
-│     ├─ nflows/                          # nflows-based NF training
-│     └─ zuko/                            # zuko-based (Bayesian) flow training
+│     ├─ Normalizing_Flows/               # NF training backends
+│     │  ├─ nflows/                       # nflows-based NF training
+│     │  └─ zuko/                         # zuko-based (Bayesian) flow training
+│     └─ Sparker_kernels/                 # Kernel-based density estimation
 ├─ Uncertainty_Modeling/                  # Weight fitting (w_i), sandwich covariance, propagation
-│  ├─ BayesianFlows/                      # Bayesian-flow UQ utilities and experiments
 │  └─ wifi/                               # w_i f_i frequentist ensembles and covariance
 │     ├─ Coverage_Check/                  # Coverage studies on observables (e.g., first moment)
 │     └─ Fit_Weights/                     # Penalized MLE for w, sandwich covariance, propagation
-├─ LRT_with_unc/                          # One-sample learned LRT with uncertainty-aware reference
-├─ NPLM/                                  # Two-sample LRT helpers (if needed)
-├─ Grid_Search/                           # NF architecture experiments
+├─ LRT/                                   # One-sample learned LRT with uncertainty-aware reference
+├─ NPLM/                                  # Two-sample LRT (NPLM)
+│  ├─ NPLM-embedding/                     # Scripts and utilities for two-sample tests
+│  ├─ NPLM_NF_ensemble/                   # Results: ensemble as reference
+│  └─ NPLM_NF_one_model/                  # Results: single NF as reference
 ├─ envs/                                  # Conda/pip environment files
 └─ README.md
 ```
@@ -367,13 +368,18 @@ $p(x \mid H_{\boldsymbol{\phi}}) = p_{\mathrm{REF}}(x) + f(x,\boldsymbol{\phi}),
 \qquad \int f(x,\boldsymbol{\phi})dx = 0$.
 - We fit $\boldsymbol{\phi}$ on DATA, build $T$, calibrate $T$ with toys drawn from $p_{\mathrm{REF}}$, then report $Z$.
 
-#### Scripts
-In `LRT_with_unc/` you can find: 
+Two backends are available under `LRT/`:
+
+#### Normalizing Flows backend — `LRT/Normalizing_Flows/`
 - Python script: `toys_LRT_with_unc.py`
-- Submission script: `submit_toys_LRT.sh` 
+- Submission script: `submit_toys_LRT.sh`
 - Utils: `utils_LRT.py`
 
-#### Configure
+#### Sparker kernels backend — `LRT/Sparker_kernels/`
+- Python script: `LRT.py`
+- Submission script: `submit_LRT_toys.sh`
+
+#### Configure (Normalizing Flows)
 In the submission script (`submit_toys_LRT.sh`):
 - `CALIBRATION`={True,False}
 - `BASE_OUT`: output directory
@@ -384,29 +390,34 @@ In the submission script (`submit_toys_LRT.sh`):
 - SLURM array for number of toys, e.g.
 `#SBATCH --array=0-99` for 100 toys
 
-In the python script (toys_LRT_with_unc.py):
+In the python script (`toys_LRT_with_unc.py`):
 - `N_events`: number of DATA events used by the GoF
 - `n_kernels`: number of kernels in the Gaussian expansion, choose $n_{\text{kernels}}\approx\sqrt{N_{\text{events}}}$
 
-#### Run 
-```bash 
-cd LRT_with_unc
+#### Run
+```bash
+# Normalizing Flows backend
+cd LRT/Normalizing_Flows
 # Run calibrated toys
 CALIBRATION=True  sbatch submit_toys_LRT.sh
 # Run the corresponding uncalibrated pass
 CALIBRATION=False sbatch submit_toys_LRT.sh
+
+# Sparker kernels backend
+cd LRT/Sparker_kernels
+sbatch submit_LRT_toys.sh
 ```
 
 #### Outputs
-Results are written under `LRT_with_unc/results/`.
+Results are written under `LRT/Normalizing_Flows/results/`.
 For each ensemble architecture you will find:
-`calibration/` (`CALIBRATION=True`) and `comparison/`(`CALIBRATION=False`) subfolders
+`calibration/` (`CALIBRATION=True`) and `comparison/` (`CALIBRATION=False`) subfolders;
 inside each, one folder per toy, containing:
 - diagnostic plots
 - a `.json` with the test-statistic values needed to build $p(T)$, the $p$-value, and $Z$.
 To produce the probability vs test-statistic curves and summary tables, run:
 ```text
-LRT_with_unc/analyse_LRT_output_ML4PS_style.ipynb
+LRT/Normalizing_Flows/analyse_LRT_output_ML4PS_style.ipynb
 ```
 
 ### 2) Two sample learned LRT (NPLM)
