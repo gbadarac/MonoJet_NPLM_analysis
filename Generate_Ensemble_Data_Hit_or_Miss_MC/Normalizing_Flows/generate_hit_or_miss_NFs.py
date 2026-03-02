@@ -30,7 +30,7 @@ trial_dir = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Model
 data_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_heavy_tail_target_set.npy"
 subdir = f"N_100000_dim_2_seeds_60_4_16_128_15_bimodal_gaussian_heavy_tail"
 out_dir = os.path.join(
-    "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data",
+    "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_NFs_ensemble_data",
     subdir,
 )
 os.makedirs(out_dir, exist_ok=True)
