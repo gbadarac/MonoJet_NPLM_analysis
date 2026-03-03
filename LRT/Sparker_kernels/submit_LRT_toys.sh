@@ -20,7 +20,7 @@ set -euo pipefail
 export LD_LIBRARY_PATH="/work/gbadarac/miniforge3/envs/nplm_env/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 . /work/gbadarac/miniforge3/etc/profile.d/conda.sh
-conda activate nf_env
+conda activate kernels_env
 
 CUDA_PATH=$(python - <<'PY'
 import torch
@@ -57,8 +57,8 @@ mkdir -p /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Sparker_kernels/r
 # Data paths
 # If CALIBRATION=1, provide CALIB_DATA (dir of *.npy or single .npy)
 # If CALIBRATION=0, provide TARGET_DATA (single .npy)
-CALIBRATION=0
-#CALIB_DATA="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/<PATH_TO_ENSEMBLE_GENERATED_SAMPLES_DIR_OR_FILE>"
+CALIBRATION=1
+CALIB_DATA="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/Sparker_kernels/saved_generated_kernel_ensemble_data"
 TARGET_DATA="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/500k_2d_gaussian_heavy_tail_target_set.npy"
 
 NTEST=100000

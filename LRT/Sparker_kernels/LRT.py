@@ -79,7 +79,7 @@ epochs_tau   = 200000
 epochs_delta = 200000
 patience = 1000
 
-kernel_width_numerator = 0.08
+kernel_width_numerator = 0.3   # widened from 0.08: need clip×norm_const << p_background for Wilks
 lambda_L2_numerator = 0
 
 lr_delta = 1e-7
@@ -88,33 +88,26 @@ lr_tau   = 1e-7
 clip_tau = 0.1
 train_centers_tau = False
 
-test_id_string = 'Ntest%i_Lnorm%s/M%i_W%s_L%s' % (
-    Ntest,
-    str(lambda_regularizer),
-    n_kernels_numerator,
-    str(kernel_width_numerator),
-    str(lambda_L2_numerator),
-)
-if clip_tau is not None:
-    test_id_string += '_clip%s' % (str(clip_tau))
-if train_centers_tau:
-    test_id_string += '_train_centers'
-
 # -------------------------
 # Output folder naming
 # -------------------------
-ensemble_tag = Path(ensemble_dir).name  # last folder name of the ensemble path
+# One folder per hyperparam config; calibration/ or test/ as the only subfolder.
+# Format: SparKer{nensemble}_Ntest{N}_M{kernels}_W{width}_L{lambda}_clip{clip}
 mode_tag = "calibration" if args.calibration else "test"
 
-run_tag = (
-    f"{ensemble_tag}"
-    f"_wifi{args.nensemble}"
-    f"_Ntest{Ntest}"
-    f"_{mode_tag}_weights_history_claude_v2"
+run_tag = "TEST_WiderSigma_SparKer%i_Ntest%i_M%i_W%s_L%g" % (
+    args.nensemble,
+    Ntest,
+    n_kernels_numerator,
+    str(kernel_width_numerator),
+    lambda_L2_numerator,
 )
+if clip_tau is not None:
+    run_tag += "_clip%s" % str(clip_tau)
+if train_centers_tau:
+    run_tag += "_train_centers"
 
-# Put your existing detailed hyperparam string one level deeper
-out_dir = os.path.join(out_base, run_tag, test_id_string, mode_tag)
+out_dir = os.path.join(out_base, run_tag, mode_tag)
 
 os.makedirs(out_dir, exist_ok=True)
 print("Writing outputs to:", out_dir, flush=True)
