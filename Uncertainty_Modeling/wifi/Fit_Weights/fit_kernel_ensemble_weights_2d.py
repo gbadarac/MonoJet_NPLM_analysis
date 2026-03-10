@@ -118,7 +118,7 @@ def main():
     # Include the *fit-time* number of WiFi components in the results name
 
     results_dir = RESULTS_BASE_DIR / (
-        f"{trial_name}_{dataset_tag}_ensemblecomponents{args.n_wifi_components}_no_bootstrapping"
+        f"{trial_name}_{dataset_tag}_ensemblecomponents{args.n_wifi_components}_fix_normalization"
     )
     
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -311,18 +311,21 @@ def main():
         # reuse precomputed model_probs_cpu
         model_probs = model_probs_cpu  # (N, M) on CPU float64
 
-        w_for_hess = torch.from_numpy(final_weights).to(dtype=torch.float64, device="cpu").clone()
-        w_for_hess.requires_grad_(True)
+        # Free parameters: u = first M-1 weights (same parameterisation as training)
+        u_for_hess = torch.from_numpy(final_weights[:-1]).to(dtype=torch.float64, device="cpu").clone()
+        u_for_hess.requires_grad_(True)
 
-        def nll_w(w):
-            eps = 1e-12
-
+        def nll_w(u_vec):
+            # Enforce sum(w)=1 by defining the last weight as 1 - sum(first M-1)
+            # Identical constraint to nll_from_probs used during training
+            w = build_full_weights(u_vec)  # (M,)
             p = (model_probs * w.view(1, -1)).sum(dim=1)
             data_term = -torch.log(p).mean()
             return data_term
 
-        y = nll_w(w_for_hess)
-        H = get_hessian(y, w_for_hess).detach()
+        y = nll_w(u_for_hess)
+        H = get_hessian(y, u_for_hess).detach()
+        print(f"Hessian shape: {tuple(H.shape)}", flush=True)  # expect (M-1, M-1) = 59x59
         np.save(results_dir / "Hessian_weights.npy", H.numpy())
 
         eigs = torch.linalg.eigvalsh(H).cpu().numpy()
@@ -330,16 +333,19 @@ def main():
 
         inv_hess = torch.linalg.inv(H)
 
-        # hessian is on average loss, so divide by N to get overall covariance
+        # H is Hessian of average loss (1/N * sum NLL), so cov = H^{-1} / N
         cov_w = inv_hess / model_probs.shape[0]
         cov_w_np = cov_w.detach().cpu().numpy()
         np.save(results_dir / "cov_weights.npy", cov_w_np)
+
+        print(f"Covariance matrix shape: {cov_w_np.shape}", flush=True)  # expect (M-1, M-1) = 59x59
+        print("Covariance matrix:\n", cov_w_np, flush=True)
 
         # print variances + stds
         var_w = np.diag(cov_w_np)
         std_w = np.sqrt(np.maximum(var_w, 0.0))  # avoid sqrt of tiny negative numerics
 
-        print("Variance of weights (diag(cov)/N):", var_w, flush=True)
+        print("Variance of weights (diag(cov)):", var_w, flush=True)
         print("Std of weights:", std_w, flush=True)
 
         for i, (v, s) in enumerate(zip(var_w, std_w)):

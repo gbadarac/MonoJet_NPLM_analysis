@@ -206,7 +206,10 @@ def plot_ensemble_marginals_2d_kernel(
         # Ensemble uncertainty
         if cov_w_np is not None:
             cov_t = torch.from_numpy(cov_w_np).double()
-            sigma2 = torch.einsum("bi,ij,bj->b", v_mat, cov_t, v_mat).numpy()
+            # Delta method: cov is (M-1)x(M-1) over free params u = w[:-1].
+            # df/du_j = v_j - v_{M-1}  (last weight is fixed as 1 - sum(u))
+            J = v_mat[:, :-1] - v_mat[:, -1:]  # (B, M-1)
+            sigma2 = torch.einsum("bi,ij,bj->b", J, cov_t, J).numpy()
             f_err = np.sqrt(np.maximum(sigma2, 0.0))
         else:
             f_err = np.zeros_like(f_binned)

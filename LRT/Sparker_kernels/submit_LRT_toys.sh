@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=LRT_toys
-#SBATCH --array=0-0
+#SBATCH --array=0-99
 #SBATCH --time=08:00:00
 #SBATCH --mem=20G
 #SBATCH --ntasks=1
@@ -20,7 +20,7 @@ set -euo pipefail
 export LD_LIBRARY_PATH="/work/gbadarac/miniforge3/envs/nplm_env/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 . /work/gbadarac/miniforge3/etc/profile.d/conda.sh
-conda activate nf_env
+conda activate kernels_env
 
 CUDA_PATH=$(python - <<'PY'
 import torch
@@ -45,9 +45,9 @@ PY="$REPO_ROOT/LRT/Sparker_kernels/LRT.py"
 ENSEMBLE_DIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking"
 
 # WiFi fitted weights (kernel WiFi)
-W_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernel/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents60_no_bootstrapping/final_weights.npy"
+W_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernel/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents60_fix_normalization/final_weights.npy"
 
-W_COV_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernel/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents60_no_bootstrapping/cov_weights.npy"
+W_COV_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernel/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents60_fix_normalization/cov_weights.npy"
 
 # Output base (script will create subfolders inside)
 OUT_BASE="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Sparker_kernels/results"
@@ -58,7 +58,7 @@ mkdir -p /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Sparker_kernels/r
 # If CALIBRATION=1, provide CALIB_DATA (dir of *.npy or single .npy)
 # If CALIBRATION=0, provide TARGET_DATA (single .npy)
 CALIBRATION=0
-#CALIB_DATA="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/<PATH_TO_ENSEMBLE_GENERATED_SAMPLES_DIR_OR_FILE>"
+#CALIB_DATA="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/Sparker_kernels/saved_generated_kernel_ensemble_data/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents60_fix_normalization"
 TARGET_DATA="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/500k_2d_gaussian_heavy_tail_target_set.npy"
 
 NTEST=100000
@@ -92,6 +92,7 @@ CMD=(python -u "$PY"
   -n "$NTEST"
   -e "$NENSEMBLE"
   -s "$SEED"
+  --toy_id "$TOY_ID"
   -c "$CALIBRATION"
 )
 

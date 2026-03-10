@@ -52,6 +52,8 @@ parser.add_argument('-e', '--nensemble', type=int, help="number of ensembled mod
 parser.add_argument('-n', '--ntest', type=int, help="number of points in the test data", required=True)
 parser.add_argument('-c', '--calibration', type=int, help="is it a calibration toy", required=True)
 parser.add_argument('-s', '--seed', type=int, help="toy seed", required=False, default=None)
+parser.add_argument('--toy_id', type=int, default=None,
+                    help="Toy index used for folder/file naming (0-based). If not set, falls back to seed.")
 parser.add_argument('--save_arrays', action='store_true', help="If set, also save per-event numerator/denominator/test arrays.")
 args     = parser.parse_args()
 
@@ -61,6 +63,9 @@ if seed==None:
     seed = datetime.datetime.now().microsecond+datetime.datetime.now().second+datetime.datetime.now().min
 #np.random.seed(seed)
 print('Random seed:'+str(seed))
+
+# label is used for folder/file naming; toy_id if provided, else seed
+label = args.toy_id if args.toy_id is not None else seed
 
 # train on GPU?
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -79,42 +84,39 @@ epochs_tau   = 200000
 epochs_delta = 200000
 patience = 1000
 
-kernel_width_numerator = 0.08
+kernel_width_numerator = 0.3   # widened from 0.08: need clip×norm_const << p_background for Wilks
 lambda_L2_numerator = 0
 
-lr_delta = 1e-7
-lr_tau   = 1e-7
+lr_delta = 1e-6
+lr_tau   = 1e-6
 
-clip_tau = 0.1
+clip_tau = 0.01
 train_centers_tau = False
-
-test_id_string = 'Ntest%i_Lnorm%s/M%i_W%s_L%s' % (
-    Ntest,
-    str(lambda_regularizer),
-    n_kernels_numerator,
-    str(kernel_width_numerator),
-    str(lambda_L2_numerator),
-)
-if clip_tau is not None:
-    test_id_string += '_clip%s' % (str(clip_tau))
-if train_centers_tau:
-    test_id_string += '_train_centers'
 
 # -------------------------
 # Output folder naming
 # -------------------------
-ensemble_tag = Path(ensemble_dir).name  # last folder name of the ensemble path
+# One folder per hyperparam config; calibration/ or test/ as the only subfolder.
+# Format: SparKer{nensemble}_Ntest{N}_M{kernels}_W{width}_L{lambda}_clip{clip}
 mode_tag = "calibration" if args.calibration else "test"
 
-run_tag = (
-    f"{ensemble_tag}"
-    f"_wifi{args.nensemble}"
-    f"_Ntest{Ntest}"
-    f"_{mode_tag}_weights_history_claude_v2"
+run_tag = "TEST_WiderSigma_SparKer%i_Ntest%i_M%i_W%s_L%g" % (
+    args.nensemble,
+    Ntest,
+    n_kernels_numerator,
+    str(kernel_width_numerator),
+    lambda_L2_numerator,
 )
+if clip_tau is not None:
+    run_tag += "_clip%s" % str(clip_tau)
+if train_centers_tau:
+    run_tag += "_train_centers"
+# Append last 2 underscore-tokens of the WiFi folder name (e.g. "fix_normalization", "no_bootstrapping")
+# so results from different WiFi ensembles never collide.
+wifi_tag = '_'.join(os.path.basename(os.path.dirname(os.path.abspath(w_cov_path))).split('_')[-2:])
+run_tag += "_wifi_%s" % wifi_tag
 
-# Put your existing detailed hyperparam string one level deeper
-out_dir = os.path.join(out_base, run_tag, test_id_string, mode_tag)
+out_dir = os.path.join(out_base, run_tag, mode_tag, "seed%i" % label)
 
 os.makedirs(out_dir, exist_ok=True)
 print("Writing outputs to:", out_dir, flush=True)
@@ -128,7 +130,7 @@ n_layers = len(n_kernels)
 model_type = config_json["model"]
 split_indices = np.cumsum(n_kernels)[:-1]
 
-n_wifi_components =args.nensemble
+n_wifi_components = args.nensemble
 centroids_init, coefficients_init, widths_init = [], [], []
 centroids_norm, coefficients_norm, widths_norm = [], [], []
 
@@ -138,29 +140,24 @@ for i in range(n_wifi_components):
     count=-1
     for j in range(tmp.shape[0]):
         if tmp[j][0].sum(): count+=1
-        else: 
+        else:
+            print(count)
             break
     centroids_all_i = np.load(os.path.join(seed_dir, "centroids_history.npy"))[count]
     coeffs_all_i    = np.load(os.path.join(seed_dir, "coeffs_history.npy"))[count]
     widths_all_i    = np.load(os.path.join(seed_dir, "widths_history.npy"))[count, :, 0]
-    
-    # last entry is the normalisation component
-    centroids_norm_i = centroids_all_i[-1:]
-    centroids_i      = centroids_all_i[:-1]
 
-    coeffs_norm_i = coeffs_all_i[-1:]
-    coeffs_i      = coeffs_all_i[:-1]
-
-    widths_norm_i = widths_all_i[-1:]
-    widths_i      = widths_all_i[:-1]
-
-    centroids_init.append(centroids_i)
-    coefficients_init.append(coeffs_i)
-    widths_init.append(widths_i)
-
-    centroids_norm.append(centroids_norm_i)
-    coefficients_norm.append(coeffs_norm_i)
-    widths_norm.append(widths_norm_i)
+    # Last ensemble model (index n_wifi_components-1) is the normalisation model;
+    # all others form the mixture.
+    if i < n_wifi_components - 1:
+        centroids_init.append(centroids_all_i)
+        coefficients_init.append(coeffs_all_i)
+        widths_init.append(widths_all_i)
+    else:
+        print(i)
+        centroids_norm.append(centroids_all_i)
+        coefficients_norm.append(coeffs_all_i)
+        widths_norm.append(widths_all_i)
 
 centroids_init  = np.stack(centroids_init, axis=0)
 coefficients_init = np.stack(coefficients_init, axis=0)
@@ -170,6 +167,7 @@ print(centroids_init.shape, coefficients_init.shape, widths_init.shape)
 
 centroids_norm  = np.stack(centroids_norm, axis=0)
 coefficients_norm = np.stack(coefficients_norm, axis=0)
+coefficients_norm = coefficients_norm/np.sum(coefficients_norm, axis=1, keepdims=True)
 widths_norm = np.stack(widths_norm, axis=0)
 print(centroids_norm.shape, coefficients_norm.shape, widths_norm.shape)
 
@@ -209,7 +207,7 @@ bootstrap_sample = data_all[idx]
 model_probs_members = []
 model_norm_probs_members = []
 
-for i in range(n_wifi_components):
+for i in range(n_wifi_components - 1):
     # components pdfs: (Ntest, K)
     comps_i = gen.evaluate_gaussian_components(
         bootstrap_sample,
@@ -220,6 +218,7 @@ for i in range(n_wifi_components):
     pdf_i = (comps_i * coefficients_init[i]).sum(axis=1)
     model_probs_members.append(pdf_i)
 
+for i in range(1):
     comps_norm_i = gen.evaluate_gaussian_components(
         bootstrap_sample,
         centroids_norm[i],
@@ -274,13 +273,13 @@ w_init = torch.from_numpy(
 
 # ----------------------------------------------------------------------
 # DIAGNOSTIC: check the *actual* density used by TAU at init
-w0 = w_init.detach().cpu()
+w0 = w_init[:-1].detach().cpu()  # 59 free weights (last is derived as 1 - sum)
 
 print("sum(w_init) =", float(w0.sum()))
 print("w_norm_init =", float(1.0 - w0.sum()))
 
 # p_comb = (model_probs @ w) + (model_norm_probs * w_norm)
-# model_norm_probs is (N,1), so squeeze -> (N,)
+# model_probs is (N, 59), w0 is (59,); model_norm_probs is (N,1)
 p_comb = (model_probs.detach().cpu() @ w0) + (
     model_norm_probs.detach().cpu().squeeze(1) * (1.0 - w0.sum())
 )
@@ -303,9 +302,9 @@ model_den = lrt.TAU(
     (None, 2),
     ensemble_probs=model_probs.to(device),
     ensemble_norm_probs=model_norm_probs.to(device),
-    weights_init=w_init.to(device),
+    weights_init=w_init[:-1].to(device),
     weights_cov=w_cov.to(device),
-    weights_mean=w_centralv.to(device),
+    weights_mean=w_centralv[:-1].to(device),
     gaussian_center=[],
     gaussian_coeffs=[],
     gaussian_sigma=None,
@@ -335,14 +334,14 @@ den_epochs, den_losses = lrt.train_loop(
     patience=int(patience),
     save_every=save_every,
     out_dir=out_dir,
-    seed=seed
+    seed=label
 )
 
 # Save loss curve
 fig, ax = plt.subplots()
 ax.plot(den_epochs, den_losses)
 ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.set_title("Denominator loss")
-fig.savefig(os.path.join(out_dir, "seed%i_denominator_loss.png"%(seed)), dpi=180, bbox_inches="tight")
+fig.savefig(os.path.join(out_dir, "seed%i_denominator_loss.png"%(label)), dpi=180, bbox_inches="tight")
 plt.close(fig)
 
 #denominator = model_den.loglik(x_data).detach().cpu().numpy()
@@ -355,9 +354,9 @@ model_num = lrt.TAU(
     (None, 2),
     ensemble_probs=model_probs.to(device),
     ensemble_norm_probs=model_norm_probs.to(device),
-    weights_init=w_init.to(device),
+    weights_init=w_init[:-1].to(device),
     weights_cov=w_cov.to(device),
-    weights_mean=w_centralv.to(device),
+    weights_mean=w_centralv[:-1].to(device),
     gaussian_center=centers.to(device),
     gaussian_coeffs=coeffs.to(device),
     gaussian_sigma=kernel_width_numerator,
@@ -378,7 +377,7 @@ num_epochs, num_losses = lrt.train_loop(
     patience=patience,
     save_every=save_every,
     out_dir=out_dir,
-    seed=seed
+    seed=label
 )
 
 #-----------------------------------------------------------------------
@@ -386,9 +385,9 @@ num_epochs, num_losses = lrt.train_loop(
 #-----------------------------------------------------------------------
 
 def plot_sumw(tag):
-    e = np.load(os.path.join(out_dir, f"seed{seed}_{tag}_weights_epoch_hist.npy"))
-    s = np.load(os.path.join(out_dir, f"seed{seed}_{tag}_weights_sum_hist.npy"))
-    wn = np.load(os.path.join(out_dir, f"seed{seed}_{tag}_weights_wnorm_hist.npy"))
+    e = np.load(os.path.join(out_dir, f"seed{label}_{tag}_weights_epoch_hist.npy"))
+    s = np.load(os.path.join(out_dir, f"seed{label}_{tag}_weights_sum_hist.npy"))
+    wn = np.load(os.path.join(out_dir, f"seed{label}_{tag}_weights_wnorm_hist.npy"))
 
     # Plot sum(w)
     fig, ax = plt.subplots()
@@ -397,7 +396,7 @@ def plot_sumw(tag):
     ax.set_xlabel("Epoch")
     ax.set_ylabel("sum(weights)")
     ax.set_title(f"{tag}: sum(weights) vs epoch")
-    fig.savefig(os.path.join(out_dir, f"seed{seed}_{tag}_sumw_vs_epoch.png"),
+    fig.savefig(os.path.join(out_dir, f"seed{label}_{tag}_sumw_vs_epoch.png"),
                 dpi=180, bbox_inches="tight")
     plt.close(fig)
 
@@ -408,7 +407,7 @@ def plot_sumw(tag):
     ax.set_xlabel("Epoch")
     ax.set_ylabel("w_norm = 1 - sum(weights)")
     ax.set_title(f"{tag}: w_norm vs epoch")
-    fig.savefig(os.path.join(out_dir, f"seed{seed}_{tag}_wnorm_vs_epoch.png"),
+    fig.savefig(os.path.join(out_dir, f"seed{label}_{tag}_wnorm_vs_epoch.png"),
                 dpi=180, bbox_inches="tight")
     plt.close(fig)
 
@@ -420,7 +419,7 @@ plot_sumw("NUM")
 fig, ax = plt.subplots()
 ax.plot(num_epochs, num_losses)
 ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.set_title("Numerator loss")
-fig.savefig(os.path.join(out_dir, "seed%i_numerator_loss.png"%(seed)), dpi=180, bbox_inches="tight")
+fig.savefig(os.path.join(out_dir, "seed%i_numerator_loss.png"%(label)), dpi=180, bbox_inches="tight")
 plt.close(fig)
 
 #numerator = model_num.loglik(x_data).detach().cpu().numpy()
@@ -461,15 +460,15 @@ print(f"mean per-event log LR = {float(test.mean()):.6f}")
 # ----------------------------------------------------------------------
 
 # Always save scalar T
-with open(os.path.join(out_dir, f"seed{seed}_T.txt"), "w") as f:
+with open(os.path.join(out_dir, f"seed{label}_T.txt"), "w") as f:
     f.write(f"{T}\n")
 
-np.save(os.path.join(out_dir, f"seed{seed}_T.npy"), np.array(T, dtype=np.float64))
+np.save(os.path.join(out_dir, f"seed{label}_T.npy"), np.array(T, dtype=np.float64))
 
 if args.save_arrays:
-    np.save(os.path.join(out_dir, f"seed{seed}_test.npy"), test_np)
-    np.save(os.path.join(out_dir, f"seed{seed}_numerator.npy"), numerator)
-    np.save(os.path.join(out_dir, f"seed{seed}_denominator.npy"), denominator)
+    np.save(os.path.join(out_dir, f"seed{label}_test.npy"), test_np)
+    np.save(os.path.join(out_dir, f"seed{label}_numerator.npy"), numerator)
+    np.save(os.path.join(out_dir, f"seed{label}_denominator.npy"), denominator)
 
-np.save(os.path.join(out_dir, f"seed{seed}_coeffs.npy"),
+np.save(os.path.join(out_dir, f"seed{label}_coeffs.npy"),
         model_num.network.get_coefficients().detach().cpu().numpy())
