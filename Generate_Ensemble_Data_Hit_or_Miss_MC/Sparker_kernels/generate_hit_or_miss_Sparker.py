@@ -23,7 +23,11 @@ parser.add_argument('-s', '--seed', type=int, required=True,
                     help="Random seed (also used as output filename index).")
 args = parser.parse_args()
 
-os.makedirs(args.out_dir, exist_ok=True)
+# Auto-create a subfolder named after the WiFi weights run (parent dir of w_path),
+# so each wifi ensemble gets its own directory under out_dir automatically.
+wifi_name = os.path.basename(os.path.dirname(os.path.abspath(args.w_path)))
+effective_out_dir = os.path.join(args.out_dir, wifi_name)
+os.makedirs(effective_out_dir, exist_ok=True)
 
 # Load ensemble members (same approach as supervisor's script:
 # include all kernels including the normalisation component)
@@ -66,6 +70,6 @@ samples = ens.hit_or_miss_sample_batch(
     bounds=bounds,
 )
 
-out_path = os.path.join(args.out_dir, 'seed%i.npy' % args.seed)
+out_path = os.path.join(effective_out_dir, 'seed%i.npy' % args.seed)
 np.save(out_path, samples)
 print("Saved %i events to %s" % (len(samples), out_path))
