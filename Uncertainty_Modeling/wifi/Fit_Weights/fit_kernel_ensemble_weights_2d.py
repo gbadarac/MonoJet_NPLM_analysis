@@ -1,22 +1,17 @@
 #!/usr/bin/env python
 
-import os, sys, json, argparse
+import sys, argparse
 from pathlib import Path
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 
 import matplotlib as mpl
 mpl.use("Agg")  # non-interactive backend for cluster
-import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
 from torch.autograd import grad
-from torch.autograd.functional import hessian
-import gc
 import mplhep as hep
 
-from Uncertainty_Modeling.wifi.utils_kernel_wifi import plot_ensemble_marginals_2d_kernel, profile_likelihood_scan, plot_final_marginals_and_ratio
+from Uncertainty_Modeling.wifi.utils_kernel_wifi import plot_ensemble_marginals_2d_kernel, plot_final_marginals_and_ratio
 
 # Use CMS style for plots
 hep.style.use("CMS")
@@ -139,7 +134,7 @@ def main():
     # ------------------------------------------------------------------
     # Build ensemble
     # ------------------------------------------------------------------
-    ensemble, config_json = build_wifi_ensemble(
+    ensemble, _ = build_wifi_ensemble(
         folder_path=folder_path,
         n_wifi_components=args.n_wifi_components,
         train_centroids=False,
@@ -187,15 +182,10 @@ def main():
     device_fit = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model_probs = model_probs_cpu.to(device=device_fit, dtype=torch.float64, non_blocking=True)
 
-    M = model_probs.shape[1]
-
     # Initialise from current ensemble weights + small noise
     w_init = ensemble.weights.detach().to(device=device_fit, dtype=torch.float64).clone()
     w_init = w_init + 1e-2 * torch.randn_like(w_init)
     
-    print("w_init:", w_init.detach().cpu().numpy(), flush=True)
-    print("w_init sum:", float(w_init.sum().detach().cpu().item()), flush=True)
-
     # Free parameters: u = first M-1 weights
     u0 = w_init[:-1].clone()
     u = torch.nn.Parameter(u0, requires_grad=True)
@@ -208,13 +198,8 @@ def main():
         return torch.cat([u_vec, w_last.view(1)], dim=0)  # (M,)
 
     def nll_from_probs(u_vec: torch.Tensor) -> torch.Tensor:
-        eps = 1e-12
         w = build_full_weights(u_vec)  # (M,)
-
-        # raw mixture (can be negative because weights can be negative)
         p = (model_probs * w.view(1, -1)).sum(dim=1)  # (N,)
-        # This does NOT constrain weights to be positive
-
         return -torch.log(p).mean()
 
     loss_hist = []
@@ -233,15 +218,8 @@ def main():
                 loss_after = nll_from_probs(u)
                 cur = float(loss_after.detach().cpu().item())
 
-            # gradient norm you print is the grad from the last backward (pre step)
             gnorm = float(u.grad.detach().norm().cpu().item())
             print(f"epoch {epoch} loss {cur:.6e} |dL/du| {gnorm:.3e}", flush=True)
-
-            w_sum = float(build_full_weights(u.detach()).sum().detach().cpu().item())
-            print(f"epoch {epoch} sumw {w_sum:.6f}", flush=True)
-            
-            w_now = build_full_weights(u.detach()).cpu().numpy()
-            print(f"epoch {epoch} weights {w_now}", flush=True)
 
             loss_hist.append(cur)
 
@@ -260,41 +238,6 @@ def main():
     np.save(results_dir / "final_weights.npy", final_weights)
     np.save(results_dir / "loss_history_wifi.npy", np.array(loss_hist, dtype=np.float32))
     print("Saved final_weights.npy and loss_history_wifi.npy", flush=True)
-        
-    # ------------------------------------------------------------
-    # DIAGNOSTICS: check saturation + cancellation in weights
-    # ------------------------------------------------------------
-    with torch.no_grad():
-        # Use the same model_probs used in training (GPU if available)
-        w_t = torch.from_numpy(final_weights).to(device=model_probs.device, dtype=torch.float64)
-
-        # raw mixture (can be negative)
-        p_raw = (model_probs * w_t.view(1, -1)).sum(dim=1)  # (N,)
-
-        # the actual density used in training loss
-        p = F.softplus(p_raw) + 1e-12
-
-        # robust stats for p_raw and p
-        p_raw_min = float(p_raw.min().cpu())
-        p_raw_med = float(p_raw.median().cpu())
-        p_raw_max = float(p_raw.max().cpu())
-
-        p_min = float(p.min().cpu())
-        p_med = float(p.median().cpu())
-        p_max = float(p.max().cpu())
-
-        print(f"p_raw min/med/max: {p_raw_min:.3e} / {p_raw_med:.3e} / {p_raw_max:.3e}", flush=True)
-        print(f"p     min/med/max: {p_min:.3e} / {p_med:.3e} / {p_max:.3e}", flush=True)
-
-        # weight cancellation metrics
-        w_np = final_weights
-        print(f"sum(w): {w_np.sum():.6f}", flush=True)
-        print(f"L1(w):  {np.abs(w_np).sum():.6e}", flush=True)
-        print(f"max|w|: {np.max(np.abs(w_np)):.6e}", flush=True)
-
-        # optional: how often p_raw is negative (softplus is "fixing" it)
-        frac_neg = float((p_raw < 0).double().mean().cpu())
-        print(f"fraction p_raw < 0: {frac_neg:.4f}", flush=True)
 
     # copy weights back into ensemble (CPU) for any later plotting code that expects ensemble.weights
     with torch.no_grad():
@@ -325,11 +268,11 @@ def main():
 
         y = nll_w(u_for_hess)
         H = get_hessian(y, u_for_hess).detach()
-        print(f"Hessian shape: {tuple(H.shape)}", flush=True)  # expect (M-1, M-1) = 59x59
+        print(f"Hessian shape: {tuple(H.shape)}", flush=True)
         np.save(results_dir / "Hessian_weights.npy", H.numpy())
 
         eigs = torch.linalg.eigvalsh(H).cpu().numpy()
-        print("Hessian eigenvalues are", eigs, flush=True)
+        print(f"Hessian eigenvalues min/max: {eigs.min():.4e} / {eigs.max():.4e}", flush=True)
 
         inv_hess = torch.linalg.inv(H)
 
@@ -338,18 +281,7 @@ def main():
         cov_w_np = cov_w.detach().cpu().numpy()
         np.save(results_dir / "cov_weights.npy", cov_w_np)
 
-        print(f"Covariance matrix shape: {cov_w_np.shape}", flush=True)  # expect (M-1, M-1) = 59x59
-        print("Covariance matrix:\n", cov_w_np, flush=True)
-
-        # print variances + stds
-        var_w = np.diag(cov_w_np)
-        std_w = np.sqrt(np.maximum(var_w, 0.0))  # avoid sqrt of tiny negative numerics
-
-        print("Variance of weights (diag(cov)):", var_w, flush=True)
-        print("Std of weights:", std_w, flush=True)
-
-        for i, (v, s) in enumerate(zip(var_w, std_w)):
-            print(f"w[{i}] var={v:.6e}  std={s:.6e}", flush=True)
+        print(f"Covariance matrix shape: {cov_w_np.shape}", flush=True)
 
     # ------------------------------------------------------------------
     # Build grid & evaluate final ensemble for plots

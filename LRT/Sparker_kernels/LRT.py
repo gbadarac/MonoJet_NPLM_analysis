@@ -80,27 +80,27 @@ seed_fmt = args.seed_format
 lambda_regularizer = 0
 n_kernels_numerator = 100
 
-epochs_tau   = 200000
-epochs_delta = 200000
+epochs_tau   = 100000
+epochs_delta = 100000
 patience = 1000
 
 kernel_width_numerator = 0.3   # widened from 0.08: need clip×norm_const << p_background for Wilks
-lambda_L2_numerator = 0
+lambda_L2_numerator = 10000
 
 lr_delta = 1e-6
 lr_tau   = 1e-6
 
-clip_tau = 0.01
+clip_tau = 0.001
 train_centers_tau = False
 
 # -------------------------
 # Output folder naming
 # -------------------------
 # One folder per hyperparam config; calibration/ or test/ as the only subfolder.
-# Format: SparKer{nensemble}_Ntest{N}_M{kernels}_W{width}_L{lambda}_clip{clip}
+# Format: SparKer{nensemble}_Ntest{N}_M{kernels}_W{width}_L{lambda}_clip{clip}_wifi_{tag}
 mode_tag = "calibration" if args.calibration else "test"
 
-run_tag = "TEST_WiderSigma_SparKer%i_Ntest%i_M%i_W%s_L%g" % (
+run_tag = "SparKer%i_Ntest%i_M%i_W%s_L%g" % (
     args.nensemble,
     Ntest,
     n_kernels_numerator,
@@ -326,15 +326,10 @@ with torch.no_grad():
         raise RuntimeError("DEN loglik is not finite at init. Likely log(0)/division by 0 in TAU.")
 # ----------------------------------------------------------------------
 
-save_every = 1000
-
 den_epochs, den_losses = lrt.train_loop(
     x_data, model_den, "DEN",
     epochs=epochs_delta, lr=lr_delta,
     patience=int(patience),
-    save_every=save_every,
-    out_dir=out_dir,
-    seed=label
 )
 
 # Save loss curve
@@ -373,47 +368,9 @@ model_num = model_num.double()
 num_epochs, num_losses = lrt.train_loop(
     x_data, model_num, "NUM",
     epochs=epochs_tau,
-    lr=lr_tau,            # single LR supported by this train_loop
+    lr=lr_tau,
     patience=patience,
-    save_every=save_every,
-    out_dir=out_dir,
-    seed=label
 )
-
-#-----------------------------------------------------------------------
-# Diagnostic plots for weight evolution (sum(w), w_norm, max|z|, global sigma, tail prob)
-#-----------------------------------------------------------------------
-
-def plot_sumw(tag):
-    e = np.load(os.path.join(out_dir, f"seed{label}_{tag}_weights_epoch_hist.npy"))
-    s = np.load(os.path.join(out_dir, f"seed{label}_{tag}_weights_sum_hist.npy"))
-    wn = np.load(os.path.join(out_dir, f"seed{label}_{tag}_weights_wnorm_hist.npy"))
-
-    # Plot sum(w)
-    fig, ax = plt.subplots()
-    ax.plot(e, s)
-    ax.axhline(1.0, linestyle="--")
-    ax.set_xlabel("Epoch")
-    ax.set_ylabel("sum(weights)")
-    ax.set_title(f"{tag}: sum(weights) vs epoch")
-    fig.savefig(os.path.join(out_dir, f"seed{label}_{tag}_sumw_vs_epoch.png"),
-                dpi=180, bbox_inches="tight")
-    plt.close(fig)
-
-    # Plot w_norm
-    fig, ax = plt.subplots()
-    ax.plot(e, wn)
-    ax.axhline(0.0, linestyle="--")
-    ax.set_xlabel("Epoch")
-    ax.set_ylabel("w_norm = 1 - sum(weights)")
-    ax.set_title(f"{tag}: w_norm vs epoch")
-    fig.savefig(os.path.join(out_dir, f"seed{label}_{tag}_wnorm_vs_epoch.png"),
-                dpi=180, bbox_inches="tight")
-    plt.close(fig)
-
-plot_sumw("DEN")
-plot_sumw("NUM")
-#-----------------------------------------------------------------------
 
 # Save loss curve (linear y-scale)
 fig, ax = plt.subplots()

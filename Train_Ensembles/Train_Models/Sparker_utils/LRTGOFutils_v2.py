@@ -270,57 +270,33 @@ def train_loop(
     epochs=20000,
     patience=1000,
     monitor=False,
-    save_every=1000,   # NEW: save cadence in epochs (e.g. 1000)
-    out_dir=None,      # NEW: where to write .npy files
-    seed=None          # NEW: for filenames
 ):
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     loss_hist, epoch_hist = [], []
 
-    # Keep your "cheap mode" logic
     if model.train_net and (not model.train_centers):
         print('Cheap mode: ON')
         x_input = model.network.get_kernels(x_data)  # [N, M]
     else:
         x_input = x_data  # [N, d]
 
-    # NEW: history buffers
-    w_hist = []
-    wsum_hist = []
-    ep_hist = []
-    wnorm_hist = []
-    
     for epoch in range(1, epochs + 1):
         opt.zero_grad(set_to_none=True)
-        loss = model.loss(x_input)   # runs on device
+        loss = model.loss(x_input)
         loss.backward()
         opt.step()
 
-        # Keep your coeff clipping
         if model.train_net:
             if model.network.clip is not None:
                 model.network.clip_coefficients()
 
-        # NEW: record weights every save_every epochs
-        if (save_every is not None) and (out_dir is not None) and (epoch % save_every == 0):
-            with torch.no_grad():
-                w = model.weights.detach().cpu().numpy().copy()  # (n_ensemble,)
-                s = float(w.sum())
-                w_hist.append(w)
-                wsum_hist.append(s)
-                wnorm_hist.append(1.0 - s)
-                ep_hist.append(epoch)
-            
-        # Keep your loss print logic
         if (epoch % patience) == 0:
             cur = float(loss.detach().item())
 
-            # optional extra monitor
             if monitor:
                 with torch.no_grad():
                     model.monitor(x_data)
 
-            # loss history
             loss_hist.append(cur)
             epoch_hist.append(epoch)
 
@@ -332,17 +308,5 @@ def train_loop(
                 f"pmin {pmin: .2e}  n<=0 {nle0:6d}  nan {nnan:6d}  ",
                 flush=True
             )
-
-    # NEW: dump the histories once at the end (cheap + safe)
-    if (save_every is not None) and (out_dir is not None) and (len(ep_hist) > 0):
-        tag = f"seed{seed}_" if seed is not None else ""
-        np.save(os.path.join(out_dir, f"{tag}{name}_weights_hist.npy"),
-                np.stack(w_hist, axis=0))  # (n_saves, n_ensemble)
-        np.save(os.path.join(out_dir, f"{tag}{name}_weights_sum_hist.npy"),
-                np.array(wsum_hist, dtype=np.float64))  # (n_saves,)
-        np.save(os.path.join(out_dir, f"{tag}{name}_weights_epoch_hist.npy"),
-                np.array(ep_hist, dtype=np.int32))  # (n_saves,)
-        np.save(os.path.join(out_dir, f"{tag}{name}_weights_wnorm_hist.npy"),
-                np.array(wnorm_hist, dtype=np.float64))  # (n_saves,
 
     return np.array(epoch_hist, np.int32), np.array(loss_hist, np.float32)
