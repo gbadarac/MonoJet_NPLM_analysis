@@ -270,9 +270,11 @@ def train_loop(
     epochs=20000,
     patience=1000,
     monitor=False,
+    save_param_history=False,
 ):
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     loss_hist, epoch_hist = [], []
+    weight_hist, coeff_hist = [], []
 
     if model.train_net and (not model.train_centers):
         print('Cheap mode: ON')
@@ -303,10 +305,21 @@ def train_loop(
             with torch.no_grad():
                 pmin, nle0, nnan = model.p_raw_stats(x_input)
 
+                if save_param_history:
+                    weight_hist.append(model.weights.cpu().numpy().copy())
+                    if model.train_net:
+                        coeff_hist.append(model.network.coefficients.cpu().numpy().copy())
+
             print(
                 f"[{name}] ep {epoch:6d}  loss {cur: .3e}  "
                 f"pmin {pmin: .2e}  n<=0 {nle0:6d}  nan {nnan:6d}  ",
                 flush=True
             )
 
-    return np.array(epoch_hist, np.int32), np.array(loss_hist, np.float32)
+    param_hist = None
+    if save_param_history:
+        param_hist = {'weights': np.array(weight_hist)}   # (n_checkpoints, n_ensemble)
+        if coeff_hist:
+            param_hist['coeffs'] = np.array(coeff_hist)   # (n_checkpoints, M)
+
+    return np.array(epoch_hist, np.int32), np.array(loss_hist, np.float32), param_hist

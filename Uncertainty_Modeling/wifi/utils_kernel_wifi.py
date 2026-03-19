@@ -85,15 +85,6 @@ def ensemble_pred(weights, model_probs):
     p = torch.clamp_min(p_raw, 0.0)
     return p.detach().cpu().numpy()
 
-def ensemble_unc(cov_w, model_probs):
-    """
-    cov_w: (M,M) numpy array
-    model_probs: (B,M) torch
-    returns: (B,) numpy sigma, with safe sqrt
-    """
-    mp = model_probs.detach().cpu().numpy()
-    sigma_sq = np.einsum("bi,ij,bj->b", mp, cov_w, mp)
-    return np.sqrt(np.maximum(sigma_sq, 0.0))
 
 # ------------------
 # Kernel specific evaluation

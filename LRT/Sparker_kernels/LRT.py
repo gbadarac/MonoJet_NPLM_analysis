@@ -55,7 +55,11 @@ parser.add_argument('-s', '--seed', type=int, help="toy seed", required=False, d
 parser.add_argument('--toy_id', type=int, default=None,
                     help="Toy index used for folder/file naming (0-based). If not set, falls back to seed.")
 parser.add_argument('--save_arrays', action='store_true', help="If set, also save per-event numerator/denominator/test arrays.")
+parser.add_argument('--fix_wifi_weights', action='store_true',
+                    help="Fix WiFi weights at central value (no profiling, no prior). Classic LRT without uncertainties.")
 args     = parser.parse_args()
+
+train_wifi_weights = not args.fix_wifi_weights
 
 # random seed
 seed = args.seed
@@ -90,7 +94,7 @@ lambda_L2_numerator = 10000
 lr_delta = 1e-6
 lr_tau   = 1e-6
 
-clip_tau = 0.001
+clip_tau = 0.0005
 train_centers_tau = False
 
 # -------------------------
@@ -115,6 +119,9 @@ if train_centers_tau:
 # so results from different WiFi ensembles never collide.
 wifi_tag = '_'.join(os.path.basename(os.path.dirname(os.path.abspath(w_cov_path))).split('_')[-2:])
 run_tag += "_wifi_%s" % wifi_tag
+if not train_wifi_weights:
+    run_tag += "_no_unc"
+#run_tag += "_TEST"
 
 out_dir = os.path.join(out_base, run_tag, mode_tag, "seed%i" % label)
 
@@ -266,10 +273,14 @@ stats("model_norm_probs", model_norm_probs)
 
 x_data = torch.from_numpy(bootstrap_sample).double().to(device)
 
-noise_scale_init = 0.1 * np.abs(weights_cov_init.diagonal()).mean()
-w_init = torch.from_numpy(
-    weights_centralv + np.random.normal(scale=noise_scale_init, size=weights_centralv.shape)
-).double()
+if train_wifi_weights:
+    noise_scale_init = 0.1 * np.abs(weights_cov_init.diagonal()).mean()
+    w_init = torch.from_numpy(
+        weights_centralv + np.random.normal(scale=noise_scale_init, size=weights_centralv.shape)
+    ).double()
+else:
+    # Fix at exact central value: denominator is identical across all toys
+    w_init = torch.from_numpy(weights_centralv).double()
 
 # ----------------------------------------------------------------------
 # DIAGNOSTIC: check the *actual* density used by TAU at init
@@ -310,7 +321,7 @@ model_den = lrt.TAU(
     gaussian_sigma=None,
     lambda_regularizer=lambda_regularizer,
     train_net=False,
-    train_weights=True
+    train_weights=train_wifi_weights
 ).to(device)
 
 model_den = model_den.double()
@@ -326,18 +337,19 @@ with torch.no_grad():
         raise RuntimeError("DEN loglik is not finite at init. Likely log(0)/division by 0 in TAU.")
 # ----------------------------------------------------------------------
 
-den_epochs, den_losses = lrt.train_loop(
-    x_data, model_den, "DEN",
-    epochs=epochs_delta, lr=lr_delta,
-    patience=int(patience),
-)
+if train_wifi_weights:
+    den_epochs, den_losses, _ = lrt.train_loop(
+        x_data, model_den, "DEN",
+        epochs=epochs_delta, lr=lr_delta,
+        patience=int(patience),
+    )
 
-# Save loss curve
-fig, ax = plt.subplots()
-ax.plot(den_epochs, den_losses)
-ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.set_title("Denominator loss")
-fig.savefig(os.path.join(out_dir, "seed%i_denominator_loss.png"%(label)), dpi=180, bbox_inches="tight")
-plt.close(fig)
+    # Save loss curve
+    fig, ax = plt.subplots()
+    ax.plot(den_epochs, den_losses)
+    ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.set_title("Denominator loss")
+    fig.savefig(os.path.join(out_dir, "seed%i_denominator_loss.png"%(label)), dpi=180, bbox_inches="tight")
+    plt.close(fig)
 
 #denominator = model_den.loglik(x_data).detach().cpu().numpy()
 
@@ -360,12 +372,12 @@ model_num = lrt.TAU(
     train_net=True,
     train_centers=train_centers_tau,
     clip_net_coeffs=clip_tau,
-    train_weights=True
+    train_weights=train_wifi_weights
 ).to(device)
 
 model_num = model_num.double()
 
-num_epochs, num_losses = lrt.train_loop(
+num_epochs, num_losses, _ = lrt.train_loop(
     x_data, model_num, "NUM",
     epochs=epochs_tau,
     lr=lr_tau,
@@ -396,16 +408,18 @@ with torch.no_grad():
     num_log_data = torch.log(num_p)                     # (N,)
 
     # ---------- auxiliary terms (global) ----------
-    aux_num = model_num.log_auxiliary_term()            # scalar
-    aux_den = model_den.log_auxiliary_term()            # scalar
+    # With uncertainties: T = [sum num_log_data + log P(w_num)] - [sum den_log_data + log P(w_den)]
+    # Without uncertainties: T = sum num_log_data - sum den_log_data  (pure log-LR, no prior)
+    if train_wifi_weights:
+        aux_num = model_num.log_auxiliary_term()        # scalar
+        aux_den = model_den.log_auxiliary_term()        # scalar
+        T_tensor = (num_log_data.sum() + aux_num) - (den_log_data.sum() + aux_den)
+        test = (num_log_data - den_log_data) + ((aux_num - aux_den) / N)
+    else:
+        T_tensor = num_log_data.sum() - den_log_data.sum()
+        test = num_log_data - den_log_data
 
-    # Training maximizes MAP = sum log p(x) + log P(w | prior)
-    # Consistent LRT: T = [sum num_log_data + aux_num] - [sum den_log_data + aux_den]
-    T_tensor = (num_log_data.sum() + aux_num) - (den_log_data.sum() + aux_den)
     T = float(T_tensor.detach().cpu().item())
-
-    # Build per event array whose sum equals T by spreading aux difference evenly
-    test = (num_log_data - den_log_data) + ((aux_num - aux_den) / N)
 
     # Save arrays in numpy
     numerator   = num_log_data.detach().cpu().numpy()
@@ -429,3 +443,33 @@ if args.save_arrays:
 
 np.save(os.path.join(out_dir, f"seed{label}_coeffs.npy"),
         model_num.network.get_coefficients().detach().cpu().numpy())
+
+# -----------------------------------------------------------------------
+# Save final WiFi weights (DEN + NUM) and initial weights
+# -----------------------------------------------------------------------
+w_den_final  = model_den.weights.detach().cpu().numpy()          # (59,)
+w_num_final  = model_num.weights.detach().cpu().numpy()          # (59,)
+w_init_arr   = w_init[:-1].detach().cpu().numpy()                # (59,) init (central + noise)
+w_prior_mean = w_centralv[:-1].cpu().numpy()                     # (59,) WiFi fitted central value
+
+np.save(os.path.join(out_dir, f"seed{label}_den_weights.npy"),  w_den_final)
+np.save(os.path.join(out_dir, f"seed{label}_num_weights.npy"),  w_num_final)
+np.save(os.path.join(out_dir, f"seed{label}_init_weights.npy"), w_init_arr)
+
+# -----------------------------------------------------------------------
+# Print summary: initial vs final WiFi weights and kernel coefficients
+# -----------------------------------------------------------------------
+kernel_coeffs_final = model_num.network.get_coefficients().detach().cpu().numpy()  # mean-centred
+raw_coeffs_final    = model_num.network.coefficients.detach().cpu().numpy()
+n_at_clip = int(np.sum(np.abs(raw_coeffs_final) >= clip_tau * 0.999))
+
+np.set_printoptions(precision=6, suppress=True, linewidth=120)
+print("--- WiFi weights (59 components) ---")
+print(f"  prior mean : {w_prior_mean}")
+print(f"  init       : {w_init_arr}")
+print(f"  DEN final  : {w_den_final}")
+print(f"  NUM final  : {w_num_final}")
+print("--- Kernel coefficients (mean-centred, 100 components) ---")
+print(f"  init (all zero by construction)")
+print(f"  final      : {kernel_coeffs_final}")
+print(f"  saturated at clip={clip_tau}: {n_at_clip}/{n_kernels_numerator}", flush=True)
