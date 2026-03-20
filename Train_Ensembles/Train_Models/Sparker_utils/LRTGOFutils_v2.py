@@ -72,14 +72,18 @@ class TAU(nn.Module):
         self.weights_cov  = weights_cov
         self.weights_mean = weights_mean
         self.train_weights = train_weights
-        self.weights_mean = self.weights_mean.to(dtype=dtype, device=device)
-        self.weights_cov  = self.weights_cov.to(dtype=dtype, device=device)
+        if self.weights_mean is not None:
+            self.weights_mean = self.weights_mean.to(dtype=dtype, device=device)
+        if self.weights_cov is not None:
+            self.weights_cov  = self.weights_cov.to(dtype=dtype, device=device)
 
-        # Just verify that:
-        assert self.weights_mean.shape[0] == self.n_ensemble, \
-            f"weights_mean shape {self.weights_mean.shape} doesn't match n_ensemble {self.n_ensemble}"
-        assert self.weights_cov.shape == (self.n_ensemble, self.n_ensemble), \
-            f"weights_cov shape {self.weights_cov.shape} doesn't match expected ({self.n_ensemble}, {self.n_ensemble})"
+        # Verify shapes only when prior is provided:
+        if self.weights_mean is not None:
+            assert self.weights_mean.shape[0] == self.n_ensemble, \
+                f"weights_mean shape {self.weights_mean.shape} doesn't match n_ensemble {self.n_ensemble}"
+        if self.weights_cov is not None:
+            assert self.weights_cov.shape == (self.n_ensemble, self.n_ensemble), \
+                f"weights_cov shape {self.weights_cov.shape} doesn't match expected ({self.n_ensemble}, {self.n_ensemble})"
 
         if (self.weights_mean is not None) and (self.weights_cov is not None):
             print(f"weights_mean shape: {self.weights_mean.shape}")
@@ -183,7 +187,9 @@ class TAU(nn.Module):
         return torch.sum(self.network.get_coefficients()**2)
                     
     def log_auxiliary_term(self):
-        return self.aux_model.log_prob(self.weights) 
+        if self.aux_model is None:
+            return torch.zeros(1, dtype=self.ensemble_probs.dtype, device=self.ensemble_probs.device)
+        return self.aux_model.log_prob(self.weights)
         
     def loglik(self, x):
         aux = self.log_auxiliary_term()

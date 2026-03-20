@@ -35,7 +35,7 @@ export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:32
 python fit_kernel_ensemble_weights_2d.py \
   --folder_path "${FOLDER_PATH}" \
   --data_path "${DATA_PATH}" \
-  --n_wifi_components 60 \
+  --n_wifi_components 32 \
   --epochs 2000 \
   --patience 100 \
   --lr 0.001 \
