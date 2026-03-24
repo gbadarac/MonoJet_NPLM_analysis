@@ -44,7 +44,7 @@ PY="$REPO_ROOT/LRT/Sparker_kernels/LRT_one_model.py"
 MODEL_DIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking"
 
 # Which single model to use (0 -> seed000)
-MODEL_SEED=32
+MODEL_SEED=53
 
 # Output base
 OUT_BASE="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Sparker_kernels/results"
@@ -56,7 +56,7 @@ mkdir -p /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Sparker_kernels/r
 # -------------------------
 # CALIBRATION=1: samples Ntest events from the single GMM (no external file needed)
 # CALIBRATION=0: loads target data from TARGET_DATA
-CALIBRATION=0
+CALIBRATION=1
 TARGET_DATA="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/500k_2d_gaussian_heavy_tail_target_set.npy"
 
 NTEST=100000

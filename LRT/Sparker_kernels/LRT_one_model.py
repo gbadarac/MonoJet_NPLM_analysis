@@ -87,6 +87,8 @@ run_tag = "SparKer1_%s_Ntest%i_M%i_W%s_L%g" % (
 )
 if clip_tau is not None:
     run_tag += "_clip%s" % str(clip_tau)
+# DEN profiles the GMM mixture coefficients freely (analogous to free_wifi_weights in LRT.py)
+run_tag += "_free_gmm_weights"
 
 out_dir = os.path.join(args.out_base, run_tag, mode_tag, "seed%i" % label)
 os.makedirs(out_dir, exist_ok=True)
@@ -152,23 +154,39 @@ else:
     bootstrap_sample = data_all[idx]
 
 # -------------------------------------------------------------------
-# Evaluate single model PDF at test points  ->  model_norm_probs (N, 1)
-# ensemble_probs is empty (N, 0): no WiFi mixture, no trainable weights
+# Evaluate individual GMM components at test points.
+# Each of the K Gaussian components is treated as an "ensemble member"
+# with a trainable mixture coefficient — directly analogous to how
+# LRT.py profiles WiFi weights for the ensemble.
+#
+# Layout (mirrors the ensemble convention in LRT.py):
+#   model_probs      (N, K-1): components 0..K-2, with free weights w[0..K-2]
+#   model_norm_probs (N, 1)  : component K-1,     weight = 1 - sum(w)
+#   weights_init     (K-1,)  : trained GMM coefficients (initial values)
+#
+# At initialisation f(x) = sum_k coeff_k * comp_k(x) = original GMM PDF. ✓
+# DEN profiles w freely (no prior) to best fit the data — same logic as
+# --free_wifi_weights in LRT.py.
 # -------------------------------------------------------------------
 N = bootstrap_sample.shape[0]
 
-comps = gen.evaluate_gaussian_components(bootstrap_sample, centroids, widths)  # (N, K)
-pdf_single = (comps * coefficients).sum(axis=1)                                  # (N,)
-
 EPS = 1e-300
-pdf_single = np.maximum(pdf_single, EPS)
+comps = gen.evaluate_gaussian_components(bootstrap_sample, centroids, widths)  # (N, K)
+comps = np.maximum(comps, EPS)
 
-model_norm_probs = torch.from_numpy(pdf_single[:, np.newaxis]).double()   # (N, 1)
-model_probs      = torch.zeros(N, 0, dtype=torch.float64)                 # (N, 0) — no mixture
+model_probs      = torch.from_numpy(comps[:, :-1].astype(np.float64))   # (N, K-1)
+model_norm_probs = torch.from_numpy(comps[:, -1:].astype(np.float64))   # (N, 1)
+weights_init_gmm = torch.from_numpy(coefficients[:-1].astype(np.float64))  # (K-1,)
 
+print("model_probs       shape:", model_probs.shape,
+      " min:", float(model_probs.min()),
+      " max:", float(model_probs.max()), flush=True)
 print("model_norm_probs  shape:", model_norm_probs.shape,
       " min:", float(model_norm_probs.min()),
       " max:", float(model_norm_probs.max()), flush=True)
+print("weights_init_gmm  shape:", weights_init_gmm.shape,
+      " sum:", float(weights_init_gmm.sum()),
+      " w_norm_init:", float(1.0 - weights_init_gmm.sum()), flush=True)
 
 model_probs      = torch.clamp(model_probs, min=EPS)
 model_norm_probs = torch.clamp(model_norm_probs, min=EPS)
@@ -176,25 +194,27 @@ model_norm_probs = torch.clamp(model_norm_probs, min=EPS)
 x_data = torch.from_numpy(bootstrap_sample).double().to(device)
 
 # -------------------------------------------------------------------
-# TAU — Denominator (single model, fixed, no training)
-# n_ensemble = 0 inside TAU: f(x) = 1.0 * model_norm_probs = pdf_single
+# TAU — Denominator
+# Profiles the K-1 GMM mixture coefficients freely (no prior),
+# analogous to --free_wifi_weights in LRT.py.
+# train_net=False: no extra test kernels in the denominator.
 # -------------------------------------------------------------------
 model_den = lrt.TAU(
     (None, centroids.shape[1]),
     ensemble_probs=model_probs.to(device),
     ensemble_norm_probs=model_norm_probs.to(device),
-    weights_init=torch.zeros(0, dtype=torch.float64),
-    weights_cov=None,
+    weights_init=weights_init_gmm.clone(),
+    weights_cov=None,    # free profiling — no Gaussian prior on GMM coefficients
     weights_mean=None,
     gaussian_center=[],
     gaussian_coeffs=[],
     gaussian_sigma=None,
     train_net=False,
-    train_weights=False,
+    train_weights=True,  # profile GMM mixture coefficients
 ).to(device)
 model_den = model_den.double()
 
-# Sanity check
+# Sanity check at initialisation (weights = trained coefficients → f = original GMM PDF)
 with torch.no_grad():
     den_p0 = model_den.call(x_data)[:, 0]
     den_p0 = torch.clamp(den_p0, min=model_den.eps)
@@ -203,7 +223,19 @@ with torch.no_grad():
     if not torch.isfinite(den0):
         raise RuntimeError("DEN loglik is not finite at init.")
 
-# DEN has no trainable parameters — skip training loop entirely.
+# Train DEN: profile GMM mixture coefficients on the data
+den_epochs, den_losses, _ = lrt.train_loop(
+    x_data, model_den, "DEN",
+    epochs=epochs_tau,
+    lr=lr_tau,
+    patience=patience,
+)
+
+fig, ax = plt.subplots()
+ax.plot(den_epochs, den_losses)
+ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.set_title("Denominator loss")
+fig.savefig(os.path.join(out_dir, "seed%i_denominator_loss.png" % label), dpi=180, bbox_inches="tight")
+plt.close(fig)
 
 # -------------------------------------------------------------------
 # TAU — Numerator (single model + extra kernels)
@@ -215,8 +247,8 @@ model_num = lrt.TAU(
     (None, centroids.shape[1]),
     ensemble_probs=model_probs.to(device),
     ensemble_norm_probs=model_norm_probs.to(device),
-    weights_init=torch.zeros(0, dtype=torch.float64),
-    weights_cov=None,
+    weights_init=weights_init_gmm.clone(),  # same initial GMM coefficients as DEN
+    weights_cov=None,    # free profiling — no prior
     weights_mean=None,
     gaussian_center=centers.to(device),
     gaussian_coeffs=coeffs.to(device),
@@ -225,7 +257,7 @@ model_num = lrt.TAU(
     train_net=True,
     train_centers=train_centers_tau,
     clip_net_coeffs=clip_tau,
-    train_weights=False,
+    train_weights=True,  # profile GMM mixture coefficients (same as DEN)
 ).to(device)
 model_num = model_num.double()
 
@@ -282,6 +314,14 @@ if args.save_arrays:
 np.save(os.path.join(out_dir, f"seed{label}_coeffs.npy"),
         model_num.network.get_coefficients().detach().cpu().numpy())
 
+# Save profiled GMM mixture weights (analogous to den_weights / num_weights in LRT.py)
+np.save(os.path.join(out_dir, f"seed{label}_den_gmm_weights.npy"),
+        model_den.weights.detach().cpu().numpy())
+np.save(os.path.join(out_dir, f"seed{label}_num_gmm_weights.npy"),
+        model_num.weights.detach().cpu().numpy())
+np.save(os.path.join(out_dir, f"seed{label}_init_gmm_weights.npy"),
+        weights_init_gmm.cpu().numpy())
+
 # -------------------------------------------------------------------
 # Summary
 # -------------------------------------------------------------------
@@ -289,7 +329,16 @@ kernel_coeffs_final = model_num.network.get_coefficients().detach().cpu().numpy(
 raw_coeffs_final    = model_num.network.coefficients.detach().cpu().numpy()
 n_at_clip = int(np.sum(np.abs(raw_coeffs_final) >= clip_tau * 0.999))
 
+w_den_final  = model_den.weights.detach().cpu().numpy()
+w_num_final  = model_num.weights.detach().cpu().numpy()
+w_init_arr   = weights_init_gmm.cpu().numpy()
+delta_den    = w_den_final - w_init_arr
+delta_num    = w_num_final - w_init_arr
+
 np.set_printoptions(precision=6, suppress=True, linewidth=120)
+print(f"--- GMM mixture weights ({len(w_init_arr)} free components) ---")
+print(f"  max |Δw_den| = {np.abs(delta_den).max():.6f}  (mean |Δw| = {np.abs(delta_den).mean():.6f})")
+print(f"  max |Δw_num| = {np.abs(delta_num).max():.6f}  (mean |Δw| = {np.abs(delta_num).mean():.6f})")
 print("--- Kernel coefficients (mean-centred, %i components) ---" % n_kernels_numerator)
 print(f"  final      : {kernel_coeffs_final}")
 print(f"  saturated at clip={clip_tau}: {n_at_clip}/{n_kernels_numerator}", flush=True)
