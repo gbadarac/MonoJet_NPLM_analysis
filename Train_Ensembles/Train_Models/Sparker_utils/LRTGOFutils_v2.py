@@ -223,18 +223,25 @@ class TAU(nn.Module):
         aux = self.log_auxiliary_term()
         if self.train_net:
             ensemble, net_out = self.call(x)
-            p = ensemble[:, 0] + net_out + self.eps
+            p_raw = ensemble[:, 0] + net_out
+            p = torch.clamp(p_raw, min=self.eps)
             out = -torch.log(p).sum()
-            out+= self.lambda_net * self.net_coeffs_L2()
+            out += self.lambda_net * self.net_coeffs_L2()
             if self.train_weights:
                 out = out - aux.sum()
-            return out 
         else:
-            p = self.call(x) +self.eps
+            p_raw = self.call(x).squeeze(-1)
+            p = torch.clamp(p_raw, min=self.eps)
             out = -torch.log(p).sum()
             if self.train_weights:
                 out = out - aux.sum()
-            return out 
+        if not torch.isfinite(out):
+            raise RuntimeError(
+                f"loss() is not finite ({float(out):.3e}) even after density clamping. "
+                f"p_raw: min={float(p_raw.min()):.3e}, max={float(p_raw.max()):.3e}. "
+                f"Check aux term or L2 regularisation."
+            )
+        return out
 '''
 def train_loop(x_data, model, name='model', lr=1e-4, epochs=20000, patience=1000, monitor=False):
     opt = torch.optim.Adam(model.parameters(), lr=lr)

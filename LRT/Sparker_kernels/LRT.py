@@ -66,9 +66,6 @@ use_prior = train_wifi_weights and not args.free_wifi_weights
 
 # random seed
 seed = args.seed
-if seed==None:
-    seed = datetime.datetime.now().microsecond+datetime.datetime.now().second+datetime.datetime.now().min
-#np.random.seed(seed)
 print('Random seed:'+str(seed))
 
 # label is used for folder/file naming; toy_id if provided, else seed
@@ -97,7 +94,7 @@ lambda_L2_numerator = 10000
 lr_delta = 1e-6
 lr_tau   = 1e-6
 
-clip_tau = 0.0005
+clip_tau = 0.0005 
 train_centers_tau = False
 
 # -------------------------
@@ -448,6 +445,10 @@ if args.save_arrays:
 
 np.save(os.path.join(out_dir, f"seed{label}_coeffs.npy"),
         model_num.network.get_coefficients().detach().cpu().numpy())
+
+# Save kernel center positions (first n_kernels_numerator rows of bootstrap_sample)
+np.save(os.path.join(out_dir, f"seed{label}_kernel_centers.npy"),
+        centers.detach().cpu().numpy())
 
 # -----------------------------------------------------------------------
 # Save final WiFi weights (DEN + NUM) and initial weights
