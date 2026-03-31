@@ -100,37 +100,41 @@ def plot_kernel_marginal_1d_overlay(
     outdir, seed_label,
 ):
     """
-    1D marginal plot matching the format of plot_ensemble_marginals_2d_kernel():
+    1D marginal plot matching plot_ensemble_marginals_2d_kernel() EXACTLY, with one addition:
       Top panel:
         - Green histogram + errorbars (target data, if provided)
-        - Red line: ensemble mean density f(x) = sum_i w_i f_i(x)
-        - Blue/purple fill: ±1σ / ±2σ uncertainty bands (from WiFi Cov)
-        - Dashed orange line: NUM density = ensemble + kernel corrections
+        - Red solid line: ensemble mean density f(x) = sum_i w_i f_i(x)
+        - Blue fill: ±1σ uncertainty band (from WiFi Cov, delta method)
+        - Purple fill: ±2σ uncertainty band
+        - Orange dashed line: NUM density = ensemble + kernel corrections
       Bottom panel:
-        - NUM density / ensemble mean (ratio; 1.0 = no correction)
+        - NUM / Ensemble ratio per bin (shows kernel correction direction; varies per seed)
 
     Requires a pre-computed .npz with keys: f_binned, f_err, bin_centers
     (produced by plot_ensemble_marginals_2d_kernel in utils_kernel_wifi.py).
     """
     data_npz = np.load(marginal_npz_path)
-    f_binned   = data_npz["f_binned"]    # (B,) ensemble mean density
-    f_err      = data_npz["f_err"]       # (B,) 1-sigma uncertainty
-    bin_centers = data_npz["bin_centers"] # (B,)
+    f_binned    = data_npz["f_binned"]     # (B,) ensemble mean density
+    f_err       = data_npz["f_err"]        # (B,) 1-sigma uncertainty
+    bin_centers = data_npz["bin_centers"]  # (B,)
 
-    # Bin width (uniform spacing assumed)
     dbin = bin_centers[1] - bin_centers[0]
 
-    # Kernel correction at ensemble bin centers (analytical 1D Gaussian marginal)
+    # Kernel correction: analytical 1D Gaussian marginal
+    # p_NUM_marginal(c) = p_ensemble_marginal(c) + sum_k c_k * N(c; mu_k_i, sigma)
     f_corr = np.zeros_like(bin_centers)
     for k in range(len(kernel_coeffs)):
         f_corr += kernel_coeffs[k] * _gaussian_1d(
             bin_centers, kernel_centers[k, feature_idx], kernel_sigma
         )
 
-    # NUM density
     f_num = f_binned + f_corr
+    # Re-normalise NUM (mean-centred coefficients make sum~0, but enforce exactly)
+    area_num = np.sum(f_num * dbin)
+    if area_num > 0:
+        f_num = f_num / area_num
 
-    # Uncertainty bands
+    # Uncertainty bands (same as original)
     band_1s_l = f_binned - f_err
     band_1s_h = f_binned + f_err
     band_2s_l = f_binned - 2.0 * f_err
@@ -160,7 +164,7 @@ def plot_kernel_marginal_1d_overlay(
             fmt="none", color="green", alpha=0.7
         )
 
-    # --- ensemble mean + bands ---
+    # --- ensemble mean + bands (identical to plot_ensemble_marginals_2d_kernel) ---
     valid = f_binned > 0
     ax_main.plot(
         bin_centers[valid], f_binned[valid], "-",
@@ -175,7 +179,7 @@ def plot_kernel_marginal_1d_overlay(
         alpha=0.08, color="purple", label=r"$\pm 2\sigma$"
     )
 
-    # --- NUM density (ensemble + kernel corrections) ---
+    # --- NUM density overlaid ---
     ax_main.plot(
         bin_centers, f_num, "--",
         color="darkorange", lw=2.0, label="NUM (ensemble + kernels)"
