@@ -65,7 +65,7 @@ TARGET_DATA="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/G
 
 # Set to true to freeze WiFi weights at central value (no profiling, no prior) -> tag: _frozen_weights
 # Set to false to profile WiFi weights with MVN prior (with uncertainties) -> no extra tag
-FIX_WIFI_WEIGHTS=true
+FIX_WIFI_WEIGHTS=true 
 
 # Set to true to profile WiFi weights freely with NO Gaussian prior (Cov -> infinity) -> tag: _free_weights
 # Mutually exclusive with FIX_WIFI_WEIGHTS.
