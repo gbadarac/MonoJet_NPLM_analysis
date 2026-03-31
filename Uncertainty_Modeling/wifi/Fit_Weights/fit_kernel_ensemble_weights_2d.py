@@ -113,7 +113,7 @@ def main():
     # Include the *fit-time* number of WiFi components in the results name
 
     results_dir = RESULTS_BASE_DIR / (
-        f"{trial_name}_{dataset_tag}_ensemblecomponents{args.n_wifi_components}_fix_normalization"
+        f"{trial_name}_{dataset_tag}_ensemblecomponents{args.n_wifi_components}"
     )
     
     results_dir.mkdir(parents=True, exist_ok=True)

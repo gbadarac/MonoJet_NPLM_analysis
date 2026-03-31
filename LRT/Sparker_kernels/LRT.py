@@ -57,15 +57,15 @@ parser.add_argument('--toy_id', type=int, default=None,
 parser.add_argument('--save_arrays', action='store_true', help="If set, also save per-event numerator/denominator/test arrays.")
 parser.add_argument('--fix_wifi_weights', action='store_true',
                     help="Fix WiFi weights at central value (no profiling, no prior). Classic LRT without uncertainties.")
+parser.add_argument('--free_wifi_weights', action='store_true',
+                    help="Profile WiFi weights freely with no Gaussian prior (Cov -> infinity).")
 args     = parser.parse_args()
 
 train_wifi_weights = not args.fix_wifi_weights
+use_prior = train_wifi_weights and not args.free_wifi_weights
 
 # random seed
 seed = args.seed
-if seed==None:
-    seed = datetime.datetime.now().microsecond+datetime.datetime.now().second+datetime.datetime.now().min
-#np.random.seed(seed)
 print('Random seed:'+str(seed))
 
 # label is used for folder/file naming; toy_id if provided, else seed
@@ -94,7 +94,7 @@ lambda_L2_numerator = 10000
 lr_delta = 1e-6
 lr_tau   = 1e-6
 
-clip_tau = 0.0005
+clip_tau = 0.0005 
 train_centers_tau = False
 
 # -------------------------
@@ -120,7 +120,9 @@ if train_centers_tau:
 wifi_tag = '_'.join(os.path.basename(os.path.dirname(os.path.abspath(w_cov_path))).split('_')[-2:])
 run_tag += "_wifi_%s" % wifi_tag
 if not train_wifi_weights:
-    run_tag += "_no_unc"
+    run_tag += "_frozen_weights"
+elif args.free_wifi_weights:
+    run_tag += "_free_weights"
 #run_tag += "_TEST"
 
 out_dir = os.path.join(out_base, run_tag, mode_tag, "seed%i" % label)
@@ -314,8 +316,8 @@ model_den = lrt.TAU(
     ensemble_probs=model_probs.to(device),
     ensemble_norm_probs=model_norm_probs.to(device),
     weights_init=w_init[:-1].to(device),
-    weights_cov=w_cov.to(device),
-    weights_mean=w_centralv[:-1].to(device),
+    weights_cov=w_cov.to(device) if use_prior else None,
+    weights_mean=w_centralv[:-1].to(device) if use_prior else None,
     gaussian_center=[],
     gaussian_coeffs=[],
     gaussian_sigma=None,
@@ -362,8 +364,8 @@ model_num = lrt.TAU(
     ensemble_probs=model_probs.to(device),
     ensemble_norm_probs=model_norm_probs.to(device),
     weights_init=w_init[:-1].to(device),
-    weights_cov=w_cov.to(device),
-    weights_mean=w_centralv[:-1].to(device),
+    weights_cov=w_cov.to(device) if use_prior else None,
+    weights_mean=w_centralv[:-1].to(device) if use_prior else None,
     gaussian_center=centers.to(device),
     gaussian_coeffs=coeffs.to(device),
     gaussian_sigma=kernel_width_numerator,
@@ -443,6 +445,10 @@ if args.save_arrays:
 
 np.save(os.path.join(out_dir, f"seed{label}_coeffs.npy"),
         model_num.network.get_coefficients().detach().cpu().numpy())
+
+# Save kernel center positions (first n_kernels_numerator rows of bootstrap_sample)
+np.save(os.path.join(out_dir, f"seed{label}_kernel_centers.npy"),
+        centers.detach().cpu().numpy())
 
 # -----------------------------------------------------------------------
 # Save final WiFi weights (DEN + NUM) and initial weights

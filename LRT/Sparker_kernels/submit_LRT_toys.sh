@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=LRT_toys
-#SBATCH --array=0-0
+#SBATCH --array=0-99
 #SBATCH --time=08:00:00
 #SBATCH --mem=20G
 #SBATCH --ntasks=1
@@ -45,9 +45,9 @@ PY="$REPO_ROOT/LRT/Sparker_kernels/LRT.py"
 ENSEMBLE_DIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking"
 
 # WiFi fitted weights (kernel WiFi)
-W_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernel/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents60_fix_normalization/final_weights.npy"
+W_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernel/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents32/final_weights.npy"
 
-W_COV_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernel/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents60_fix_normalization/cov_weights.npy"
+W_COV_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernel/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents32/cov_weights.npy"
 
 # Output base (script will create subfolders inside)
 OUT_BASE="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Sparker_kernels/results"
@@ -59,16 +59,20 @@ mkdir -p /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Sparker_kernels/r
 # -------------------------
 # If CALIBRATION=1, provide CALIB_DATA (dir of *.npy or single .npy)
 # If CALIBRATION=0, provide TARGET_DATA (single .npy)
-CALIBRATION=1
-CALIB_DATA="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/Sparker_kernels/saved_generated_kernel_ensemble_data/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents60_fix_normalization"
+CALIBRATION=0
+CALIB_DATA="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/Sparker_kernels/saved_generated_kernel_ensemble_data/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents32"
 TARGET_DATA="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/500k_2d_gaussian_heavy_tail_target_set.npy"
 
-# Set to true to fix WiFi weights at central value (no profiling, no prior).
-# Set to false to profile WiFi weights with MVN prior (with uncertainties).
-FIX_WIFI_WEIGHTS=false 
+# Set to true to freeze WiFi weights at central value (no profiling, no prior) -> tag: _frozen_weights
+# Set to false to profile WiFi weights with MVN prior (with uncertainties) -> no extra tag
+FIX_WIFI_WEIGHTS=true 
+
+# Set to true to profile WiFi weights freely with NO Gaussian prior (Cov -> infinity) -> tag: _free_weights
+# Mutually exclusive with FIX_WIFI_WEIGHTS.
+FREE_WIFI_WEIGHTS=false 
 
 NTEST=100000
-NENSEMBLE=60
+NENSEMBLE=32
 
 # seed folders are seed000, seed001, ...
 SEED_FORMAT="seed%03d"
@@ -104,6 +108,10 @@ CMD=(python -u "$PY"
 
 if [[ "$FIX_WIFI_WEIGHTS" == "true" ]]; then
   CMD+=(--fix_wifi_weights)
+fi
+
+if [[ "$FREE_WIFI_WEIGHTS" == "true" ]]; then
+  CMD+=(--free_wifi_weights)
 fi
 
 if [[ "$CALIBRATION" -eq 1 ]]; then
