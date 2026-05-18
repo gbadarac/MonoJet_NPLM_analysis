@@ -34,7 +34,7 @@ fi
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:32
 
 # Make sure Python finds your helpers
-export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles:$PYTHONPATH
+export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models:$PYTHONPATH
 
 # -------------------------
 # Static config
@@ -44,7 +44,7 @@ BASE_OUT="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Normalizing_Flow
 
 w="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_128_15_bimodal_gaussian_heavy_tail/w_i_fitted.npy"
 w_cov="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_128_15_bimodal_gaussian_heavy_tail/cov_w.npy"
-hit_or_miss_data="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/N_100000_dim_2_seeds_60_4_16_128_15_bimodal_gaussian_heavy_tail/concatenated_ensemble_generated_samples_4_16_128_15_bimodal_gaussian_heavy_tail_N_1000000.npy"
+hit_or_miss_data="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Samples/saved_generated_ensemble_data/N_100000_dim_2_seeds_60_4_16_128_15_bimodal_gaussian_heavy_tail/concatenated_ensemble_generated_samples_4_16_128_15_bimodal_gaussian_heavy_tail_N_1000000.npy"
 ensemble_dir="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_seeds_60_4_16_128_15"
 
 PY=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Normalizing_Flows/toys_LRT_with_unc.py
