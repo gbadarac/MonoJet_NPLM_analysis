@@ -33,7 +33,7 @@ calibration = args.calibration.lower() == "true"
 
 # Load real reference and data
 data_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/500k_2d_gaussian_heavy_tail_target_set.npy"
-reference_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/N_100000_dim_2_seeds_60_4_16_128_15_bimodal_gaussian_heavy_tail/concatenated_ensemble_generated_samples_4_16_128_15_bimodal_gaussian_heavy_tail_N_1000000.npy"
+reference_path = "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Samples/saved_generated_ensemble_data/N_100000_dim_2_seeds_60_4_16_128_15_bimodal_gaussian_heavy_tail/concatenated_ensemble_generated_samples_4_16_128_15_bimodal_gaussian_heavy_tail_N_1000000.npy"
 
 reference_dataset = np.load(reference_path).astype('float32')
 data_dataset = np.load(data_path).astype('float32')

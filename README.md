@@ -46,7 +46,6 @@ The pipeline has four components.
 
 ```text
 MonoJet_NPLM_analysis/
-├─ Generate_Ensemble_Data_Hit_or_Miss_MC/ # Accept–reject sampling for toys/reference draws
 ├─ Train_Ensembles/                       # Orchestration for NF ensembles (arrays, logs)
 │  ├─ Generate_Data/                      # Prepare training splits and ensemble datasets
 │  └─ Train_Models/                       # Train individual ensemble members
@@ -58,12 +57,20 @@ MonoJet_NPLM_analysis/
 │  └─ wifi/                               # w_i f_i frequentist ensembles and covariance
 │     ├─ Coverage_Check/                  # Coverage studies on observables (e.g., first moment)
 │     └─ Fit_Weights/                     # Penalized MLE for w, sandwich covariance, propagation
+├─ Generate_Ensemble_Samples/             # Accept–reject sampling for LRT and NPLM reference draws
+│  ├─ Normalizing_Flows/                  # Hit-or-miss MC for NF ensemble
+│  └─ Sparker_kernels/                    # Hit-or-miss MC for kernel ensemble
 ├─ LRT/                                   # One-sample learned LRT with uncertainty-aware reference
+│  ├─ Normalizing_Flows/                  # NF backend for GoF test
+│  └─ Sparker_kernels/                    # Kernel backend for GoF test
 ├─ NPLM/                                  # Two-sample LRT (NPLM)
 │  ├─ NPLM-embedding/                     # Scripts and utilities for two-sample tests
 │  ├─ NPLM_NF_ensemble/                   # Results: ensemble as reference
 │  └─ NPLM_NF_one_model/                  # Results: single NF as reference
+├─ shared/                                # Shared library used across pipeline stages
+│  └─ Sparker_utils/                      # Kernel utilities (SPARKutils, LRTGOFutils, ENSEMBLEutils, …)
 ├─ envs/                                  # Conda/pip environment files
+├─ NOTES.md                               # Design decisions and experimental observations
 └─ README.md
 ```
 
@@ -433,15 +440,21 @@ is aggregated, calibrated with toys or permutations, and converted into a $Z$ sc
 #### A) Generate REF samples by hit-or-miss MC
 
 ##### Scripts 
-in `Generate_Ensemble_Data_Hit_or_Miss_MC/`:
-- python script:`generate_hit_or_miss.py`
-- submission script: `submit_generate_hit_or_miss.sh`
+Two backends are available under `Generate_Ensemble_Samples/`:
+
+**Normalizing Flows backend** — `Generate_Ensemble_Samples/Normalizing_Flows/`
+- Python script: `generate_hit_or_miss_NFs.py`
+- Submission script: `submit_generate_hit_or_miss_NFs.sh`
+
+**Sparker kernels backend** — `Generate_Ensemble_Samples/Sparker_kernels/`
+- Python script: `generate_hit_or_miss_Sparker.py`
+- Submission script: `submit_generate_hit_or_miss_Sparker.sh`
 
 ##### Configure 
-- in `generate_hit_or_miss.py`: 
+- In the python script (e.g. `generate_hit_or_miss_NFs.py`): 
    - `trial_dir`: directory where the fitted weights $\hat{w}$ are stored
    - `data_path`: file where the target distribution samples are stored
-   - arch_config_path: file where the architecture of the NFs is stored
+   - `arch_config_path`: file where the architecture of the NFs is stored
    - `subdir`: desired output subfolder name
    - `w_i_fitted`: load from the final weights saved in trial_dir (np.load from w_i_fitted.npy)
    - `N_events`: events per array task, for example 5000
@@ -451,18 +464,22 @@ in `Generate_Ensemble_Data_Hit_or_Miss_MC/`:
     f"ensemble_generated_samples_4_16_128_15_bimodal_gaussian_heavy_tail_seed_{seed}.npy"),
     samples.cpu().numpy())
    ```
-- in `submit_generate_hit_or_miss.sh`:
-   Set the array size, for example `#SBATCH --array=0-199`. With `N_events=5000`, this yields ~one million proposals. As a rule of thumb, generate about twice the number of accepted events you will need for the test.
+- In the submission script: set the array size, for example `#SBATCH --array=0-199`. With `N_events=5000`, this yields ~one million proposals. As a rule of thumb, generate about twice the number of accepted events you will need for the test.
 
 ##### Run 
-```bash 
-cd Generate_Ensemble_Data_Hit_or_Miss_MC
-sbatch submit_generate_hit_or_miss.sh
+```bash
+# Normalizing Flows backend
+cd Generate_Ensemble_Samples/Normalizing_Flows
+sbatch submit_generate_hit_or_miss_NFs.sh
+
+# Sparker kernels backend
+cd Generate_Ensemble_Samples/Sparker_kernels
+sbatch submit_generate_hit_or_miss_Sparker.sh
 ```
 
 ##### Sanity checks 
-- Inspect a single file with `check_hit_or_miss.ipynb`.
-- Merge many shards into one array with `concatenate.ipynb`.
+- Inspect a single file with `check_hit_or_miss.ipynb` (NF) or `check_hit_or_miss_Sparker.ipynb` (kernels).
+- Merge many shards into one array with `concatenate.ipynb` (NF backend).
 
 #### B) Run two sample test
 

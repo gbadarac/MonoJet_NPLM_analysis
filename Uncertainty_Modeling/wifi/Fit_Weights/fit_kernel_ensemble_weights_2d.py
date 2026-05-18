@@ -23,7 +23,7 @@ THIS_DIR = Path(__file__).resolve().parent              # .../Uncertainty_Modeli
 REPO_ROOT = THIS_DIR.parents[2]                         # .../MonoJet_NPLM_analysis
 TRAIN_ENSEMBLES_DIR = REPO_ROOT / "Train_Ensembles"     # .../MonoJet_NPLM_analysis/Train_Ensembles
 TRAIN_MODELS_DIR = TRAIN_ENSEMBLES_DIR / "Train_Models" # .../Train_Ensembles/Train_Models
-SPARKER_UTILS_DIR = TRAIN_MODELS_DIR / "Sparker_utils"  # .../Train_Models/Sparker_utils
+SPARKER_UTILS_DIR = REPO_ROOT / "shared" / "Sparker_utils"
 
 sys.path.insert(1, str(SPARKER_UTILS_DIR))
 

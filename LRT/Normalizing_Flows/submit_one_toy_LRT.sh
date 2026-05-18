@@ -18,7 +18,7 @@ export PATH=$CUDA_HOME/bin:$PATH
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 
 # Ensure Python can find utils_flows.py
-export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles:$PYTHONPATH
+export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models:$PYTHONPATH
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:32
 
 CALIBRATION=True
@@ -27,7 +27,7 @@ BASE_OUT="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Normalizing_Flow
 
 w="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_256_15/w_i_fitted.npy"
 w_cov="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_256_15/cov_w.npy"
-hit_or_miss_data="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Data_Hit_or_Miss_MC/saved_generated_ensemble_data/N_100000_dim_2_seeds_60_4_16_256_15/concatenated_ensemble_generated_samples_4_16_256_15.npy"
+hit_or_miss_data="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Generate_Ensemble_Samples/saved_generated_ensemble_data/N_100000_dim_2_seeds_60_4_16_256_15/concatenated_ensemble_generated_samples_4_16_256_15.npy"
 ensemble_dir="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/2_dim/N_100000_dim_2_seeds_60_4_16_256_15"
 
 PY=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/Normalizing_Flows/one_toy_LRT_with_unc.py
