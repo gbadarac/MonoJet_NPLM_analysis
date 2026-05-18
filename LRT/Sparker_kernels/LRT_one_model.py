@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 # -------------------------------------------------------------------
 THIS_DIR  = Path(__file__).resolve().parent
 REPO_ROOT = THIS_DIR.parents[1]
-SPARKER_UTILS = REPO_ROOT / "Train_Ensembles" / "Train_Models" / "Sparker_utils"
+SPARKER_UTILS = REPO_ROOT / "shared" / "Sparker_utils"
 sys.path.insert(0, str(SPARKER_UTILS))
 
 import LRTGOFutils_v2 as lrt

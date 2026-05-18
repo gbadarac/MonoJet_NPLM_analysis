@@ -2,8 +2,8 @@ import numpy as np
 import os, argparse, sys
 
 SPARKER_UTILS = os.path.join(
-    os.path.dirname(__file__),                # .../Generate_Ensemble_Data_Hit_or_Miss_MC/Sparker_kernels
-    '..', '..', 'Train_Ensembles', 'Train_Models', 'Sparker_utils'
+    os.path.dirname(__file__),                # .../Generate_Ensemble_Samples/Sparker_kernels
+    '..', '..', 'shared', 'Sparker_utils'
 )
 sys.path.insert(0, os.path.abspath(SPARKER_UTILS))
 import ENSEMBLEutils as ens
