@@ -28,7 +28,7 @@ CONFIG = {
     "N_test": 100_000,                   # GoF observed sample + plot_marginals histogram
 
     # ── Bootstrapped MLP basis ───────────────────────────────────
-    "K": 64,                            # number of basis MLPs (linear-head dim is K+1)
+    "K": 128,                           # number of basis MLPs (linear-head dim is K+1)
     "MLP_HIDDEN": [32, 32, 16],
     "BASIS_EPOCHS": 600,
     "BASIS_LR": 1e-3,
