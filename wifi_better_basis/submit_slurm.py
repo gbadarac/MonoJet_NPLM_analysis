@@ -70,7 +70,7 @@ def main():
     )
     # SLURM options (mirrors HIKER's submit_slurm.py defaults)
     parser.add_argument("--partition", "-p", type=str,
-                        default="gpu,gpu_requeue,iaifi_gpu,iaifi_gpu_requeue",
+                        default="qgpu,gpu",
                         help="SLURM partition (comma-separated list allowed).")
     parser.add_argument("--gpu", action="store_true", default=True,
                         help="Request a GPU (default: True).")
@@ -84,12 +84,11 @@ def main():
                         help="Time limit (default: 0-4:00).")
     parser.add_argument("--module", type=str, default="",
                         help="Module to load (default: none).")
-    parser.add_argument("--conda", type=str, default="torch",
-                        help="Conda env to activate via `source activate`. "
-                             "Set empty to skip.")
+    parser.add_argument("--conda", type=str, default="kernels_env",
+                        help="Conda env to activate. Set empty to skip.")
     parser.add_argument("--venv", type=str, default=None,
                         help="Path to virtualenv (alternative to --conda).")
-    parser.add_argument("--mail", type=str, default="seanmb@mit.edu",
+    parser.add_argument("--mail", type=str, default="",
                         help="Email for SLURM notifications. Empty to skip.")
     parser.add_argument("--mail-type", type=str, default="BEGIN,END,FAIL",
                         help="SLURM --mail-type value.")
@@ -143,7 +142,11 @@ def main():
     if args.module:
         lines += [f"module load {args.module}", ""]
     if args.conda:
-        lines += [f"source activate {args.conda}", ""]
+        lines += [
+            "source /work/gbadarac/miniforge3/bin/activate",
+            f"conda activate {args.conda}",
+            "",
+        ]
     elif args.venv:
         lines += [f"source {args.venv}/bin/activate", ""]
 
