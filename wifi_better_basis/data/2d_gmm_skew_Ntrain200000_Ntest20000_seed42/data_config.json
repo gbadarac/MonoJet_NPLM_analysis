@@ -1,0 +1,8 @@
+{
+  "benchmark": "2d_gmm_skew",
+  "N_train": 200000,
+  "N_test": 20000,
+  "seed": 42,
+  "d": 2,
+  "data_dir": "/n/home09/sbenevedes/gen_uq_scratch/data/2d_gmm_skew_Ntrain200000_Ntest20000_seed42"
+}
