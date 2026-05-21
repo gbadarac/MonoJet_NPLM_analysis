@@ -205,8 +205,53 @@ else:
         
 print('number of available data points:', data_all.shape[0])
 np.random.seed(seed)
-idx = np.random.choice(len(data_all), Ntest, replace=False)
-bootstrap_sample = data_all[idx]
+
+if args.calibration and use_prior:
+    # Constrained calibration mode: posterior-predictive null.
+    # Sample w^toy ~ N(ŵ, C) via Cholesky, then SIR-resample Ntest events from
+    # the pool using importance weights p(x; w^toy) / p(x; ŵ).
+    # This is necessary to correctly reflect the uncertainty in ŵ in the null
+    # distribution of T (CALIBRATION=1 only — in CALIBRATION=0 we run on real
+    # target data directly, no toy generation involved).
+    cov_np = weights_cov_init  # (K-1, K-1)
+    eps_chol = 1e-8 * np.trace(cov_np) / cov_np.shape[0]
+    L_chol = np.linalg.cholesky(cov_np + eps_chol * np.eye(cov_np.shape[0]))
+    z = np.random.randn(len(weights_centralv) - 1)
+    w_toy_free = weights_centralv[:-1] + L_chol @ z
+    w_toy_norm = 1.0 - w_toy_free.sum()
+    print(f"SIR: sampled w^toy, ||w^toy - w_hat|| = {np.linalg.norm(np.append(w_toy_free, w_toy_norm) - weights_centralv):.4f}")
+
+    # Evaluate ensemble on full pool to compute importance weights
+    pool_probs_members = []
+    pool_norm_probs_members = []
+    for i in range(n_wifi_components - 1):
+        comps_i = gen.evaluate_gaussian_components(data_all, centroids_init[i], widths_init[i])
+        pool_probs_members.append((comps_i * coefficients_init[i]).sum(axis=1))
+    for i in range(1):
+        comps_norm_i = gen.evaluate_gaussian_components(data_all, centroids_norm[i], widths_norm[i])
+        pool_norm_probs_members.append((comps_norm_i * coefficients_norm[i]).sum(axis=1))
+    pool_probs = np.stack(pool_probs_members, axis=1)          # (N_pool, K-1)
+    pool_norm  = np.stack(pool_norm_probs_members, axis=1).mean(axis=1)  # (N_pool,)
+
+    p_toy = pool_probs @ w_toy_free + pool_norm * w_toy_norm
+    p_hat = pool_probs @ weights_centralv[:-1] + pool_norm * weights_centralv[-1]
+    p_toy = np.maximum(p_toy, 1e-300)
+    p_hat = np.maximum(p_hat, 1e-300)
+
+    log_w = np.log(p_toy) - np.log(p_hat)
+    log_w -= log_w.max()
+    sir_weights = np.exp(log_w)
+    sir_weights /= sir_weights.sum()
+    ess = 1.0 / (sir_weights ** 2).sum()
+    print(f"SIR: ESS = {ess:.0f} / {len(data_all)}")
+
+    sir_idx = np.random.choice(len(data_all), size=Ntest, replace=True, p=sir_weights)
+    bootstrap_sample = data_all[sir_idx]
+
+else:
+    # Frozen, free, or comparison mode (CALIBRATION=0): standard random subsampling.
+    idx = np.random.choice(len(data_all), Ntest, replace=False)
+    bootstrap_sample = data_all[idx]
 
 #evaluate the ensemble at the test points
 # evaluate the ensemble at the test points
