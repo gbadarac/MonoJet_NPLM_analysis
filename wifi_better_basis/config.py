@@ -19,16 +19,16 @@ Kept torch-free so submit_slurm.py can import on a login node.
 CONFIG = {
     # ── Data ─────────────────────────────────────────────────────
     "benchmark": "2d_gmm_skew",
-    "seed": 27,
+    "seed": 42,
     # Compute scales with N_train × ref_oversample × epochs × |MLP|. Defaults
     # below are roughly 2-3× the original wifi compute on GPU; bump N_train if
     # you have headroom. N_test is small on purpose so the GoF test isn't
     # crushed by power alone.
-    "N_train": 100_000,                 # basis training + linear-head fit (50/50 split inside)
-    "N_test": 100_000,                   # GoF observed sample + plot_marginals histogram
+    "N_train": 100000,                 # basis training + linear-head fit (50/50 split inside)
+    "N_test": 100000,                   # GoF observed sample + plot_marginals histogram
 
     # ── Bootstrapped MLP basis ───────────────────────────────────
-    "K": 128,                           # number of basis MLPs (linear-head dim is K+1)
+    "K": 64,                           # number of basis MLPs (linear-head dim is K+1)
     "MLP_HIDDEN": [32, 32, 16],
     "BASIS_EPOCHS": 600,
     "BASIS_LR": 1e-3,
@@ -54,7 +54,7 @@ CONFIG = {
 
     # ── Coverage test ────────────────────────────────────────────
     "COVERAGE_N_PSEUDOEXP": 100,
-    "COVERAGE_M_SIR": 200_000,
+    "COVERAGE_M_SIR": 200000,
 
     # ── Classifier GoF ───────────────────────────────────────────
     "GOF_M_PERT": 80,
