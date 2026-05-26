@@ -13,7 +13,10 @@
 
 set -euo pipefail
 
-export LD_LIBRARY_PATH="/work/gbadarac/miniforge3/envs/nf_env/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# Use nplm_env/lib (not nf_env/lib) — nplm_env has libcudart.so.11.5 without
+# conflicting libGL/libEGL stubs that break torch 1.11 on SLURM GPU nodes
+export LD_LIBRARY_PATH="/work/gbadarac/miniforge3/envs/nplm_env/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
 . /work/gbadarac/miniforge3/etc/profile.d/conda.sh
 conda activate nf_env
 
@@ -47,7 +50,7 @@ TARGET_DATA="$REPO_ROOT/Train_Ensembles/Generate_Data/saved_generated_target_dat
 OUT_BASE="$REPO_ROOT/LRT/results"
 
 # ─── Mode toggles (EDIT THESE) ───────────────────────────────────────
-CALIBRATION=0
+CALIBRATION=1
 FIX_WIFI_WEIGHTS=false
 FREE_WIFI_WEIGHTS=false
 

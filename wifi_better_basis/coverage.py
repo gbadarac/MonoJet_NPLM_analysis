@@ -151,6 +151,7 @@ def run_coverage(out_dir, dim=0, verbose=True):
 
     lh_max_iter = int(cfg.get("LINHEAD_MAX_ITER", 500))
     ridge_rel = float(cfg.get("SANDWICH_RIDGE_REL", 1e-8))
+    lam_ridge = float(cfg.get("LINHEAD_RIDGE", 0.0))
 
     if verbose:
         print(f"[coverage] {N_PE} pseudoexperiments, "
@@ -201,13 +202,15 @@ def run_coverage(out_dir, dim=0, verbose=True):
 
         # Refit linear head from scratch (no warm start, no prior).
         w_k, bce_k = fit_linear_head(
-            F_data_k, F_ref_k, max_iter=lh_max_iter, verbose=False,
+            F_data_k, F_ref_k, max_iter=lh_max_iter,
+            lam_ridge=lam_ridge, verbose=False,
         )
         bce_losses[k] = bce_k
 
         # Sandwich covariance on the fresh sample.
         Sigma_k, _, _ = sandwich_cov(
             w_k, F_data_k, F_ref_k, ridge_rel=ridge_rel,
+            lam_ridge=lam_ridge,
         )
 
         # Observable + delta-method σ_sandwich + analytic σ_pool.

@@ -15,6 +15,16 @@ def _np2t(arr, dtype=torch.float64):
                        arr_c.ctypes.data_as(ctypes.c_void_p),
                        arr_c.nbytes)
         return t
+
+
+def _t2np(t):
+    """Safely convert torch tensor to plain numpy float64 array (numpy 2.x compatible)."""
+    t_cpu = t.double().cpu().contiguous()
+    arr = np.empty(t_cpu.shape, dtype=np.float64)
+    ctypes.memmove(arr.ctypes.data_as(ctypes.c_void_p), t_cpu.data_ptr(), arr.nbytes)
+    return arr
+
+
 import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
@@ -240,7 +250,7 @@ def _eval_ensemble(data_np):
             if device.type == 'cuda':
                 torch.cuda.empty_cache()
             gc.collect()
-        return torch.stack(per_model, dim=1).numpy().copy()  # (N, M)
+        return _t2np(torch.stack(per_model, dim=1))  # (N, M)
 
 # -------------------------------------------------------------------
 # Load calibration pool or target data

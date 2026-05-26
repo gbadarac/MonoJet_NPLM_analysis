@@ -41,6 +41,7 @@ CONFIG = {
     # ── Linear head fit (held-out half) ──────────────────────────
     "N_REF_LINHEAD": None,              # None -> match held-out data size
     "LINHEAD_MAX_ITER": 500,
+    "LINHEAD_RIDGE": 10,                # L2 ridge on wifi BCE loss (Sean: lambda=10 for K=128)
 
     # ── Covariance estimators ────────────────────────────────────
     "SANDWICH_RIDGE_REL": 1e-8,

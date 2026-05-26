@@ -291,16 +291,20 @@ def main():
 
     # 7. Fit linear head + covariances
     print("[7/9] fit linear head and covariances")
+    lam_ridge = float(CONFIG.get("LINHEAD_RIDGE", 0.0))
     w_hat, final_loss = fit_linear_head(
-        F_data, F_ref, max_iter=CONFIG["LINHEAD_MAX_ITER"], verbose=True,
+        F_data, F_ref, max_iter=CONFIG["LINHEAD_MAX_ITER"],
+        lam_ridge=lam_ridge, verbose=True,
     )
     print(f"      w_hat = {w_hat.numpy()}")
 
     Sigma_sw, H, J = sandwich_cov(
         w_hat, F_data, F_ref, ridge_rel=CONFIG["SANDWICH_RIDGE_REL"],
+        lam_ridge=lam_ridge,
     )
     Sigma_naive = naive_inv_hessian_cov(
         w_hat, F_data, F_ref, ridge_rel=CONFIG["SANDWICH_RIDGE_REL"],
+        lam_ridge=lam_ridge,
     )
     print(f"      sandwich diag: {Sigma_sw.diag().numpy()}")
     print(f"      naive H^-1 diag: {Sigma_naive.diag().numpy()}")
@@ -309,6 +313,7 @@ def main():
     Sigma_bs, Ws_boot, w_boot_mean = bootstrap_cov(
         F_data, F_ref, B=CONFIG["BOOTSTRAP_B"],
         max_iter=CONFIG["BOOTSTRAP_LBFGS_MAX_ITER"],
+        lam_ridge=lam_ridge,
         seed=CONFIG["seed"] + 5555, verbose=True,
     )
     print(f"      bootstrap diag: {Sigma_bs.diag().numpy()}")
