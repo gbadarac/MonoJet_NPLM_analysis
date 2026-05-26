@@ -4,6 +4,11 @@
 .claude/
 overleaf/
 
+# === Local result directories (never push) ===
+LRT/results/
+LRT/old_results/
+wifi_better_basis/runs/
+
 # === Regenerable files ===
 
 # Trained model checkpoints
