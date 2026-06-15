@@ -17,7 +17,7 @@ export PYTHONPATH="${REPO_ROOT}${PYTHONPATH:+:$PYTHONPATH}"
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:32
 
 # ─── Mode toggles (EDIT THESE) ───────────────────────────────────────────────
-MODEL_TYPE=kernels   # kernels | nf
+MODEL_TYPE=nf   # kernels | nf
 NDIM=2          # 2 | 4  (kernels only supports 2; nf supports both)
 
 # ─── Common optimiser settings ────────────────────────────────────────────────
@@ -43,15 +43,17 @@ elif [[ "$MODEL_TYPE" == "nf" ]]; then
     CONDA_ENV=nf_env
     N_WIFI=60
     if [[ "$NDIM" == "2" ]]; then
-        TRIAL_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/2_dim/2d_gaussian/N_100000_dim_2_seeds_60_4_16_128_15"
-        DATA_PATH="$REPO_ROOT/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_target_set.npy"
+        TRIAL_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_seeds_60_4_16_128_15"
+        DATA_PATH="$REPO_ROOT/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_heavy_tail_target_set.npy"
+        dataset_tag=$(basename "$(dirname "$TRIAL_DIR")")
+        OUT_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/$(basename "$TRIAL_DIR")_${dataset_tag}"
     elif [[ "$NDIM" == "4" ]]; then
         TRIAL_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/4_dim/N_100000_dim_4_seeds_60_4_16_128_15"
         DATA_PATH="$REPO_ROOT/Train_Ensembles/Generate_Data/saved_generated_target_data/4_dim/100k_4d_gaussian_target_set.npy"
+        OUT_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/$(basename "$TRIAL_DIR")"
     else
         echo "Unknown NDIM=$NDIM for nf"; exit 1
     fi
-    OUT_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/$(basename "$TRIAL_DIR")"
     EXTRA_ARGS="--trial_dir $TRIAL_DIR"
 
 else
