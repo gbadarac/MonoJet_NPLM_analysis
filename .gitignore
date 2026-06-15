@@ -28,9 +28,6 @@ wifi_better_basis/runs/
 *.png
 *.jpg
 *.pdf
-# Allow tracking of marginal distribution plots only
-!Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/**/ensemble_marginal_feature_*.png
-!Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_gaussian_toy/**/ensemble_marginal_feature_*.png
 # Allow tracking of NPLM comparison/calibration plots
 !NPLM/NPLM_NF_ensemble/comparison/**/plots/*.png
 !NPLM/NPLM_NF_ensemble/calibration/**/plots/*.png
@@ -55,8 +52,6 @@ wifi_better_basis/runs/
 *.out
 # Allow tracked result files
 !LRT/Sparker_kernels/results/**/LRT_toys-*.out
-!Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/**/fit_weights.out
-!Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/**/fit_weights_*.out
 
 # Markdown files (except top-level README)
 *.md
