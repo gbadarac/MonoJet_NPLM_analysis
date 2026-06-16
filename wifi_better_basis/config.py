@@ -28,7 +28,7 @@ CONFIG = {
     "N_test": 100000,                   # GoF observed sample + plot_marginals histogram
 
     # ── Bootstrapped MLP basis ───────────────────────────────────
-    "K": 64,                           # number of basis MLPs (linear-head dim is K+1)
+    "K": 160,                           # number of basis MLPs (linear-head dim is K+1)
     "MLP_HIDDEN": [32, 32, 16],
     "BASIS_EPOCHS": 600,
     "BASIS_LR": 1e-3,
@@ -36,7 +36,7 @@ CONFIG = {
     "BASIS_WEIGHT_DECAY": 1e-4,
     "BASIS_BATCH_SIZE": 4096,           # None for full-batch
     "BASIS_VAL_FRAC": 0.10,             # held-out fraction of half_A used for val BCE/AUC tracking
-    "BASIS_REF_OVERSAMPLE": 1,          # ref pool size per member = OVERSAMPLE × |bootstrap|
+    "BASIS_REF_OVERSAMPLE": 4,          # ref pool size per member = OVERSAMPLE × |bootstrap|
 
     # ── Linear head fit (held-out half) ──────────────────────────
     "N_REF_LINHEAD": None,              # None -> match held-out data size

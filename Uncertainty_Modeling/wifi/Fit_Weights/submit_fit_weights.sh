@@ -19,6 +19,7 @@ export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:32
 # ─── Mode toggles (EDIT THESE) ───────────────────────────────────────────────
 MODEL_TYPE=nf   # kernels | nf
 NDIM=2          # 2 | 4  (kernels only supports 2; nf supports both)
+DATASET=2d_gaussian  # nf NDIM=2 only: 2d_gaussian | 2d_bimodal_gaussian_heavy_tail
 
 # ─── Common optimiser settings ────────────────────────────────────────────────
 EPOCHS=2000
@@ -43,8 +44,15 @@ elif [[ "$MODEL_TYPE" == "nf" ]]; then
     CONDA_ENV=nf_env
     N_WIFI=60
     if [[ "$NDIM" == "2" ]]; then
-        TRIAL_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_seeds_60_4_16_128_15"
-        DATA_PATH="$REPO_ROOT/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_heavy_tail_target_set.npy"
+        if [[ "$DATASET" == "2d_gaussian" ]]; then
+            TRIAL_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/2_dim/2d_gaussian/N_100000_dim_2_seeds_60_4_16_128_15"
+            DATA_PATH="$REPO_ROOT/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_target_set.npy"
+        elif [[ "$DATASET" == "2d_bimodal_gaussian_heavy_tail" ]]; then
+            TRIAL_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_seeds_60_4_16_128_15"
+            DATA_PATH="$REPO_ROOT/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_heavy_tail_target_set.npy"
+        else
+            echo "Unknown DATASET=$DATASET for nf NDIM=2"; exit 1
+        fi
         dataset_tag=$(basename "$(dirname "$TRIAL_DIR")")
         OUT_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/$(basename "$TRIAL_DIR")_${dataset_tag}"
     elif [[ "$NDIM" == "4" ]]; then

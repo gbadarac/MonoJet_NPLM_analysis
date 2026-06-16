@@ -41,7 +41,6 @@ sys.path.insert(0, str(SPARKER_UTILS))
 sys.path.insert(0, str(NF_UTILS))
 
 import LRTGOFutils_v2 as lrt
-import GENutils as gen
 
 # -------------------------------------------------------------------
 # CLI
@@ -147,14 +146,9 @@ print("Writing outputs to:", out_dir, flush=True)
 # Load WiFi weights (common to both model types)
 # -------------------------------------------------------------------
 weights_centralv = np.load(args.w_path)       # (M,)
-weights_cov_raw  = np.load(args.w_cov_path)   # (M-1,M-1) for kernels or (M,M) for NF
-
-# NF WiFi produces a full (M,M) covariance; drop last row/col to get the
-# M-1 free-parameter covariance (last weight = 1 - sum(others)).
-if weights_cov_raw.shape[0] == len(weights_centralv):
-    weights_cov_init = weights_cov_raw[:-1, :-1]
-else:
-    weights_cov_init = weights_cov_raw   # already (M-1, M-1)
+weights_cov_init = np.load(args.w_cov_path)   # (M-1, M-1)
+assert weights_cov_init.shape == (len(weights_centralv) - 1, len(weights_centralv) - 1), \
+    f"cov_w shape {weights_cov_init.shape} != ({len(weights_centralv)-1}, {len(weights_centralv)-1})"
 
 n_wifi_components = args.nensemble   # M total models (last is norm model)
 
@@ -162,6 +156,7 @@ n_wifi_components = args.nensemble   # M total models (last is norm model)
 # Load ensemble model (model-type specific)
 # -------------------------------------------------------------------
 if args.model_type == 'kernels':
+    import GENutils as gen
     with open(os.path.join(args.ensemble_dir, "config.json"), "r") as f:
         config_json = json.load(f)
     n_kernels_list = config_json["number_centroids"]
@@ -449,11 +444,11 @@ with torch.no_grad():
     if train_wifi_weights:
         aux_num  = model_num.log_auxiliary_term()
         aux_den  = model_den.log_auxiliary_term()
-        T_tensor = (num_log.sum() + aux_num) - (den_log.sum() + aux_den)
-        test     = (num_log - den_log) + ((aux_num - aux_den) / N)
+        T_tensor = 2.0 * ((num_log.sum() + aux_num) - (den_log.sum() + aux_den))
+        test     = 2.0 * ((num_log - den_log) + ((aux_num - aux_den) / N))
     else:
-        T_tensor = num_log.sum() - den_log.sum()
-        test     = num_log - den_log
+        T_tensor = 2.0 * (num_log.sum() - den_log.sum())
+        test     = 2.0 * (num_log - den_log)
 
     T        = float(T_tensor.detach().cpu().item())
     numerator   = num_log.detach().cpu().numpy().copy()

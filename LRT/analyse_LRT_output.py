@@ -21,7 +21,6 @@ Usage:
     python analyse_LRT_output.py \\
         --results_dir /path/to/LRT/results/SparKer32_Ntest100000_... \\
         [--out_dir /path/to/plots/] \\
-        [--scale_t 1.0] \\
         [--dof 100] \\
         [--clip_tau 0.0005] \\
         [--xmin 0] [--xmax 200] \\
@@ -49,8 +48,6 @@ parser.add_argument("--results_dir", type=str, required=True,
                     help="Path to the run-tag directory (contains calibration/ and test/).")
 parser.add_argument("--out_dir", type=str, default=None,
                     help="Output directory for plots (default: <results_dir>/plots/).")
-parser.add_argument("--scale_t", type=float, default=1.0,
-                    help="Multiply T by this factor before plotting (use 2.0 for 2T convention).")
 parser.add_argument("--dof", type=int, default=100,
                     help="Nominal degrees of freedom (number of kernels in NUM).")
 parser.add_argument("--clip_tau", type=float, default=0.0005,
@@ -70,12 +67,12 @@ out_dir = args.out_dir or os.path.join(results_dir, "plots")
 os.makedirs(out_dir, exist_ok=True)
 
 title = args.title or "/".join(results_dir.split("/")[-2:])
-label = "2T" if args.scale_t == 2.0 else "T"
+label = "2T"
 
 # -------------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------------
-def collect_T(base_dir, mode, scale=1.0):
+def collect_T(base_dir, mode):
     """Scan base_dir/<mode>/seed*/seed*_T.npy, return 1-D array."""
     seed_dirs = sorted(glob.glob(os.path.join(base_dir, mode, "seed*")))
     values, bad = [], []
@@ -86,7 +83,7 @@ def collect_T(base_dir, mode, scale=1.0):
             bad.append((sd, "no T.npy"))
             continue
         try:
-            v = float(np.load(fs[0])) * scale
+            v = float(np.load(fs[0]))
             if np.isfinite(v):
                 values.append(v)
             else:
@@ -157,8 +154,8 @@ def save_fig(fig, out_dir, name):
 print(f"Results dir : {results_dir}")
 print(f"Output dir  : {out_dir}")
 
-t_calib = collect_T(results_dir, "calibration", scale=args.scale_t)
-t_test  = collect_T(results_dir, "test",        scale=args.scale_t)
+t_calib = collect_T(results_dir, "calibration")
+t_test  = collect_T(results_dir, "test")
 
 print(f"\nCalibration {label}: n={len(t_calib)}", end="")
 if len(t_calib):
@@ -300,7 +297,7 @@ if len(t_test):
 legend_fp = font_manager.FontProperties(family="serif", size=16.5)
 ax.legend(ncol=1, loc="upper right", prop=legend_fp, frameon=False,
           handlelength=1.8, borderpad=0.3, labelspacing=0.3)
-xlabel = r"$2t$" if args.scale_t == 2.0 else r"$t$"
+xlabel = r"$2t$"
 ax.set_xlabel(xlabel, fontsize=32, fontname="serif")
 ax.set_ylabel("Probability density", fontsize=28, fontname="serif")
 ax.set_xlim(xmin, xmax)
@@ -458,7 +455,7 @@ def collect_n_at_clip(base_dir, mode, clip_tau):
         f = os.path.join(sd, f"{name}_coeffs.npy")
         if os.path.exists(f):
             coeffs = np.load(f).ravel()
-            counts.append(int(np.sum(np.abs(coeffs) >= args.clip_tau * 0.999)))
+            counts.append(int(np.sum(np.abs(coeffs) >= clip_tau * 0.999)))
     return np.array(counts) if counts else None
 
 n_clip = collect_n_at_clip(results_dir, "calibration", args.clip_tau)
@@ -472,8 +469,11 @@ if n_clip is not None and len(n_clip) > 0:
             edgecolor="#8a2be2", linewidth=0.8)
     ax.axvline(n_clip.mean(), color="#8a2be2", lw=2, ls="--",
                label=rf"mean $= {n_clip.mean():.1f}$")
-    ax.axvline(args.dof - DOF_eff, color="steelblue", lw=2, ls=":",
-               label=rf"$M - \mathrm{{DOF}}_\mathrm{{eff}} = {args.dof - DOF_eff:.1f}$")
+    # DOF_eff is fitted on the 2×LLR (T = 2×LLR) scale. Dividing by 2 recovers
+    # the 1×LLR effective DOF, whose difference from M matches n_at_clip.mean().
+    dof_free_delta = args.dof - DOF_eff / 2
+    ax.axvline(dof_free_delta, color="steelblue", lw=2, ls=":",
+               label=rf"$M - \mathrm{{DOF}}_\mathrm{{eff}}/2 = {dof_free_delta:.1f}$")
     ax.set_xlabel(r"$n_\mathrm{at\_clip}$ per toy", fontsize=14, fontname="serif")
     ax.set_ylabel("Toys", fontsize=14, fontname="serif")
     ax.set_title(rf"{title} — kernel clip saturation (null, clip$={args.clip_tau}$)",

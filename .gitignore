@@ -34,9 +34,12 @@ wifi_better_basis/runs/
 
 # Large arrays or generated data
 *.npy
+*.npz
 # Allow tracking of fitted weights and covariances
 !Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/**/w_i_fitted.npy
 !Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/**/cov_w.npy
+!Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernel/**/w_i_fitted.npy
+!Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernel/**/cov_w.npy
 !Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_gaussian_toy/**/w_i_fitted.npy
 !Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_gaussian_toy/**/cov_w.npy
 # Allow tracking of fixed target data
