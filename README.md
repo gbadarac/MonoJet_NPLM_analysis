@@ -1,4 +1,4 @@
-# Uncertainty-Aware Density Estimation and GoF with Normalizing Flows
+# Uncertainty-Aware Density Estimation and GoF with Normalizing Flows, Sparker Kernels, and Learned Classifier Basis
 
 End-to-end pipeline for:
 1) distributional modeling with Normalizing Flows,
@@ -55,20 +55,23 @@ MonoJet_NPLM_analysis/
 │     └─ Sparker_kernels/                 # Kernel-based density estimation
 ├─ Uncertainty_Modeling/                  # Weight fitting (w_i), sandwich covariance, propagation
 │  └─ wifi/                               # w_i f_i frequentist ensembles and covariance
-│     ├─ Coverage_Check/                  # Coverage studies on observables (e.g., first moment)
+│     ├─ Coverage_Check/                  # Coverage studies on observables — not maintained/up-to-date
 │     └─ Fit_Weights/                     # Penalized MLE for w, sandwich covariance, propagation
+│        ├─ fit_ensemble_weights.py       # Unified weight-fitting script (MODEL_TYPE toggle)
+│        └─ submit_fit_weights.sh         # SLURM submission (set MODEL_TYPE=nf|kernels)
 ├─ Generate_Ensemble_Samples/             # Accept–reject sampling for LRT and NPLM reference draws
 │  ├─ Normalizing_Flows/                  # Hit-or-miss MC for NF ensemble
 │  └─ Sparker_kernels/                    # Hit-or-miss MC for kernel ensemble
 ├─ LRT/                                   # One-sample learned LRT with uncertainty-aware reference
-│  ├─ Normalizing_Flows/                  # NF backend for GoF test
-│  └─ Sparker_kernels/                    # Kernel backend for GoF test
+│  ├─ LRT.py                              # Unified LRT script (--model_type kernels|nf)
+│  └─ submit_LRT_toys.sh                  # SLURM submission (set MODEL_TYPE=kernels|nf)
 ├─ NPLM/                                  # Two-sample LRT (NPLM)
 │  ├─ NPLM-embedding/                     # Scripts and utilities for two-sample tests
 │  ├─ NPLM_NF_ensemble/                   # Results: ensemble as reference
 │  └─ NPLM_NF_one_model/                  # Results: single NF as reference
 ├─ shared/                                # Shared library used across pipeline stages
 │  └─ Sparker_utils/                      # Kernel utilities (SPARKutils, LRTGOFutils, ENSEMBLEutils, …)
+├─ wifi_better_basis/                     # Classifier-based GoF (Sean's approach, separate pipeline)
 ├─ envs/                                  # Conda/pip environment files
 ├─ NOTES.md                               # Design decisions and experimental observations
 └─ README.md
@@ -82,15 +85,21 @@ Create the environments:
 ```bash
 conda env create -f envs/nf_env.yml
 conda env create -f envs/nplm_env.yml
+conda env create -f envs/kernels_env.yml
 ```
 Activate the right one for each step:
-- Steps 1, 2, 3: training, weight fitting, coverage
+- Steps 1–3 (NF training, weight fitting, coverage):
 ```bash
 conda activate nf_env
 ```
-- Learned likelihood–ratio test
+- Steps 1–3 (kernel training, weight fitting):
 ```bash
-conda activate nplm_env
+conda activate kernels_env
+```
+- Learned likelihood–ratio tests (LRT, NPLM):
+```bash
+conda activate nplm_env   # for NF backend
+conda activate kernels_env  # for kernel backend
 ```
 
 ---
@@ -136,11 +145,15 @@ You can train with two backends:
 - `nflows/`
 - `zuko/` — same interface as `nflows`, plus **Bayesian Flows** support (set `bayesian=True` in the launcher arguments).
 
-Each backend folder contains:
-- Training script, e.g. `EstimationNFnflows.py`
-- SLURM submission script, e.g. `submit_array_NFnflows.sh`
-- Launcher script, e.g. `run_submit_array_NFnflows.sh`
-- `utils_flows.py` with shared helpers for model building, sampling, plotting
+Each NF backend folder contains:
+- Training script: `EstimationNFnflows.py` (nflows) or `EstimationNFzuko.py` (zuko)
+- SLURM submission script: `submit_array_NFnflows.sh` / `submit_array_NFzuko.sh`
+- Launcher script: `run_submit_array_NFnflows.sh` / `run_submit_array_NFzuko.sh`
+
+NF shared helpers (model building, sampling, plotting):
+- `Train_Ensembles/Train_Models/utils_flows.py`
+
+Kernel shared utilities live in `shared/Sparker_utils/` (used across training, weight fitting, hit-or-miss, and LRT).
 
 #### Configure
 
@@ -166,29 +179,28 @@ bayesian=True
 #### Run
 Activate the environment for Steps 1–3, move into your backend, and submit:
 ```bash
-cd Train_Ensembles/Train_Models/nflows
+cd Train_Ensembles/Train_Models/Normalizing_Flows/nflows
 sbatch run_submit_array_NFnflows.sh
 ```
-Replace nflows with zuko if you use the zuko backend.
+Replace `nflows` with `zuko` if you use the zuko backend.
 
 #### Outputs
 After jobs finish you will find:
 ```text
-Train_Ensembles/Train_Models/nflows/EstimationNFnflows_outputs/
+Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/
 ├── <one folder per trained member>   # checkpoints 
 └── f_i.pth                           # collects all members for downstream steps
 ```
-If `f_i.pth` is missing but all single-model .pth files exist, then use the notebook below to gather the trained members into a single ensemble file:
+If `f_i.pth` is missing but all single-model .pth files exist, gather them with:
 ```bash
-Train_Ensembles/Train_Models/<backend>/collect_all_models_into_ensemble.ipynb
+Train_Ensembles/Train_Models/Normalizing_Flows/collect_all_models_into_ensemble.ipynb
 ```
 
 #### Quick visual check
 Plot model vs target marginals with the notebook:
 ```bash
-Train_Ensembles/Train_Models/nflows/test_NFs_marginals.ipynb
+Train_Ensembles/Train_Models/Normalizing_Flows/test_NFs_marginals.ipynb
 ```
-Plotting utilities live in `utils_flows.py` in both backends.
 
 #### Typical settings
 - architecture: layers 4, blocks 16, hidden 128, bins 15
@@ -208,44 +220,40 @@ to a pointwise predictive band $\hat f \pm \sigma_{\hat f}$.
 ```bash 
 MonoJet_NPLM_analysis/Uncertainty_Modeling/wifi/Fit_Weights/
 ```
-#### Python scripts
-- `fit_NF_ensemble_weights_2d.py`
-- `fit_NF_ensemble_weights_4d.py`
-- `fit_toy_weights.py`
+#### Python script
+- `fit_ensemble_weights.py` — unified script for both NF and kernel ensembles
 
 #### Utilities
-`utils_wifi.py`: shared helpers used by all weight-fitting scripts
+- `Uncertainty_Modeling/wifi/utils_NF_wifi.py` — NF ensemble helpers (density eval, marginal plots, covariance propagation)
+- `Uncertainty_Modeling/wifi/utils_kernel_wifi.py` — kernel ensemble helpers (same interface)
 
-#### Submission scripts
-- `submit_fit_NF_ensemble_weights.sh`
-- `submit_fit_toy_weights.sh`
+#### Submission script
+- `submit_fit_weights.sh` — set `MODEL_TYPE=nf|kernels` and `NDIM` at the top
 
 #### Outputs 
 - `results_fit_weights_NF/`
-- `results_fit_weights_gaussian_toy/`
-These folders contain the fitted weights `w_i_fitted.npy`, covariance matrix `cov_w.npy`, logs, and diagnostics. 
+- `results_fit_weights_kernel/`
+Each output folder contains the fitted weights `w_i_fitted.npy`, covariance matrix `cov_w.npy`, logs, and diagnostics.
 
 #### Configure
 
-1. Edit the submission script
-Open `submit_fit_NF_ensemble_weights.sh` and set:
-- `trial_dir`: directory that contains your `f_i.pth` from Step 5.1
-- `data_path`: path to the 100000 target events file from Step 4
+1. Open `submit_fit_weights.sh` and set:
+   - `MODEL_TYPE`: `nf` or `kernels`
+   - `NDIM`: number of dimensions (e.g. `2` or `4`)
+   - For `MODEL_TYPE=nf`, optionally set `DATASET` (e.g. `2d_gaussian`)
+   - Paths (`TRIAL_DIR`, `DATA_PATH`) are set automatically from the toggles above
 2. Submit
 ```bash 
 cd Uncertainty_Modeling/wifi/Fit_Weights
-sbatch submit_fit_NF_ensemble_weights.sh
+sbatch submit_fit_weights.sh
 ```
 
-#### Recovering the final weights 
-
-The fitted weights are later used to perform hit-or-miss Monte Carlo over the ensemble for the learned likelihood-ratio GoF test. You can obtain the final fitted weights in two ways:
-- From the output files saved in `results_fit_weights_*`
-- With the notebook: `Uncertainty_Modeling/wifi/Fit_Weights/w_i_final_file.ipynb`
-Note that if optimization fails on some runs, check logs for non-finite losses and retry.
+The fitted weights `w_i_fitted.npy` are saved directly in the output folder and are ready for downstream steps. If optimization fails on some runs, check logs for non-finite losses and retry.
 ---
 
 ### 5.3 Step 3 — Coverage test
+
+> **Note:** The scripts in `Coverage_Check/` are not maintained and may not reflect the current pipeline. Use as a reference only.
 
 This step checks whether the propagated uncertainty from the fitted ensemble
 adequately covers a known observable (here, the **first moment**) at a chosen
@@ -375,57 +383,54 @@ $p(x \mid H_{\boldsymbol{\phi}}) = p_{\mathrm{REF}}(x) + f(x,\boldsymbol{\phi}),
 \qquad \int f(x,\boldsymbol{\phi})dx = 0$.
 - We fit $\boldsymbol{\phi}$ on DATA, build $T$, calibrate $T$ with toys drawn from $p_{\mathrm{REF}}$, then report $Z$.
 
-Two backends are available under `LRT/`:
+Both backends (NF and kernels) are handled by a single unified script under `LRT/`:
 
-#### Normalizing Flows backend — `LRT/Normalizing_Flows/`
-- Python script: `toys_LRT_with_unc.py`
-- Submission script: `submit_toys_LRT.sh`
-- Utils: `utils_LRT.py`
+#### Scripts
+- Python script: `LRT/LRT.py` — handles both backends via `--model_type kernels|nf`
+- Submission script: `LRT/submit_LRT_toys.sh` — set `MODEL_TYPE` and `CALIBRATION` at the top
 
-#### Sparker kernels backend — `LRT/Sparker_kernels/`
-- Python script: `LRT.py`
-- Submission script: `submit_LRT_toys.sh`
-
-#### Configure (Normalizing Flows)
-In the submission script (`submit_toys_LRT.sh`):
-- `CALIBRATION`={True,False}
-- `BASE_OUT`: output directory
-- `w`: fitted weights file
-- `w_cov`: covariance matrix file
-- `hit_or_miss_data`: REF generated data file. Important: these are toys only, not used for training
-- `ensemble_dir`: folder where the ensemble models were trained
-- SLURM array for number of toys, e.g.
-`#SBATCH --array=0-99` for 100 toys
-
-In the python script (`toys_LRT_with_unc.py`):
-- `N_events`: number of DATA events used by the GoF
-- `n_kernels`: number of kernels in the Gaussian expansion, choose $n_{\text{kernels}}\approx\sqrt{N_{\text{events}}}$
+#### Configure
+Open `submit_LRT_toys.sh` and set:
+- `MODEL_TYPE`: `kernels` or `nf`
+- `CALIBRATION`: `1` = null toys (SIR + calibration pool), `0` = observed (target data)
+- `FIX_WIFI_WEIGHTS` / `FREE_WIFI_WEIGHTS`: optional flags to fix or free the wifi weights during the LRT
+- All paths (`W_PATH`, `W_COV_PATH`, `CALIB_DATA`, `TARGET_DATA`, and model-specific paths) are set automatically from the `MODEL_TYPE` toggle
+- SLURM array for number of toys, e.g. `#SBATCH --array=0-99` for 100 toys
 
 #### Run
 ```bash
-# Normalizing Flows backend
-cd LRT/Normalizing_Flows
-# Run calibrated toys
-CALIBRATION=True  sbatch submit_toys_LRT.sh
-# Run the corresponding uncalibrated pass
-CALIBRATION=False sbatch submit_toys_LRT.sh
-
-# Sparker kernels backend
-cd LRT/Sparker_kernels
+cd LRT
+# Edit MODEL_TYPE and CALIBRATION at the top of submit_LRT_toys.sh, then:
 sbatch submit_LRT_toys.sh
 ```
+Run twice: once with `CALIBRATION=1` (null toys) and once with `CALIBRATION=0` (observed).
 
 #### Outputs
-Results are written under `LRT/Normalizing_Flows/results/`.
-For each ensemble architecture you will find:
-`calibration/` (`CALIBRATION=True`) and `comparison/` (`CALIBRATION=False`) subfolders;
-inside each, one folder per toy, containing:
-- diagnostic plots
-- a `.json` with the test-statistic values needed to build $p(T)$, the $p$-value, and $Z$.
-To produce the probability vs test-statistic curves and summary tables, run:
-```text
-LRT/Normalizing_Flows/analyse_LRT_output_ML4PS_style.ipynb
+Results are written under `LRT/results/<run_tag>/`.
+- `calibration/` (`CALIBRATION=1`) and `test/` (`CALIBRATION=0`) subfolders
+- Inside each, one folder per toy `seed{N}/` containing:
+  - `seed{N}_T.npy` — test-statistic value
+  - `seed{N}_coeffs.npy`, `seed{N}_kernel_centers.npy` — numerator Gaussian kernel correction
+  - `seed{N}_den_weights.npy`, `seed{N}_num_weights.npy`, `seed{N}_init_weights.npy` — WiFi weight diagnostics
+
+#### Analyse results (no SLURM needed — runs locally in a few seconds)
+
+**Main results** — T distribution, Z score, p-value, weight diagnostics:
+```bash
+conda activate kernels_env   # use kernels_env for both NF and kernel results — nf_env has a scipy/numpy conflict
+python LRT/analyse_LRT_output.py \
+    --results_dir LRT/results/<run_tag> \
+    --dof 100 \
+    --clip_tau 0.0005 \
+    [--w_cov_path <path/to/cov_w.npy>]   # optional: adds normalised weight-pull plot
 ```
+Produces `T_distribution.pdf/png`, `weight_shifts.pdf/png`, `chi2_quantile_table.txt` (and optionally `weight_pulls.pdf/png`) under `LRT/results/<run_tag>/plots/`.
+
+**Per-toy numerator kernel diagnostics** (optional, secondary):
+```bash
+bash LRT/run_plot_lrt_num_kernels.sh
+```
+Produces per-seed 2D scatter of kernel centers and 1D marginal overlays. Edit paths in the script for your run tag and model type before running.
 
 ### 2) Two sample learned LRT (NPLM)
 
@@ -451,20 +456,12 @@ Two backends are available under `Generate_Ensemble_Samples/`:
 - Submission script: `submit_generate_hit_or_miss_Sparker.sh`
 
 ##### Configure 
-- In the python script (e.g. `generate_hit_or_miss_NFs.py`): 
-   - `trial_dir`: directory where the fitted weights $\hat{w}$ are stored
-   - `data_path`: file where the target distribution samples are stored
-   - `arch_config_path`: file where the architecture of the NFs is stored
-   - `subdir`: desired output subfolder name
-   - `w_i_fitted`: load from the final weights saved in trial_dir (np.load from w_i_fitted.npy)
-   - `N_events`: events per array task, for example 5000
-   - Output file naming is set here, for example:
-   ```bash 
-   np.save(os.path.join(out_dir,
-    f"ensemble_generated_samples_4_16_128_15_bimodal_gaussian_heavy_tail_seed_{seed}.npy"),
-    samples.cpu().numpy())
-   ```
-- In the submission script: set the array size, for example `#SBATCH --array=0-199`. With `N_events=5000`, this yields ~one million proposals. As a rule of thumb, generate about twice the number of accepted events you will need for the test.
+All paths are passed as arguments — edit the submission script only, not the python script:
+
+- **NF backend** (`submit_generate_hit_or_miss_NFs.sh`): set `TRIAL_DIR` (NF ensemble dir with `f_i.pth`), `W_PATH` (fitted weights), `OUT_DIR`, `NGENERATE` (events per task), `TAIL_BOUND`.
+- **Kernel backend** (`submit_generate_hit_or_miss_Sparker.sh`): set `ENSEMBLE_DIR`, `W_PATH`, `OUT_DIR`, `NGENERATE`, `BOUNDS` (hit-or-miss box, e.g. `-1.5 0.5 0.5 4.5`).
+- Set the SLURM array size, e.g. `#SBATCH --array=0-199`. With `NGENERATE=5000` and 200 tasks this yields 1M proposals. As a rule of thumb, generate about twice the number of accepted events you will need for the test.
+- Output files are saved automatically as `seed{i}.npy` in a subfolder named after the wifi weights run.
 
 ##### Run 
 ```bash

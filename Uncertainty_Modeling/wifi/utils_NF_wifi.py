@@ -85,10 +85,16 @@ def ensemble_pred(weights, model_probs):
     return model_vals.cpu().numpy()
 
 def ensemble_unc(cov_w, model_probs):
-    model_probs_np = model_probs.cpu().clone().numpy()
-    sigma_sq = np.einsum('ni,ij,nj->n', model_probs_np, cov_w, model_probs_np)
-    sigma = np.sqrt(sigma_sq)
-    return sigma
+    # cov_w is (M-1, M-1); propagate through ∂f/∂u_j = f_j - f_M
+    if hasattr(model_probs, 'cpu'):
+        model_probs_np = model_probs.cpu().clone().numpy()
+    else:
+        model_probs_np = np.asarray(model_probs)
+    if hasattr(cov_w, 'numpy'):
+        cov_w = cov_w.numpy()
+    g = model_probs_np[:, :-1] - model_probs_np[:, -1:]   # (N, M-1)
+    sigma_sq = np.einsum('ni,ij,nj->n', g, cov_w, g)
+    return np.sqrt(np.maximum(sigma_sq, 0.0))
 
 def plot_ensemble_marginals_2d(f_i_models, x_data, weights, cov_w, feature_names, outdir):
     #convet pytorch input tensor x_data to a NumPy array for easier processing 
@@ -265,9 +271,9 @@ def plot_ensemble_marginals_4d(f_i_models, x_data, weights, cov_w, feature_names
         # Ensemble mean and uncertainty at each center
         w_col = weights.view(-1, 1)                           # (M,1)
         f_binned = (v_mat @ weights).numpy()                  # (B,)
-        # sigma^2(c) = v(c)^T Cov_w v(c)
-        cov_w_t = cov_w
-        sigma2 = (v_mat @ cov_w_t @ v_mat.T).diagonal().numpy()
+        # sigma^2(c) = g(c)^T Cov_u g(c),  g_j = v_j - v_M  (M-1 free weights)
+        g_mat = v_mat[:, :-1] - v_mat[:, -1:]                # (B, M-1)
+        sigma2 = (g_mat @ cov_w @ g_mat.T).diagonal().numpy()
         f_err = np.sqrt(np.maximum(sigma2, 0.0))              # (B,)
 
         # Normalize to unit area over the scan dimension

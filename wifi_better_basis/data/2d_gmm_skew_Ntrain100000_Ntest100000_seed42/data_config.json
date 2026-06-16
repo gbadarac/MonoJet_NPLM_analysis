@@ -1,0 +1,8 @@
+{
+  "benchmark": "2d_gmm_skew",
+  "N_train": 100000,
+  "N_test": 100000,
+  "seed": 42,
+  "d": 2,
+  "data_dir": "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/wifi_better_basis/data/2d_gmm_skew_Ntrain100000_Ntest100000_seed42"
+}

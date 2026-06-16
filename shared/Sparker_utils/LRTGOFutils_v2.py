@@ -1,8 +1,6 @@
 import torch, time, math, os 
 import numpy as np
 from torch import nn
-from scipy.stats import chi2 as chi2_scipy
-
 
 class GaussianKernelLayer(nn.Module):
     def __init__(self, centers_init, coefficients_init, sigma, train_centers=False, clip_coeffs=None):
