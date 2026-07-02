@@ -58,6 +58,7 @@ wifi_better_basis/runs/
 
 # Markdown files (except top-level README)
 *.md
+**/debug_notes/
 !README.md
 
 # Python caches
