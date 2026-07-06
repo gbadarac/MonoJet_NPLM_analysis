@@ -22,9 +22,8 @@ where L is the BCE objective plus the prior penalties:
         + ½ (w − w_hat)^T Σ_w_eff^{-1} (w − w_hat)
         + ½ λ_pert ‖b‖²
 
-Three variants control how much the wifi weights can drift:
-  - constrained: Σ_w_eff = Σ_w
-  - free:        Σ_w_eff = c · Σ_w   (c = FREE_COV_INFLATE, looser prior)
+Two variants control how much the wifi weights can drift (see VARIANTS below):
+  - constrained: Σ_w_eff = Σ_w        (drift under the sandwich prior)
   - frozen:      w ≡ w_hat            (no drift; only b is fit on the num side)
 
 Calibration: replace "data" with toys drawn from p_hat = r_hat·q (via SIR on

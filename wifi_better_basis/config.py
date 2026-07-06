@@ -18,14 +18,23 @@ Kept torch-free so submit_slurm.py can import on a login node.
 
 CONFIG = {
     # ── Data ─────────────────────────────────────────────────────
-    "benchmark": "2d_gmm_skew",
+    "benchmark": "2d_gmm_skew",  # 2d_gmm_skew | 2d_gaussian | 4d_embedding (real data via make_4d_cache.py)
     "seed": 42,
     # Compute scales with N_train × ref_oversample × epochs × |MLP|. Defaults
     # below are roughly 2-3× the original wifi compute on GPU; bump N_train if
     # you have headroom. N_test is small on purpose so the GoF test isn't
     # crushed by power alone.
-    "N_train": 100000,                 # basis training + linear-head fit (50/50 split inside)
+    "N_train": 100000,                 # data budget for basis training + linear-head fit
     "N_test": 100000,                   # GoF observed sample + plot_marginals histogram
+
+    # Sean (meeting note): using the SAME data to train the basis and to fit the
+    # wifi weights is fine (coverage still holds) and improves marginally, so it
+    # is the default. True  -> full X_train feeds BOTH basis and linear head
+    # (no 50/50 split); a small BASIS_VAL_FRAC slice is still held out for basis
+    # BCE/AUC monitoring only. False -> legacy 50/50 split (basis on half_A,
+    # linhead + honest held-out covariance on half_B). Overridable per run with
+    # `python run.py --same-data {0,1}`.
+    "SAME_DATA_BASIS_WIFI": True,
 
     # ── Bootstrapped MLP basis ───────────────────────────────────
     "K": 160,                           # number of basis MLPs (linear-head dim is K+1)
@@ -65,11 +74,16 @@ CONFIG = {
     "GOF_TOL": 1e-9,
     "GOF_N_TOYS": 100,
     "GOF_TOY_OVERSAMPLE": 10,
+    # GOF_N_REF = None -> N_ref = N_data (1:1). This is CORRECT at 1:1 but does NOT
+    # implement the paper's reference oversampling (NPLM-style ~5:1). Do not just
+    # raise it: the BCE in classifier_gof.py is summed, so N_ref != N_data biases t.
+    # Fix + plan tracked in ../OPEN_PROBLEMS.md ("Reference oversampling ...").
     "GOF_N_REF": None,
 }
 
 
 def make_run_name(cfg):
     h_tag = "x".join(str(h) for h in cfg["MLP_HIDDEN"])
+    du_tag = "samedata" if cfg.get("SAME_DATA_BASIS_WIFI", False) else "split"
     return (f"wbb_{cfg['benchmark']}_K{cfg['K']}_H{h_tag}_"
-            f"Ntr{cfg['N_train']}_Nte{cfg['N_test']}_s{cfg['seed']}")
+            f"Ntr{cfg['N_train']}_Nte{cfg['N_test']}_s{cfg['seed']}_{du_tag}")

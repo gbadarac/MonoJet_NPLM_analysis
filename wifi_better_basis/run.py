@@ -181,7 +181,33 @@ def basis_diag_summary(diags):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, default=None)
+    parser.add_argument("--same-data", dest="same_data", type=int,
+                        choices=[0, 1], default=None,
+                        help="Override SAME_DATA_BASIS_WIFI. 1 = full X_train for "
+                             "both basis and wifi-weight fit (no 50/50 split); "
+                             "0 = legacy 50/50 split. Default: use config value.")
+    parser.add_argument("--benchmark", type=str, default=None,
+                        help="Override CONFIG['benchmark'] (e.g. 4d_embedding) "
+                             "without editing config.py, so a concurrently running "
+                             "job on another benchmark is never affected. The "
+                             "override is dumped into the run's wifi_config.json, "
+                             "which is what coverage/gof/plot read downstream.")
+    parser.add_argument("--n-train", dest="n_train", type=int, default=None,
+                        help="Override CONFIG['N_train'] without editing config.py "
+                             "(same rationale as --benchmark).")
+    parser.add_argument("--n-test", dest="n_test", type=int, default=None,
+                        help="Override CONFIG['N_test'] without editing config.py.")
     args = parser.parse_args()
+
+    if args.benchmark is not None:
+        CONFIG["benchmark"] = args.benchmark
+    if args.n_train is not None:
+        CONFIG["N_train"] = args.n_train
+    if args.n_test is not None:
+        CONFIG["N_test"] = args.n_test
+    if args.same_data is not None:
+        CONFIG["SAME_DATA_BASIS_WIFI"] = bool(args.same_data)
+    same_data = bool(CONFIG.get("SAME_DATA_BASIS_WIFI", False))
 
     run_name = args.name or make_run_name(CONFIG)
     out_dir = os.path.join(PROJECT_ROOT, "runs", run_name)
@@ -216,14 +242,21 @@ def main():
     print(f"      mu    = {mu_q.numpy()}")
     print(f"      Sigma = {Sigma_q.numpy().tolist()}")
 
-    # 3. 50/50 split (basis training half / linear-head fit half)
-    print("[3/9] 50/50 split (half_A: basis,  half_B: linhead)")
-    X_A, X_B = split_5050(X_train, seed=CONFIG["seed"])
-    print(f"      half_A = {X_A.shape[0]} (basis training)")
-    print(f"      half_B = {X_B.shape[0]} (linhead + Σ_w)")
+    # 3. Data usage for basis vs linear head.
+    #    same_data (Sean's note): full X_train feeds BOTH the basis and the
+    #    linear-head/covariance fit. Legacy path splits 50/50 so the covariance
+    #    is fit on data the basis never saw (honest held-out sandwich).
+    if same_data:
+        print("[3/9] same-data mode: full X_train for BOTH basis and linhead "
+              "(no 50/50 split)")
+        X_A = X_B = X_train
+    else:
+        print("[3/9] 50/50 split (half_A: basis,  half_B: linhead)")
+        X_A, X_B = split_5050(X_train, seed=CONFIG["seed"])
+    print(f"      basis source = {X_A.shape[0]},  linhead source = {X_B.shape[0]}")
 
-    # 4. Carve a val pool out of half_A for basis diagnostics
-    print(f"[4/9] carve val pool ({CONFIG['BASIS_VAL_FRAC']*100:.0f}% of half_A)")
+    # 4. Carve a val pool out of the basis source for basis diagnostics only
+    print(f"[4/9] carve val pool ({CONFIG['BASIS_VAL_FRAC']*100:.0f}% of basis source)")
     X_A_train, X_A_val = carve_val(X_A, CONFIG["BASIS_VAL_FRAC"], seed=CONFIG["seed"])
     print(f"      basis train pool = {X_A_train.shape[0]}")
     print(f"      val pool         = {X_A_val.shape[0]}")

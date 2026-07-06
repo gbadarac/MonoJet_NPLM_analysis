@@ -1,3 +1,18 @@
+"""
+Hit-or-miss sampler for an NF wifi ensemble → REF samples for the two-sample
+(NPLM) test.
+
+⚠️ 2D-ONLY. hit_or_miss_2d draws exactly two coordinates (x1, x2) and stacks two
+columns, so this script CANNOT sample a 4D (or any d≠2) NF ensemble even though
+the upstream wifi fit (submit_fit_weights.sh, NDIM=4 branch) supports one. This
+is not a live gap: NFs are a de-prioritized standalone density backend for the
+paper (they can't fit the bimodal+skew target — see ../../NOTES.md), and the 4D
+work lives in the classifier pipeline (wifi_better_basis/), which samples via SIR
+(sample_reference + sir_toy), not this hit-or-miss path. To generalize to dD you
+would draw d uniforms in [-tail_bound, tail_bound]^d and evaluate the ensemble
+density on the full d-vector.
+"""
+
 import os
 import json
 import torch
@@ -86,12 +101,27 @@ def hit_or_miss_2d(tb, N_events, max_attempts=1_000_000_000):
     total_hits = 0
     total_attempts = 0
     batch_size = max(N_events // 2, 10000)
+    # Non-breaking envelope check: rejection sampling is only valid if
+    # f(x) <= f_max everywhere. f_max=2.0 is a hard-coded guess, not a proven
+    # bound; if the density ever exceeds it, the peaks are silently
+    # under-sampled. We only WARN (no extra RNG, f_max unchanged), so accepted
+    # samples are bit-for-bit identical to before.
+    observed_fmax = 0.0
+    envelope_exceeded = False
     while total_hits < N_events and total_attempts < max_attempts:
         x1 = torch.empty(batch_size, device=device).uniform_(-tb, tb)
         x2 = torch.empty(batch_size, device=device).uniform_(-tb, tb)
         y  = torch.empty(batch_size, device=device).uniform_(0, f_max)
         f_vals = _eval_ensemble(x1, x2)
         f_vals = torch.where(f_vals > 0, f_vals, torch.zeros_like(f_vals))
+        batch_fmax = float(f_vals.max())
+        if batch_fmax > observed_fmax:
+            observed_fmax = batch_fmax
+        if batch_fmax > f_max and not envelope_exceeded:
+            envelope_exceeded = True
+            print('  WARNING: density exceeded f_max=%.3f (saw %.3f); samples '
+                  'near the peak are under-sampled (biased). Raise f_max and '
+                  'regenerate.' % (f_max, batch_fmax))
         hits = torch.stack([x1[y < f_vals], x2[y < f_vals]], dim=1)
         accepted.append(hits)
         total_hits += hits.shape[0]
@@ -99,6 +129,10 @@ def hit_or_miss_2d(tb, N_events, max_attempts=1_000_000_000):
         print(f'total hits: {total_hits}')
     if not accepted:
         raise RuntimeError('No events accepted — check density function.')
+    print('envelope check: max density seen = %.4f, f_max = %.3f (%s)'
+          % (observed_fmax, f_max,
+             'OK — samples valid' if not envelope_exceeded
+             else 'EXCEEDED — biased, regenerate with higher f_max'))
     return torch.cat(accepted)[:N_events]
 
 

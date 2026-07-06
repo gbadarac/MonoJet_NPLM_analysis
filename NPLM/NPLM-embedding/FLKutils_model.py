@@ -27,8 +27,12 @@ import torch
 
 
 def candidate_sigma(data, perc=90):
-    # this function estimates the width of the gaussian kernel.                          
-    # use on a (small) sample of reference data (standardize first if necessary)         
+    # this function estimates the width of the gaussian kernel.
+    # use on a (small) sample of reference data (standardize first if necessary)
+    # CAVEAT: data-driven + rounded to 1 dp, so it drifts between 1.0/1.1 across samples.
+    # Fine for any single self-consistent run (sigma is logged in the h5 name), but do
+    # NOT pool/compare a calibration and observed run at DIFFERENT sigma for the same
+    # (d,r,M) point — that biases Z. See ../../OPEN_PROBLEMS.md "NPLM flksigma".
     pairw = pdist(data)
     return np.around(np.percentile(pairw,perc),1)
 

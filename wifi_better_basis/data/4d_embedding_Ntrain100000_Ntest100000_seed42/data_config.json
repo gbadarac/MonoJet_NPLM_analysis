@@ -1,0 +1,9 @@
+{
+  "benchmark": "4d_embedding",
+  "N_train": 100000,
+  "N_test": 100000,
+  "seed": 42,
+  "d": 4,
+  "source": "4d_embedding_Gaia (train_h/test_h)",
+  "data_dir": "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/wifi_better_basis/data/4d_embedding_Ntrain100000_Ntest100000_seed42"
+}

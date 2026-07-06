@@ -275,7 +275,7 @@ fig.savefig(os.path.join(out_dir, "seed%i_numerator_loss.png" % label), dpi=180,
 plt.close(fig)
 
 # -------------------------------------------------------------------
-# Compute T = loglik_num - loglik_den   (pure log-LR, no aux terms)
+# Compute T = 2*(loglik_num - loglik_den)   (2×LLR, no aux terms)
 # -------------------------------------------------------------------
 with torch.no_grad():
     den_p = model_den.call(x_data)[:, 0]
@@ -287,8 +287,12 @@ with torch.no_grad():
     num_p = torch.clamp(num_p, min=model_num.eps)
     num_log_data = torch.log(num_p)                         # (N,)
 
-    T_tensor = num_log_data.sum() - den_log_data.sum()
-    test     = num_log_data - den_log_data
+    # 2×LLR to match LRT.py, NPLM compute_t, and the theoretical Wilks χ² scale.
+    # analyse_LRT_output.py reads these seed*_T.npy files and assumes the 2t scale
+    # (axis label "$2t$", chi2(dof) overlay, DOF_eff/2), so single-model outputs
+    # must be on the same 2× scale as everything else.
+    T_tensor = 2.0 * (num_log_data.sum() - den_log_data.sum())
+    test     = 2.0 * (num_log_data - den_log_data)
 
     T = float(T_tensor.detach().cpu().item())
     numerator   = num_log_data.detach().cpu().numpy()
@@ -313,13 +317,21 @@ if args.save_arrays:
 
 np.save(os.path.join(out_dir, f"seed{label}_coeffs.npy"),
         model_num.network.get_coefficients().detach().cpu().numpy())
+# Kernel centres, same as LRT.py. plot_lrt_num_kernels.py needs BOTH
+# seed{N}_coeffs.npy AND seed{N}_kernel_centers.npy — without this it silently
+# skips every one-model run.
+np.save(os.path.join(out_dir, f"seed{label}_kernel_centers.npy"),
+        centers.detach().cpu().numpy())
 
-# Save profiled GMM mixture weights (analogous to den_weights / num_weights in LRT.py)
-np.save(os.path.join(out_dir, f"seed{label}_den_gmm_weights.npy"),
+# Save profiled GMM mixture weights. Use the SAME filenames as LRT.py
+# (seed{N}_den_weights / _num_weights / _init_weights) so that
+# analyse_LRT_output.py::collect_weight_arrays picks them up — otherwise the
+# weight-shift / weight-pull diagnostic panels come out blank for one-model runs.
+np.save(os.path.join(out_dir, f"seed{label}_den_weights.npy"),
         model_den.weights.detach().cpu().numpy())
-np.save(os.path.join(out_dir, f"seed{label}_num_gmm_weights.npy"),
+np.save(os.path.join(out_dir, f"seed{label}_num_weights.npy"),
         model_num.weights.detach().cpu().numpy())
-np.save(os.path.join(out_dir, f"seed{label}_init_gmm_weights.npy"),
+np.save(os.path.join(out_dir, f"seed{label}_init_weights.npy"),
         weights_init_gmm.cpu().numpy())
 
 # -------------------------------------------------------------------

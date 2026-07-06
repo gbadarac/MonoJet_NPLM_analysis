@@ -109,9 +109,23 @@ def marginals_2d_gmm_skew(x_grids):
 # Registry
 # ──────────────────────────────────────────────────────────────────────
 
+def _embedding_needs_cache(N, seed=42):
+    """The 4D physics embedding is real data, not a DGP — it has no generator.
+    It must be prepared into the pipeline cache with make_4d_cache.py, after which
+    run.py/run_gof.py read it directly. This stub only fires if something tries to
+    generate it on the fly (missing cache, or the coverage step which needs an
+    analytic truth real data does not have — skip coverage for the embedding)."""
+    raise RuntimeError(
+        "benchmark '4d_embedding' has no generator: it is real data. Prepare it "
+        "with `python make_4d_cache.py --n_train N --n_test N` and run without the "
+        "coverage step (coverage needs an analytic truth)."
+    )
+
+
 BENCHMARKS = {
     "2d_gaussian":   generate_2d_gaussian,
     "2d_gmm_skew":   generate_2d_gmm_skew,
+    "4d_embedding":  _embedding_needs_cache,
 }
 
 MARGINALS = {

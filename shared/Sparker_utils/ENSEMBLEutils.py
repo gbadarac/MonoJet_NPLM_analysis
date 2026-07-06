@@ -65,10 +65,23 @@ def hit_or_miss_sample(seed, N, centroids, coefficients, widths, weights, bounds
     bounds = np.array(bounds)
     low, high = bounds[:, 0], bounds[:, 1]
 
-    # Step 1. Estimate |pdf| max by probing random points
+    # Step 1. Estimate pdf max by probing random points.
+    # Matches hit_or_miss_sample_batch: acceptance below requires fx > 0, so the
+    # envelope only needs to bound the POSITIVE (accepted) region — use max(f), not
+    # max(|f|). (The two helpers previously disagreed: this one used |f|, which over-
+    # inflated f_max when the density had large negative excursions and lowered the
+    # acceptance efficiency; the batch version, the one actually used, uses max(f).)
     probe_pts = np.random.uniform(low, high, size=(1000, d))
     vals = pdf_from_ensemble(probe_pts, centroids, coefficients, widths, weights)
-    f_max = np.max(np.abs(vals)) * 2  # safety margin
+    f_max = np.max(vals) * 2  # safety margin
+
+    # Non-breaking envelope check: rejection sampling is only valid if
+    # f(x) <= f_max over the accepted (positive) region. The f_max above is a
+    # 1000-point probe estimate x2, which is NOT a guaranteed bound. We only WARN
+    # if it is ever exceeded — no RNG is drawn and f_max is not changed, so accepted
+    # samples are bit-for-bit identical to before.
+    observed_fmax = 0.0
+    envelope_exceeded = False
 
     samples = []
     signs = []
@@ -79,13 +92,21 @@ def hit_or_miss_sample(seed, N, centroids, coefficients, widths, weights, bounds
     # Step 2. Hit-or-miss loop
     while n_accept < N and n_trials < max_trials:
         # Uniform random candidate point
-        
+
         # propose a candidate point x uniformly in the bounds
         x = np.random.uniform(low, high)
         # evaluate the ensemble pdf at x
         fx = pdf_from_ensemble(x[None, :], centroids, coefficients, widths, weights)[0]
+        fxf = float(fx)
+        if fxf > observed_fmax:
+            observed_fmax = fxf
+        if fxf > f_max and not envelope_exceeded:
+            envelope_exceeded = True
+            print(f"WARNING: density exceeded f_max={f_max:.6f} (saw {fxf:.6f}); "
+                  "samples near the peak are under-sampled (biased). Raise f_max "
+                  "and regenerate.")
         # Acceptance criterion: accept with probability |f(x)| / f_max, and record the sign of f(x)
-        # basically fx should be between 0 and f_max, and we accept with probability fx/f_max. 
+        # basically fx should be between 0 and f_max, and we accept with probability fx/f_max.
         # If fx is negative, we can still accept it but we record the sign as -1. If fx is positive, we record the sign as +1.
         if (np.random.rand() < fx / f_max) and (fx>0):
             samples.append(x)
@@ -95,6 +116,9 @@ def hit_or_miss_sample(seed, N, centroids, coefficients, widths, weights, bounds
 
     if n_accept < N:
         print(f"Warning: only accepted {n_accept} / {N} points after {n_trials} trials")
+
+    print(f"envelope check: max density seen = {observed_fmax:.6f}, f_max = {f_max:.6f} "
+          f"({'OK — samples valid' if not envelope_exceeded else 'EXCEEDED — biased, regenerate'})")
 
     return np.array(samples), np.array(signs)
 
@@ -147,6 +171,11 @@ def hit_or_miss_sample_batch(seed, N, centroids, coefficients, widths, weights, 
     f_max = np.max(_pdf(probe_pts)) * 2
     print("f_max = %.6f" % f_max)
 
+    # Non-breaking envelope check (warn only; draws no RNG and never changes
+    # f_max, so accepted samples are bit-for-bit identical to before).
+    observed_fmax = 0.0
+    envelope_exceeded = False
+
     # Step 2. Batched hit-or-miss loop
     samples  = []
     n_accept = 0
@@ -155,6 +184,14 @@ def hit_or_miss_sample_batch(seed, N, centroids, coefficients, widths, weights, 
     while n_accept < N and n_trials < max_trials:
         x    = np.random.uniform(low, high, size=(batch_size, d))
         fx   = _pdf(x)
+        batch_fmax = float(np.max(fx)) if fx.size else 0.0
+        if batch_fmax > observed_fmax:
+            observed_fmax = batch_fmax
+        if batch_fmax > f_max and not envelope_exceeded:
+            envelope_exceeded = True
+            print("WARNING: density exceeded f_max=%.6f (saw %.6f); samples near "
+                  "the peak are under-sampled (biased). Raise f_max and regenerate."
+                  % (f_max, batch_fmax))
         u    = np.random.uniform(0, f_max, size=batch_size)
         mask = (u < fx) & (fx > 0)
         hits = x[mask]
@@ -164,6 +201,10 @@ def hit_or_miss_sample_batch(seed, N, centroids, coefficients, widths, weights, 
 
     if n_accept < N:
         print("Warning: only accepted %i / %i after %i trials" % (n_accept, N, n_trials))
+
+    print("envelope check: max density seen = %.6f, f_max = %.6f (%s)"
+          % (observed_fmax, f_max,
+             "OK — samples valid" if not envelope_exceeded else "EXCEEDED — biased, regenerate"))
 
     return np.concatenate(samples, axis=0)[:N]
 

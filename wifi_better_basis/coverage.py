@@ -144,8 +144,13 @@ def run_coverage(out_dir, dim=0, verbose=True):
                        cfg.get("COVERAGE_N_BOOTSTRAP", 100)))
     M_sir = int(cfg.get("COVERAGE_M_SIR", 200_000))
 
-    # Match the original linhead training scale.
-    N_data = int(cfg.get("N_train", 100_000)) // 2
+    # Match the linhead training scale: same-data uses the full X_train, the
+    # legacy 50/50 split uses half. Keep this consistent with run.py or the
+    # per-PE finite-N (sandwich) variance is mis-scaled.
+    same_data = bool(cfg.get("SAME_DATA_BASIS_WIFI", False))
+    N_data = int(cfg.get("N_train", 100_000))
+    if not same_data:
+        N_data = N_data // 2
     cfg_n_ref = cfg.get("N_REF_LINHEAD", None)
     N_ref = int(cfg_n_ref) if cfg_n_ref else N_data
 
