@@ -1,12 +1,17 @@
 """
 Inspection plots for the new 4D JetClass embedding, QCD-only target.
 
+Lives in the top-level <repo>/data/ (a sibling of shared/, not inside it),
+because the raw embedding is pipeline-neutral -- read by BOTH the wifi_better_basis
+classifier and the kernel pipeline. It sits next to the data it inspects:
+data/4d_embedding_data_JetClass/.
+
 Context: unlike the earlier 4d_embedding_Gaia run (which used the SUM of 4
 processes as the target -- a class mixture whose artifacts we chased for a
 while), the next milestone is a SINGLE clean class, QCD. In this dataset QCD is
-the ZJetsToNuNu_*.npz files under data/4d_embedding_data_JetClass/. Each file
-holds 100k jets, all label 0, and was NOT used in any training step -- it's all
-test statistics, so we can pick how much to use per step.
+the ZJetsToNuNu_*.npz files under data/4d_embedding_data_JetClass/. Each
+file holds 100k jets, all label 0, and was NOT used in any training step -- it's
+all test statistics, so we can pick how much to use per step.
 
 npz layout (per file):
   embeddings : (100000, 4) float32   <- the 4D embedding, == table[:, 1:]
@@ -30,8 +35,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-DATA = os.path.join(HERE, "data", "4d_embedding_data_JetClass")
+HERE = os.path.dirname(os.path.abspath(__file__))  # top-level data/ dir
+DATA = os.path.join(HERE, "4d_embedding_data_JetClass")
 OUT = os.path.join(DATA, "inspection_plots")
 os.makedirs(OUT, exist_ok=True)
 

@@ -6,9 +6,10 @@ make_4d_cache.py (old Gaia embedding: mixture background, with pre-split
 train_h.npy / test_h.npy files) in two ways:
 
   1. Source layout. The JetClass QCD data is a POOL of 20 npz files x 100k jets
-     = 2M jets under data/4d_embedding_data_JetClass/ZJetsToNuNu_*.npz, all
-     label 0, none used in any training step. The 4D embedding is the
-     `embeddings` key (== table[:, 1:]).
+     = 2M jets under <repo>/data/4d_embedding_data_JetClass/
+     ZJetsToNuNu_*.npz, all label 0, none used in any training step. The 4D
+     embedding is the `embeddings` key (== table[:, 1:]). The raw data is shared
+     with the kernel pipeline; only the per-run cache is written locally here.
 
   2. Disjoint split. Because it's one pool (not pre-split), we draw the train
      and test subsamples from a SINGLE shuffle and slice them disjointly, so the
@@ -39,7 +40,12 @@ import argparse
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-QCD_DIR = os.path.join(HERE, "data", "4d_embedding_data_JetClass")
+REPO_ROOT = os.path.dirname(HERE)
+# Raw QCD embedding lives OUTSIDE this pipeline, in the top-level shared data dir
+# (read by both the classifier and kernel pipelines):
+#   <repo>/data/4d_embedding_data_JetClass/ZJetsToNuNu_*.npz
+# Only the per-run cache (data_train/data_test) is written locally under HERE/data/.
+QCD_DIR = os.path.join(REPO_ROOT, "data", "4d_embedding_data_JetClass")
 QCD_GLOB = "ZJetsToNuNu_*.npz"
 
 
