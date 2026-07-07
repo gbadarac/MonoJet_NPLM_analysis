@@ -223,7 +223,7 @@ def train_basis_member(X_data, X_ref, hidden, epochs, lr, weight_decay,
     epochs, lr, weight_decay, batch_size : Adam hyperparameters.
     lr_schedule   : "constant" or "cosine" (cosine → eta_min = lr/100).
     X_val_data, X_val_ref : optional held-out tensors for val BCE/AUC diagnostics.
-                    These are the 10% val pool carved from half_A in run.py.
+                    These are the 10% val pool carved from X_train in run.py.
                     They are NEVER used for gradient updates — only for monitoring.
 
     Returns
@@ -368,9 +368,9 @@ def train_bootstrap_basis(X_train_pool, X_val_pool, mu_q, Sigma_q,
     members see different random subsets (with repetition), so they converge to
     slightly different approximations of log(p/q). This diversity is what the
     wifi linear head exploits: it finds the combination ŵ that best fits the
-    held-out half_B data, and Cov(ŵ) captures how sensitive that combination
-    is to which bootstrap was drawn — i.e. the finite-sample uncertainty in
-    the density ratio estimate.
+    X_train data, and Cov(ŵ) captures how sensitive that combination is to
+    which bootstrap was drawn — i.e. the finite-sample uncertainty in the
+    density ratio estimate.
 
     INDEPENDENT SEEDS
     Each member k uses a distinct seed for both its data bootstrap and its
@@ -381,8 +381,8 @@ def train_bootstrap_basis(X_train_pool, X_val_pool, mu_q, Sigma_q,
     Parameters
     ----------
     X_train_pool : (N_train_pool, d) — bootstrap source for Y=1 events.
-                   This is the 90% training portion of half_A (after carving
-                   out the 10% val pool in run.py).
+                   This is the training portion of X_train (after carving
+                   out the BASIS_VAL_FRAC val pool in run.py).
     X_val_pool   : (N_val, d) — fixed held-out Y=1 events for val diagnostics.
                    Never used for gradient updates.
     mu_q, Sigma_q : Gaussian reference moments from fit_gaussian_reference.

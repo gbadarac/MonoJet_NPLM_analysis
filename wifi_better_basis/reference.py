@@ -49,8 +49,9 @@ def fit_gaussian_reference(X):
     (b) draw SIR pools for coverage and GoF tests.
 
     WHY THE FULL TRAINING SET?
-    q is fit on ALL of X_train (before the 50/50 split into half_A and half_B).
-    This is intentional: we want q to be as representative as possible.
+    q is fit on ALL of X_train (the same data used for the basis and the
+    wifi weights). This is intentional: we want q to be as representative as
+    possible.
     Using the full set does not cause data leakage because q is treated as a
     fixed, deterministic function — it is not a fitted model that enters the
     likelihood ratio or the sandwich covariance.

@@ -20,8 +20,8 @@ t_frozen): with different toy DGPs and different fits, no clean
 inequality survives.
 
 For the observed test we use the cached `data_test.npy` shard so the GoF
-doesn't re-use the linear-head fitting half (half_B). Reference samples
-are fresh draws from the fitted Gaussian q.
+doesn't re-use the X_train data the basis and linear head were fit on.
+Reference samples are fresh draws from the fitted Gaussian q.
 
 Reads:
     runs/<name>/wifi_config.json, w_hat.npy, Sigma_w_sandwich.npy,

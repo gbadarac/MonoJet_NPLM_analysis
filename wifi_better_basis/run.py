@@ -5,9 +5,9 @@ Diff vs code/wifi/run.py:
   - N_train and N_test are decoupled. The data cache directory name encodes
     BOTH sizes correctly (the original wifi code put N_train in the Ntest
     slot too; that bug is fixed here, in run_gof.py, and in plot_marginals.py).
-  - half_A is split once more into a basis train pool and a held-out val
-    pool (BASIS_VAL_FRAC). The val pool drives per-member train/val BCE/AUC
-    diagnostics; the val pool is NOT used for the linear-head fit.
+  - A val pool (BASIS_VAL_FRAC) is carved from the training set to drive
+    per-member train/val BCE/AUC diagnostics; the val pool is NOT used for
+    the linear-head fit.
   - Adds an SVD-based effective-rank diagnostic on F_data so you can tell
     whether adding basis members is buying you new directions.
   - DEVICE accepts "auto" / "cuda" / "cpu"; "auto" picks cuda when available
@@ -16,13 +16,13 @@ Diff vs code/wifi/run.py:
 Pipeline:
   1. Load (or generate) train and test data from a benchmark.
   2. Fit Gaussian reference q on the full training set.
-  3. 50/50 split of train into half_A (basis training) and half_B
-     (linear-head fit, sandwich, bootstrap covariance).
-  4. Inside half_A, carve a val pool (BASIS_VAL_FRAC); rest is the basis
-     train pool.
+  3. The full training set feeds BOTH the basis and the linear-head fit
+     (no held-out split — same data for the basis and the wifi weights).
+  4. Carve a val pool (BASIS_VAL_FRAC) from the training set for basis
+     BCE/AUC diagnostics only; the rest is the basis train pool.
   5. Train K bootstrap-MLP basis members on the train pool + fresh
      oversampled q-samples; track val BCE/AUC per member.
-  6. Build feature matrices on half_B + a fresh q-sample.
+  6. Build feature matrices on X_train + a fresh q-sample.
   7. Fit linear head w via BCE; compute sandwich Σ_w and bootstrap Σ_w.
   8. Wald χ² sanity test on (w_hat, Σ_w) against w = 0.
   9. Save artifacts (including basis_diag.json with per-member metrics and
@@ -112,23 +112,16 @@ def load_or_generate_data(cfg):
     return X_train, X_test
 
 
-def split_5050(X, seed):
-    """Deterministic 50/50 split into (half_A, half_B)."""
-    rng = np.random.RandomState(int(seed))
-    perm = rng.permutation(X.shape[0])
-    half = X.shape[0] // 2
-    return X[perm[:half]], X[perm[half:]]
-
-
-def carve_val(X_A, val_frac, seed):
-    """Deterministic split of half_A into (train_pool, val_pool). Uses a
-    different seed offset than split_5050 so the two splits are independent."""
+def carve_val(X, val_frac, seed):
+    """Deterministic split of the basis source into (train_pool, val_pool).
+    The val pool is used for per-member BCE/AUC diagnostics only, never for
+    gradient updates or the linear-head fit."""
     rng = np.random.RandomState(int(seed) + 424_242)
-    perm = rng.permutation(X_A.shape[0])
-    n_val = int(round(val_frac * X_A.shape[0]))
+    perm = rng.permutation(X.shape[0])
+    n_val = int(round(val_frac * X.shape[0]))
     val_idx   = perm[:n_val]
     train_idx = perm[n_val:]
-    return X_A[train_idx], X_A[val_idx]
+    return X[train_idx], X[val_idx]
 
 
 def f_data_effective_rank(F):
@@ -181,11 +174,6 @@ def basis_diag_summary(diags):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, default=None)
-    parser.add_argument("--same-data", dest="same_data", type=int,
-                        choices=[0, 1], default=None,
-                        help="Override SAME_DATA_BASIS_WIFI. 1 = full X_train for "
-                             "both basis and wifi-weight fit (no 50/50 split); "
-                             "0 = legacy 50/50 split. Default: use config value.")
     parser.add_argument("--benchmark", type=str, default=None,
                         help="Override CONFIG['benchmark'] (e.g. 4d_embedding) "
                              "without editing config.py, so a concurrently running "
@@ -205,9 +193,6 @@ def main():
         CONFIG["N_train"] = args.n_train
     if args.n_test is not None:
         CONFIG["N_test"] = args.n_test
-    if args.same_data is not None:
-        CONFIG["SAME_DATA_BASIS_WIFI"] = bool(args.same_data)
-    same_data = bool(CONFIG.get("SAME_DATA_BASIS_WIFI", False))
 
     run_name = args.name or make_run_name(CONFIG)
     out_dir = os.path.join(PROJECT_ROOT, "runs", run_name)
@@ -242,34 +227,31 @@ def main():
     print(f"      mu    = {mu_q.numpy()}")
     print(f"      Sigma = {Sigma_q.numpy().tolist()}")
 
-    # 3. Data usage for basis vs linear head.
-    #    same_data (Sean's note): full X_train feeds BOTH the basis and the
-    #    linear-head/covariance fit. Legacy path splits 50/50 so the covariance
-    #    is fit on data the basis never saw (honest held-out sandwich).
-    if same_data:
-        print("[3/9] same-data mode: full X_train for BOTH basis and linhead "
-              "(no 50/50 split)")
-        X_A = X_B = X_train
-    else:
-        print("[3/9] 50/50 split (half_A: basis,  half_B: linhead)")
-        X_A, X_B = split_5050(X_train, seed=CONFIG["seed"])
-    print(f"      basis source = {X_A.shape[0]},  linhead source = {X_B.shape[0]}")
+    # 3. Data usage: the full training set feeds BOTH the basis and the
+    #    linear-head/covariance fit. There is no held-out split — the basis is
+    #    trained and the wifi weights are fit on the same X_train.
+    print("[3/9] full X_train feeds both basis and linear head (no split)")
+    X_basis_src = X_train   # bootstrap-resampled per member inside the basis
+    X_lh        = X_train   # linear-head fit + sandwich/bootstrap covariance
+    print(f"      basis source = {X_basis_src.shape[0]},  linhead source = {X_lh.shape[0]}")
 
-    # 4. Carve a val pool out of the basis source for basis diagnostics only
-    print(f"[4/9] carve val pool ({CONFIG['BASIS_VAL_FRAC']*100:.0f}% of basis source)")
-    X_A_train, X_A_val = carve_val(X_A, CONFIG["BASIS_VAL_FRAC"], seed=CONFIG["seed"])
-    print(f"      basis train pool = {X_A_train.shape[0]}")
-    print(f"      val pool         = {X_A_val.shape[0]}")
-    X_A_train_t = torch.from_numpy(X_A_train).double()
-    X_A_val_t   = torch.from_numpy(X_A_val).double()
-    X_B_t       = torch.from_numpy(X_B).double()
+    # 4. Carve a val pool out of the basis source for basis diagnostics ONLY
+    #    (per-member BCE/AUC monitoring). Set BASIS_VAL_FRAC=0 to train the
+    #    basis on the full X_train with no diagnostic hold-out.
+    print(f"[4/9] carve val pool ({CONFIG['BASIS_VAL_FRAC']*100:.0f}% of basis source, diagnostics only)")
+    X_basis_train, X_basis_val = carve_val(X_basis_src, CONFIG["BASIS_VAL_FRAC"], seed=CONFIG["seed"])
+    print(f"      basis train pool = {X_basis_train.shape[0]}")
+    print(f"      val pool         = {X_basis_val.shape[0]}")
+    X_basis_train_t = torch.from_numpy(X_basis_train).double()
+    X_basis_val_t   = torch.from_numpy(X_basis_val).double()
+    X_lh_t          = torch.from_numpy(X_lh).double()
 
     # 5. Train bootstrap basis on the train pool
     print(f"[5/9] train basis (K={CONFIG['K']} MLPs, hidden={CONFIG['MLP_HIDDEN']}, "
           f"epochs={CONFIG['BASIS_EPOCHS']}, schedule={CONFIG['BASIS_LR_SCHEDULE']}, "
           f"ref_oversample={CONFIG['BASIS_REF_OVERSAMPLE']}x) on device={device}")
     models, basis_diags = train_bootstrap_basis(
-        X_A_train_t, X_A_val_t, mu_q, Sigma_q,
+        X_basis_train_t, X_basis_val_t, mu_q, Sigma_q,
         K=CONFIG["K"], hidden=tuple(CONFIG["MLP_HIDDEN"]),
         epochs=CONFIG["BASIS_EPOCHS"], lr=CONFIG["BASIS_LR"],
         weight_decay=CONFIG["BASIS_WEIGHT_DECAY"],
@@ -301,11 +283,11 @@ def main():
     log2 = float(np.log(2.0))
     print(f"        reference: log(2) = {log2:.4f} = chance-level BCE (basis useless if val BCE ≈ this)")
 
-    # 6. Build feature matrices on half_B + fresh reference draw
-    print("[6/9] build feature matrices on half_B + fresh q-sample")
-    N_ref = CONFIG["N_REF_LINHEAD"] or X_B.shape[0]
+    # 6. Build feature matrices on the linear-head data + fresh reference draw
+    print("[6/9] build feature matrices on X_train + fresh q-sample")
+    N_ref = CONFIG["N_REF_LINHEAD"] or X_lh.shape[0]
     X_ref_lh = sample_reference(mu_q, Sigma_q, N_ref, seed=CONFIG["seed"] + 9991)
-    F_data = evaluate_features(models, X_B_t,    device=device)
+    F_data = evaluate_features(models, X_lh_t,    device=device)
     F_ref  = evaluate_features(models, X_ref_lh, device=device)
     F_data = F_data.cpu()
     F_ref  = F_ref.cpu()

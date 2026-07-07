@@ -75,10 +75,6 @@ def main():
     parser.add_argument("--account", type=str, default="gpu_gres",
                         help="SLURM account (this cluster needs gpu_gres for GPU "
                              "jobs). Set empty to omit.")
-    parser.add_argument("--same-data", dest="same_data", type=int,
-                        choices=[0, 1], default=None,
-                        help="Override SAME_DATA_BASIS_WIFI for run.py; also tags "
-                             "the run name (samedata/split). Default: config value.")
     parser.add_argument("--gpu", action="store_true", default=True,
                         help="Request a GPU (default: True).")
     parser.add_argument("--no-gpu", action="store_true",
@@ -104,10 +100,6 @@ def main():
 
     args = parser.parse_args()
 
-    # ── Resolve same-data override (affects run name + run.py cmd) ─
-    if args.same_data is not None:
-        CONFIG["SAME_DATA_BASIS_WIFI"] = bool(args.same_data)
-
     # ── Resolve run dir ───────────────────────────────────────────
     run_name = args.name if args.name else make_run_name(CONFIG)
     out_dir = os.path.join(OUTPUT_ROOT, run_name)
@@ -120,12 +112,7 @@ def main():
     cmds = []
     for step in args.steps:
         script = os.path.join(SCRIPTS_DIR, STEPS[step])
-        if step == "run":
-            cmd = f"{python} {script} --name {run_name}"
-            if args.same_data is not None:
-                cmd += f" --same-data {int(args.same_data)}"
-        else:
-            cmd = f"{python} {script} --name {run_name}"
+        cmd = f"{python} {script} --name {run_name}"
         if step == "gof" and args.force:
             cmd += " --force"
         cmds.append((step, cmd))

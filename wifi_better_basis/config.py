@@ -7,7 +7,7 @@ Diff vs code/wifi/config.py:
     Ntrain<…> and Ntest<…> slots, so N_test was effectively ignored — fixed
     here, with both sizes encoded in the cache directory name.
   - Wider MLPs (128/128/64), more epochs (600), cosine LR decay.
-  - BASIS_VAL_FRAC carves a held-out slice of half_A per run; per-member
+  - BASIS_VAL_FRAC carves a held-out slice of X_train per run; per-member
     train/val BCE/AUC are saved so you can tell undertraining from capacity.
   - BASIS_REF_OVERSAMPLE inflates the y=0 reference pool per member at no
     asymptotic cost (the constant logit shift is absorbed by the bias column).
@@ -27,14 +27,10 @@ CONFIG = {
     "N_train": 100000,                 # data budget for basis training + linear-head fit
     "N_test": 100000,                   # GoF observed sample + plot_marginals histogram
 
-    # Sean (meeting note): using the SAME data to train the basis and to fit the
-    # wifi weights is fine (coverage still holds) and improves marginally, so it
-    # is the default. True  -> full X_train feeds BOTH basis and linear head
-    # (no 50/50 split); a small BASIS_VAL_FRAC slice is still held out for basis
-    # BCE/AUC monitoring only. False -> legacy 50/50 split (basis on half_A,
-    # linhead + honest held-out covariance on half_B). Overridable per run with
-    # `python run.py --same-data {0,1}`.
-    "SAME_DATA_BASIS_WIFI": True,
+    # The basis and the wifi weights are trained on the SAME X_train — there is
+    # no held-out split. (Sean, meeting note: coverage still holds and it
+    # improves marginally.) A small BASIS_VAL_FRAC slice is still carved for
+    # per-member BCE/AUC monitoring only; set it to 0 to disable that hold-out.
 
     # ── Bootstrapped MLP basis ───────────────────────────────────
     "K": 160,                           # number of basis MLPs (linear-head dim is K+1)
@@ -44,7 +40,7 @@ CONFIG = {
     "BASIS_LR_SCHEDULE": "cosine",      # "constant" or "cosine" (cosine -> eta_min = lr/100)
     "BASIS_WEIGHT_DECAY": 1e-4,
     "BASIS_BATCH_SIZE": 4096,           # None for full-batch
-    "BASIS_VAL_FRAC": 0.10,             # held-out fraction of half_A used for val BCE/AUC tracking
+    "BASIS_VAL_FRAC": 0.10,             # held-out fraction of X_train used for val BCE/AUC tracking (0 = none)
     "BASIS_REF_OVERSAMPLE": 4,          # ref pool size per member = OVERSAMPLE × |bootstrap|
 
     # ── Linear head fit (held-out half) ──────────────────────────
@@ -84,6 +80,5 @@ CONFIG = {
 
 def make_run_name(cfg):
     h_tag = "x".join(str(h) for h in cfg["MLP_HIDDEN"])
-    du_tag = "samedata" if cfg.get("SAME_DATA_BASIS_WIFI", False) else "split"
     return (f"wbb_{cfg['benchmark']}_K{cfg['K']}_H{h_tag}_"
-            f"Ntr{cfg['N_train']}_Nte{cfg['N_test']}_s{cfg['seed']}_{du_tag}")
+            f"Ntr{cfg['N_train']}_Nte{cfg['N_test']}_s{cfg['seed']}")

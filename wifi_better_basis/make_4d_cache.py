@@ -18,7 +18,7 @@ Usage (sizes come from Gaia; benchmark name must match config.py):
 
 Then set in config.py: benchmark="4d_embedding", N_train, N_test, seed to match,
 and run WITHOUT the coverage step:
-    python submit_slurm.py --steps run gof plot_gof --same-data 1
+    python submit_slurm.py --steps run gof plot_gof
 (coverage.py needs an analytic truth that real data doesn't have.)
 """
 

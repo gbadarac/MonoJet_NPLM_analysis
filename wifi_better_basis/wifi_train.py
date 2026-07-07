@@ -3,10 +3,10 @@ wifi_train.py — Linear head fit and weight covariance estimation.
 
 ROLE IN THE PIPELINE
 --------------------
-This file implements Stage 1b of the density ratio estimation. The K=128 MLP
+This file implements Stage 1b of the density ratio estimation. The K MLP
 classifiers from basis.py are now frozen — each l_k(x) is a fixed function
 approximating log(p(x)/q(x)). This file fits the BEST LINEAR COMBINATION of
-those K functions on the held-out half_B of the training data:
+those K functions on the training data:
 
     log r̂(x) = w_0 * 1 + w_1 * l_1(x) + ... + w_K * l_K(x)
              = ŵ · features(x)
@@ -16,15 +16,16 @@ and then estimates the uncertainty on ŵ via three methods:
   - Naive H^{-1}                                    ← diagnostic only
   - Bootstrap (empirical covariance of B=200 refits) ← cross-check
 
-WHY THIS SEPARATION MATTERS
+WHY THE FROZEN BASIS MATTERS
 ----------------------------
-The two-stage structure (nonlinear basis training on half_A, linear head fit
-on half_B) is essential:
-  1. The MLP classifiers are trained only on half_A. They never see half_B.
-  2. The linear head ŵ is fit only on half_B. Because the basis is already
-     frozen, this is a CONVEX optimisation problem (logistic regression with
-     fixed features) — one global minimum, no local minima, clean analytic
-     Hessian and gradient.
+The basis and the linear head are fit on the SAME X_train (there is no
+held-out split). What makes Cov(ŵ) tractable is that the basis is FROZEN
+before the linear head is fit:
+  1. The K MLP classifiers are trained and frozen first (basis.py).
+  2. The linear head ŵ is then fit with those K logits as FIXED features.
+     Because the features are frozen, this is a CONVEX optimisation problem
+     (logistic regression with fixed features) — one global minimum, no
+     local minima, clean analytic Hessian and gradient.
   3. Convexity is what makes Cov(ŵ) analytically tractable via the sandwich
      estimator. With NF or kernel basis members, the loss is non-convex and
      the sandwich estimator breaks down — this is why those approaches fail
@@ -67,8 +68,8 @@ from scipy.special import expit as _expit
 def fit_linear_head(F_data, F_ref, max_iter=500, tol=1e-9, lam_ridge=0.0,
                     verbose=False):
     """
-    Fit the wifi linear head ŵ by minimising the BCE loss on the held-out
-    half_B data (F_data) and a matched fresh reference draw (F_ref).
+    Fit the wifi linear head ŵ by minimising the BCE loss on the X_train
+    data (F_data) and a matched fresh reference draw (F_ref).
 
     This is logistic regression with fixed features F — the linear combination
     of frozen MLP logits. The loss is:
@@ -97,7 +98,7 @@ def fit_linear_head(F_data, F_ref, max_iter=500, tol=1e-9, lam_ridge=0.0,
 
     Parameters
     ----------
-    F_data : (N_data, K+1) tensor — feature matrix for half_B data events
+    F_data : (N_data, K+1) tensor — feature matrix for X_train data events
     F_ref  : (N_ref,  K+1) tensor — feature matrix for matched reference events
     lam_ridge : float — L2 ridge coefficient (0 = no regularisation)
 
@@ -305,7 +306,7 @@ def bootstrap_cov(F_data, F_ref, B=200, max_iter=200, lam_ridge=0.0, seed=0,
 
     Parameters
     ----------
-    F_data : (N_data, K+1) tensor — feature matrix for half_B data
+    F_data : (N_data, K+1) tensor — feature matrix for X_train data
     F_ref  : (N_ref,  K+1) tensor — feature matrix for matched reference
     B      : int — number of bootstrap replicates (default 200)
     lam_ridge : float — forwarded to fit_linear_head for consistency
