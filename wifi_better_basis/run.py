@@ -175,7 +175,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, default=None)
     parser.add_argument("--benchmark", type=str, default=None,
-                        help="Override CONFIG['benchmark'] (e.g. 4d_embedding) "
+                        help="Override CONFIG['benchmark'] (e.g. 4d_embedding_qcd) "
                              "without editing config.py, so a concurrently running "
                              "job on another benchmark is never affected. The "
                              "override is dumped into the run's wifi_config.json, "

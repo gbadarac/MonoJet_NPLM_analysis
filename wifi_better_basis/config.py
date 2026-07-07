@@ -18,7 +18,7 @@ Kept torch-free so submit_slurm.py can import on a login node.
 
 CONFIG = {
     # ── Data ─────────────────────────────────────────────────────
-    "benchmark": "2d_gmm_skew",  # 2d_gmm_skew | 2d_gaussian | 4d_embedding (real data via make_4d_cache.py)
+    "benchmark": "2d_gmm_skew",  # 2d_gmm_skew | 2d_gaussian | 4d_embedding_qcd (real data via make_qcd_cache.py)
     "seed": 42,
     # Compute scales with N_train × ref_oversample × epochs × |MLP|. Defaults
     # below are roughly 2-3× the original wifi compute on GPU; bump N_train if
