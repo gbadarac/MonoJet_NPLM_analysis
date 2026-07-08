@@ -1,0 +1,9 @@
+{
+  "benchmark": "4d_embedding_qcd",
+  "N_train": 200000,
+  "N_test": 100000,
+  "seed": 42,
+  "d": 4,
+  "source": "4d_embedding_data_JetClass QCD (ZJetsToNuNu_*.npz), single-class, disjoint train/test split",
+  "data_dir": "/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/wifi_better_basis/data/4d_embedding_qcd_Ntrain200000_Ntest100000_seed42"
+}

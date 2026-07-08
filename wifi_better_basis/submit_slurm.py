@@ -68,6 +68,16 @@ def main():
         "--force", action="store_true",
         help="Pass --force to gof (re-run even if results exist).",
     )
+    # Config overrides forwarded to run.py (which dumps the resolved CONFIG into the
+    # run's wifi_config.json that coverage/gof/plot read downstream). These also feed
+    # make_run_name so concurrent jobs of different size/benchmark get distinct run
+    # folders and never clobber each other's live config.py read.
+    parser.add_argument("--benchmark", type=str, default=None,
+                        help="Override CONFIG['benchmark'] (forwarded to run.py + run name).")
+    parser.add_argument("--n-train", dest="n_train", type=int, default=None,
+                        help="Override CONFIG['N_train'] (forwarded to run.py + run name).")
+    parser.add_argument("--n-test", dest="n_test", type=int, default=None,
+                        help="Override CONFIG['N_test'] (forwarded to run.py + run name).")
     # SLURM options (mirrors HIKER's submit_slurm.py defaults)
     parser.add_argument("--partition", "-p", type=str,
                         default="qgpu,gpu",
@@ -100,6 +110,15 @@ def main():
 
     args = parser.parse_args()
 
+    # ── Apply config overrides (mirror them into CONFIG so the run name reflects
+    #    the actual size/benchmark this job will run) ───────────────
+    if args.benchmark is not None:
+        CONFIG["benchmark"] = args.benchmark
+    if args.n_train is not None:
+        CONFIG["N_train"] = args.n_train
+    if args.n_test is not None:
+        CONFIG["N_test"] = args.n_test
+
     # ── Resolve run dir ───────────────────────────────────────────
     run_name = args.name if args.name else make_run_name(CONFIG)
     out_dir = os.path.join(OUTPUT_ROOT, run_name)
@@ -109,10 +128,21 @@ def main():
 
     # ── Build commands ────────────────────────────────────────────
     python = "python3 -u"
+    # Overrides go ONLY to run.py; it persists them to wifi_config.json, which the
+    # downstream steps read via --name.
+    run_overrides = ""
+    if args.benchmark is not None:
+        run_overrides += f" --benchmark {args.benchmark}"
+    if args.n_train is not None:
+        run_overrides += f" --n-train {args.n_train}"
+    if args.n_test is not None:
+        run_overrides += f" --n-test {args.n_test}"
     cmds = []
     for step in args.steps:
         script = os.path.join(SCRIPTS_DIR, STEPS[step])
         cmd = f"{python} {script} --name {run_name}"
+        if step == "run":
+            cmd += run_overrides
         if step == "gof" and args.force:
             cmd += " --force"
         cmds.append((step, cmd))

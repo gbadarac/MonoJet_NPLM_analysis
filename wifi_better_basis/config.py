@@ -18,7 +18,7 @@ Kept torch-free so submit_slurm.py can import on a login node.
 
 CONFIG = {
     # ── Data ─────────────────────────────────────────────────────
-    "benchmark": "2d_gmm_skew",  # 2d_gmm_skew | 2d_gaussian | 4d_embedding_qcd (real data via make_qcd_cache.py)
+    "benchmark": "4d_embedding_qcd",  # 2d_gmm_skew | 2d_gaussian | 4d_embedding_qcd (real data via make_qcd_cache.py)
     "seed": 42,
     # Compute scales with N_train × ref_oversample × epochs × |MLP|. Defaults
     # below are roughly 2-3× the original wifi compute on GPU; bump N_train if
@@ -35,8 +35,8 @@ CONFIG = {
     # ── Bootstrapped MLP basis ───────────────────────────────────
     "K": 160,                           # number of basis MLPs (linear-head dim is K+1)
     "MLP_HIDDEN": [32, 32, 16],
-    "BASIS_EPOCHS": 600,
-    "BASIS_LR": 1e-3,
+    "BASIS_EPOCHS": 4800,               # Sean's 4D grid-search winner (was 600 for 2D)
+    "BASIS_LR": 3e-3,                   # Sean's 4D grid-search winner (was 1e-3 for 2D)
     "BASIS_LR_SCHEDULE": "cosine",      # "constant" or "cosine" (cosine -> eta_min = lr/100)
     "BASIS_WEIGHT_DECAY": 1e-4,
     "BASIS_BATCH_SIZE": 4096,           # None for full-batch
