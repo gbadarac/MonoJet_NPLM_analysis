@@ -58,7 +58,9 @@ The leading 1 is a bias column. The linear head then fits:
     p̂(x)     = r̂(x) * q(x) / Z
 """
 
+import json
 import math
+import os
 import numpy as np
 import torch
 import torch.nn as nn
@@ -350,6 +352,40 @@ def train_basis_member(X_data, X_ref, hidden, epochs, lr, weight_decay,
     return model, diag
 
 
+def _atomic_save_checkpoint(model, diag, ckpt_path, diag_path):
+    """Write state_dict + diag via temp-file-then-rename so a job killed
+    mid-write (e.g. SLURM hitting the time limit) never leaves a truncated
+    .pt/.json that would crash a later resume attempt."""
+    tmp_ckpt = ckpt_path + ".tmp"
+    torch.save(model.state_dict(), tmp_ckpt)
+    os.replace(tmp_ckpt, ckpt_path)
+    tmp_diag = diag_path + ".tmp"
+    with open(tmp_diag, "w") as f:
+        json.dump(diag, f, indent=2)
+    os.replace(tmp_diag, diag_path)
+
+
+def _load_checkpoint(ckpt_path, diag_path, d_in, hidden):
+    """Load a checkpointed member. Returns (model, diag) or None if the
+    files are missing/corrupt (e.g. a .tmp never got renamed) — the caller
+    then just retrains that member instead of crashing."""
+    if not (os.path.exists(ckpt_path) and os.path.exists(diag_path)):
+        return None
+    try:
+        state = torch.load(ckpt_path, map_location="cpu")
+        with open(diag_path) as f:
+            diag = json.load(f)
+    except Exception as e:
+        print(f"      WARN: checkpoint {ckpt_path} unreadable ({e}); retraining this member")
+        return None
+    model = MLPLogit(d_in, hidden=hidden)
+    model.load_state_dict(state)
+    model.eval()
+    for p in model.parameters():
+        p.requires_grad_(False)
+    return model, diag
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Bootstrap ensemble of basis members
 # ──────────────────────────────────────────────────────────────────────
@@ -358,7 +394,7 @@ def train_bootstrap_basis(X_train_pool, X_val_pool, mu_q, Sigma_q,
                           K, hidden, epochs, lr, weight_decay,
                           batch_size=None, lr_schedule="constant",
                           ref_oversample=1, device="cpu", seed=0,
-                          verbose=False):
+                          verbose=False, checkpoint_dir=None, resume=False):
     """
     Train K independent MLP classifiers to form the basis for log r̂(x).
 
@@ -390,6 +426,16 @@ def train_bootstrap_basis(X_train_pool, X_val_pool, mu_q, Sigma_q,
     ref_oversample: int >= 1. Each member trains against ref_oversample * N_pool
                    reference events. The class-balancing weights in
                    _balanced_bce_sum ensure this does not bias the logit.
+    checkpoint_dir: if given, each member's state_dict + diag are written to
+                   checkpoint_dir/basis_{k:03d}.pt / _diag.json right after it
+                   finishes training, so a killed job (e.g. SLURM timeout)
+                   doesn't lose already-trained members.
+    resume        : if True and checkpoint_dir has a saved member k, load it
+                   from disk instead of retraining. The bootstrap index draw
+                   for member k is still performed (cheap) so boot_gen's state
+                   advances identically to an uninterrupted run — member k+1's
+                   bootstrap sample is unaffected by which earlier members were
+                   resumed vs freshly trained.
 
     Returns
     -------
@@ -421,11 +467,27 @@ def train_bootstrap_basis(X_train_pool, X_val_pool, mu_q, Sigma_q,
         X_val_pool = None
         X_val_ref = None
 
+    d_in = X_train_pool.shape[1]
     models = []
     diags = []
     for k in range(K):
-        # Bootstrap resample: draw N_pool indices with replacement
+        # Bootstrap resample: draw N_pool indices with replacement. Always
+        # drawn (even for a resumed member) so boot_gen's state stays in sync
+        # with an uninterrupted run — later members are unaffected by resume.
         idx = torch.randint(0, N_pool, (N_pool,), generator=boot_gen)
+
+        ckpt_path = os.path.join(checkpoint_dir, f"basis_{k:03d}.pt") if checkpoint_dir else None
+        diag_path = os.path.join(checkpoint_dir, f"basis_{k:03d}_diag.json") if checkpoint_dir else None
+        if resume and ckpt_path:
+            loaded = _load_checkpoint(ckpt_path, diag_path, d_in, hidden)
+            if loaded is not None:
+                model, diag = loaded
+                if verbose:
+                    print(f"  basis {k+1}/{K}: resumed from checkpoint (skipped training)")
+                models.append(model)
+                diags.append(diag)
+                continue
+
         Xb = X_train_pool[idx]  # bootstrap data sample for member k
 
         # Fresh reference draw for this member — distinct seed per member
@@ -453,7 +515,10 @@ def train_bootstrap_basis(X_train_pool, X_val_pool, mu_q, Sigma_q,
             print(f"    [{k+1}/{K} done]  train BCE={t_bce:.4f}{v_str}")
 
         # Move to CPU after training to free GPU memory before next member
-        models.append(model.cpu())
+        model = model.cpu()
+        if ckpt_path:
+            _atomic_save_checkpoint(model, diag, ckpt_path, diag_path)
+        models.append(model)
         diags.append(diag)
     return models, diags
 

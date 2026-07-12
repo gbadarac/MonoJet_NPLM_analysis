@@ -94,31 +94,47 @@ else:
 
 N_MODELS = args.n_models  # can be None
 
-# Width schedule like Gaia's, only if nlayers = 5 and a list was intended
+# Width schedule, only if nlayers = 5 and a list was intended.
+# Widths set from the ACTUAL QCD-embedding marginals (data_train.npy, measured
+# 2026-07-12): peak sigma F1~0.170, F2~0.052, F3~0.035, F4~0.062; rule width~sigma/2.
+# So the finest (0.018) resolves F3, the 0.03 layer covers F2/F4, and the coarse
+# 0.10 handles F1's broad peak (sigma~0.17) + the bulk. Coarsest narrowed 0.15->0.10
+# (0.15 was broader than even F1 needs and smeared the thin manifold: cov eigen-frac
+# [0.78,0.14,0.07,0.007] => effective dim ~2-3, so no 4D count blow-up needed).
+# width_init > width_fin turns ON a broad->narrow anneal over the first
+# decay_epochs*epochs of each layer (was a no-op before: init == fin).
 if N_LAYERS == 5:
-    # larger widths 
-    width_fin_list = [0.15, 0.10, 0.07, 0.05, 0.035]
-    
-    # narrower widths 
-    #width_fin_list = [0.08, 0.06, 0.045, 0.035, 0.025]
+    # history: old 2D-toy schedule [0.15,0.10,0.07,0.05,0.035]; first 4D try [0.15,0.10,0.06,0.04,0.02]
+    width_fin_list  = [0.10, 0.07, 0.045, 0.03, 0.018]   # 4D-QCD, data-driven (Option A)
+    width_init_list = [0.20, 0.14, 0.09,  0.06, 0.036]   # 2x final -> within-layer annealing
 else:
-    # Generic schedule that still ends at 0.05
-    width_fin_list = np.linspace(0.10, 0.02, N_LAYERS).tolist()[::-1]
+    # Generic schedule that still ends narrow
+    width_fin_list  = np.linspace(0.10, 0.02, N_LAYERS).tolist()[::-1]
+    width_init_list = [2.0 * w for w in width_fin_list]
+
+# Epoch schedule: back to a reasonable count. With a small centroid_lr the
+# centroids barely move and only the coeffs (convex NLL) really train, which
+# converges fast -- the extra epochs mostly polished the BULK, not the peaks.
+if N_LAYERS == 5:
+    epochs_list = [2000, 2000, 2000, 2000, 2000]
+else:
+    epochs_list = [2000 for _ in range(N_LAYERS)]
 
 config_json = {
     "N": 100000,
     "model": "SparKer",
     "output_directory": None,
     "learning_rate": 0.05,
+    "centroid_lr": 0.002,   # << centroids trained at a much smaller lr than coeffs
     "coeffs_reg": "unit1",
 
-    "epochs": [2000 for _ in range(N_LAYERS)],
+    "epochs": epochs_list,
     "patience": 10,
     "plt_patience": 2000,
     "plot": True,
     "plot_marginals": True,
 
-    "width_init": width_fin_list,
+    "width_init": width_init_list,
     "width_fin": width_fin_list,
 
     "t_ini": 0,
@@ -161,8 +177,7 @@ trial_name = (
     f"{n_models_str}"
     f"L{n_layers}_K{k_per_l}_M{total_M}_"
     f"Nboot{config_json['N']}_lr{config_json['learning_rate']}_"
-    f"clip_{int(config_json['coeffs_clip']):d}_"
-    f"no_masking"
+    f"clip_{int(config_json['coeffs_clip']):d}"
 )
 
 # Final output directory for this trial:
@@ -238,6 +253,8 @@ def training_loop(seed, data_train_tot, config_json, json_path):
     print('Problem dimensions:', d)
     len_feature = feature.shape[0]
     lr = config_json["learning_rate"]
+    centroid_lr = config_json.get("centroid_lr", lr)
+    print('Learning rates -> coeffs/widths:', lr, ' centroids:', centroid_lr)
     coeffs_regularizer_str = config_json["coeffs_reg"]
     print('Coeffs regularizer:', coeffs_regularizer_str)
 
@@ -348,22 +365,23 @@ def training_loop(seed, data_train_tot, config_json, json_path):
     for n in range(n_layers):
         print("layer:", n, ', time since last layer:', time.time() - ttmp)
         ttmp = time.time()
-        parameters = []
+        # Split learning rates: coeffs/widths at `lr`, centroids at `centroid_lr`
+        # (much smaller). The bare-NLL gradient pulls centroids off the dense
+        # core to cover the sparse tails; a small centroid lr keeps them near
+        # their data-sampled init while still allowing local adaptation.
+        param_groups = []
 
         if train_coeffs:
-            for m in range(n_layers):
-                if m <= n:
-                    parameters.append(model.get_coeffs_j(j=m))
+            coeff_params = [model.get_coeffs_j(j=m) for m in range(n_layers) if m <= n]
+            param_groups.append({"params": coeff_params, "lr": lr})
         if train_widths:
-            for m in range(n_layers):
-                if m <= n:
-                    parameters.append(model.get_widths_j(j=m))
+            width_params = [model.get_widths_j(j=m) for m in range(n_layers) if m <= n]
+            param_groups.append({"params": width_params, "lr": lr})
         if train_centroids:
-            for m in range(n_layers):
-                if m <= n:
-                    parameters.append(model.get_centroids_j(j=m))
+            cent_params = [model.get_centroids_j(j=m) for m in range(n_layers) if m <= n]
+            param_groups.append({"params": cent_params, "lr": centroid_lr})
 
-        optimizer = torch.optim.Adam(parameters, lr=lr)
+        optimizer = torch.optim.Adam(param_groups)
 
         for i in range(int(total_epochs[n])):
             if i > t_ini:
@@ -436,7 +454,7 @@ def training_loop(seed, data_train_tot, config_json, json_path):
         t_file.write("%f\n" % (t2 - t1))
 
     if plot_marginals:
-        feature_names = ["Feature 1", "Feature 2"]
+        feature_names = [f"Feature {i+1}" for i in range(d)]
         plot_kernel_marginals(
             model=model,
             x_data=feature,                 # bootstrapped data used for training

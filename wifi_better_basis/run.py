@@ -250,6 +250,8 @@ def main():
     print(f"[5/9] train basis (K={CONFIG['K']} MLPs, hidden={CONFIG['MLP_HIDDEN']}, "
           f"epochs={CONFIG['BASIS_EPOCHS']}, schedule={CONFIG['BASIS_LR_SCHEDULE']}, "
           f"ref_oversample={CONFIG['BASIS_REF_OVERSAMPLE']}x) on device={device}")
+    basis_dir = os.path.join(out_dir, "basis")
+    os.makedirs(basis_dir, exist_ok=True)
     models, basis_diags = train_bootstrap_basis(
         X_basis_train_t, X_basis_val_t, mu_q, Sigma_q,
         K=CONFIG["K"], hidden=tuple(CONFIG["MLP_HIDDEN"]),
@@ -259,12 +261,8 @@ def main():
         lr_schedule=CONFIG["BASIS_LR_SCHEDULE"],
         ref_oversample=int(CONFIG["BASIS_REF_OVERSAMPLE"]),
         device=device, seed=CONFIG["seed"], verbose=True,
+        checkpoint_dir=basis_dir, resume=True,
     )
-    basis_dir = os.path.join(out_dir, "basis")
-    os.makedirs(basis_dir, exist_ok=True)
-    for k, m in enumerate(models):
-        torch.save(m.cpu().state_dict(),
-                   os.path.join(basis_dir, f"basis_{k:02d}.pt"))
 
     # Surface aggregate basis quality
     train_bce_arr = np.array([d["train_bce_final"] for d in basis_diags])

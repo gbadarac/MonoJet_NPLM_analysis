@@ -27,7 +27,7 @@ SCRIPT="$REPO_ROOT/LRT/plot_lrt_num_kernels.py"
 TARGET_DATA="$REPO_ROOT/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/500k_2d_gaussian_heavy_tail_target_set.npy"
 
 # Pre-computed WiFi marginal npz files for 128-model ensemble
-MARGINAL_NPZ_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernel/N_100000_dim_2_kernels_SparKer_models128_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents128/wifi_ensemble_plots"
+MARGINAL_NPZ_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernels/N_100000_dim_2_kernels_SparKer_models128_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents128/wifi_ensemble_plots"
 
 # LRT results base
 RESULTS_BASE="$REPO_ROOT/LRT/results"
