@@ -15,14 +15,12 @@ Produces:
                                            two-panel layout with Z and p in side panel
     <out_dir>/chi2_quantile_table.txt    — empirical vs chi2 quantile comparison
     <out_dir>/weight_shifts.{png,pdf}    — Δw = w_den - w_init per weight component
-    <out_dir>/n_at_clip.{png,pdf}        — kernel clip saturation histogram (if coeffs exist)
 
 Usage:
     python analyse_LRT_output.py \\
         --results_dir /path/to/LRT/results/SparKer32_Ntest100000_... \\
         [--out_dir /path/to/plots/] \\
         [--dof 100] \\
-        [--clip_tau 0.0005] \\
         [--xmin 0] [--xmax 200] \\
         [--title "My run"]
 """
@@ -50,8 +48,6 @@ parser.add_argument("--out_dir", type=str, default=None,
                     help="Output directory for plots (default: <results_dir>/plots/).")
 parser.add_argument("--dof", type=int, default=100,
                     help="Nominal degrees of freedom (number of kernels in NUM).")
-parser.add_argument("--clip_tau", type=float, default=0.0005,
-                    help="Kernel coefficient clip threshold (for saturation diagnostic).")
 parser.add_argument("--xmin", type=float, default=None)
 parser.add_argument("--xmax", type=float, default=None)
 parser.add_argument("--ymax", type=float, default=None)
@@ -210,10 +206,25 @@ if xmin is None or xmax is None:
     if xmax is None:
         xmax = dmax + pad
 
-nbins = min(fd_bins(t_calib), 60)
-bins  = np.linspace(xmin, xmax, nbins + 1)
-bin_w = bins[1] - bins[0]
-xcenters = 0.5 * (bins[1:] + bins[:-1])
+# Bin the null and the test EACH with its own Freedman-Diaconis width, over its
+# OWN data range, so neither is smeared by the other's span. When the model is
+# strongly rejected the test sits far above the null; a single shared bin array
+# would cram the null into one huge bin and dilute its density ~20x. Both
+# histograms are still drawn on the SAME x-axis (spanning xmin..xmax) — kept on
+# one plot on purpose, even when the two clusters don't overlap.
+def _fd_edges(x, cap=60):
+    x = np.asarray(x, float)
+    lo, hi = float(x.min()), float(x.max())
+    if hi <= lo:
+        return np.linspace(lo, lo + 1.0, 6)
+    iqr = np.subtract(*np.percentile(x, [75, 25]))
+    h = 2.0 * iqr / (len(x) ** (1 / 3) + 1e-12)
+    nb = max(5, min(cap, int(np.ceil((hi - lo) / h)))) if h > 0 else 10
+    return np.linspace(lo, hi, nb + 1)
+
+bins_c  = _fd_edges(t_calib)
+binw_c  = bins_c[1] - bins_c[0]
+xcent_c = 0.5 * (bins_c[1:] + bins_c[:-1])
 
 fig = plt.figure(figsize=(12, 9))
 fig.patch.set_facecolor("white")
@@ -224,13 +235,13 @@ axp.axis("off")
 # --- calibration histogram (null) ---
 h1 = ax.hist(
     t_calib,
-    weights=np.ones_like(t_calib) / (len(t_calib) * bin_w),
-    color="#e186ed", alpha=0.5, bins=bins,
+    weights=np.ones_like(t_calib) / (len(t_calib) * binw_c),
+    color="#e186ed", alpha=0.5, bins=bins_c,
     label=r"REF (calibration, $H_0$)",
     edgecolor="none", linewidth=0,
 )
-err1 = np.sqrt(h1[0] / (len(t_calib) * bin_w))
-ax.errorbar(xcenters, h1[0], yerr=err1,
+err1 = np.sqrt(h1[0] / (len(t_calib) * binw_c))
+ax.errorbar(xcent_c, h1[0], yerr=err1,
             color="#8a2be2", marker="o", ls="", alpha=0.6,
             markersize=5, capsize=2, elinewidth=0.8)
 
@@ -244,15 +255,18 @@ ax.plot(x_chi2, chi2.pdf(x_chi2, DOF_eff), "k-", lw=1.8,
 # --- test histogram ---
 p_emp = Z_val = Z_p = Z_m = np.nan
 if len(t_test):
+    bins_t  = _fd_edges(t_test)
+    binw_t  = bins_t[1] - bins_t[0]
+    xcent_t = 0.5 * (bins_t[1:] + bins_t[:-1])
     h2 = ax.hist(
         t_test,
-        weights=np.ones_like(t_test) / (len(t_test) * bin_w),
-        color="#68aedc", alpha=0.5, bins=bins,
+        weights=np.ones_like(t_test) / (len(t_test) * binw_t),
+        color="#68aedc", alpha=0.5, bins=bins_t,
         label=r"DATA (test, target)",
         edgecolor="none", linewidth=0,
     )
-    err2 = np.sqrt(h2[0] / (len(t_test) * bin_w))
-    ax.errorbar(xcenters, h2[0], yerr=err2,
+    err2 = np.sqrt(h2[0] / (len(t_test) * binw_t))
+    ax.errorbar(xcent_t, h2[0], yerr=err2,
                 color="#004c99", marker="o", ls="", alpha=0.6,
                 markersize=5, capsize=2, elinewidth=0.8)
     T_obs = float(np.median(t_test))
@@ -338,7 +352,10 @@ dw_den_test,  dw_num_test  = collect_weight_arrays(results_dir, "test")
 if dw_den_calib is not None and dw_den_calib.shape[0] > 0:
     n_w = dw_den_calib.shape[1]
     idx = np.arange(n_w)
-    fig, axes = plt.subplots(1, 2, figsize=(max(14, n_w), 5), sharey=False)
+    # cap width: n_w can be ~300 (4D), and (300 in x 1200 dpi) is a 24 MB,
+    # 360k-px PNG that hangs save_fig. The per-index band/median is readable
+    # at a bounded width regardless of component count.
+    fig, axes = plt.subplots(1, 2, figsize=(min(max(14, n_w), 26), 5), sharey=False)
     fig.patch.set_facecolor("white")
 
     for ax, (dw_calib_arr, dw_test_arr), ylabel, panel_title in zip(
@@ -391,7 +408,7 @@ if args.w_cov_path and os.path.exists(args.w_cov_path):
         n_w = dw_den_calib.shape[1]
         idx = np.arange(n_w)
 
-        fig, axes = plt.subplots(1, 2, figsize=(max(14, n_w), 5), sharey=True)
+        fig, axes = plt.subplots(1, 2, figsize=(min(max(14, n_w), 26), 5), sharey=True)
         fig.patch.set_facecolor("white")
 
         for ax, (dw_calib_arr, dw_test_arr), panel_title in zip(
@@ -443,46 +460,5 @@ if args.w_cov_path and os.path.exists(args.w_cov_path):
               f" ≠ sigma_w dim {sigma_w.shape[0]}")
 elif args.w_cov_path:
     print(f"  w_cov_path not found: {args.w_cov_path}")
-
-# -------------------------------------------------------------------
-# Clip saturation (kernels only — skipped if no coeffs.npy)
-# -------------------------------------------------------------------
-def collect_n_at_clip(base_dir, mode, clip_tau):
-    seed_dirs = sorted(glob.glob(os.path.join(base_dir, mode, "seed*")))
-    counts = []
-    for sd in seed_dirs:
-        name = os.path.basename(sd)
-        f = os.path.join(sd, f"{name}_coeffs.npy")
-        if os.path.exists(f):
-            coeffs = np.load(f).ravel()
-            counts.append(int(np.sum(np.abs(coeffs) >= clip_tau * 0.999)))
-    return np.array(counts) if counts else None
-
-n_clip = collect_n_at_clip(results_dir, "calibration", args.clip_tau)
-
-if n_clip is not None and len(n_clip) > 0:
-    fig, ax = plt.subplots(figsize=(7, 5))
-    fig.patch.set_facecolor("white")
-    ax.set_facecolor("white")
-    bins_c = np.arange(n_clip.min() - 0.5, n_clip.max() + 1.5, 1)
-    ax.hist(n_clip, bins=bins_c, color="#e186ed", alpha=0.7,
-            edgecolor="#8a2be2", linewidth=0.8)
-    ax.axvline(n_clip.mean(), color="#8a2be2", lw=2, ls="--",
-               label=rf"mean $= {n_clip.mean():.1f}$")
-    # DOF_eff is fitted on the 2×LLR (T = 2×LLR) scale. Dividing by 2 recovers
-    # the 1×LLR effective DOF, whose difference from M matches n_at_clip.mean().
-    dof_free_delta = args.dof - DOF_eff / 2
-    ax.axvline(dof_free_delta, color="steelblue", lw=2, ls=":",
-               label=rf"$M - \mathrm{{DOF}}_\mathrm{{eff}}/2 = {dof_free_delta:.1f}$")
-    ax.set_xlabel(r"$n_\mathrm{at\_clip}$ per toy", fontsize=14, fontname="serif")
-    ax.set_ylabel("Toys", fontsize=14, fontname="serif")
-    ax.set_title(rf"{title} — kernel clip saturation (null, clip$={args.clip_tau}$)",
-                 fontsize=12, fontname="serif")
-    legend_fp = font_manager.FontProperties(family="serif", size=12)
-    ax.legend(prop=legend_fp, frameon=False)
-    ax.tick_params(labelsize=12)
-    fig.tight_layout()
-    save_fig(fig, out_dir, "n_at_clip")
-    plt.close(fig)
 
 print("\nDone.")

@@ -112,7 +112,7 @@ def plot_ensemble_marginals_2d_kernel(
     feature_names,
     outdir,
     bins=40,
-    K=1024,
+    K=5000,
     eval_batch=200000,
     seed=1234,
 ):
@@ -125,7 +125,7 @@ def plot_ensemble_marginals_2d_kernel(
 
     x = x_data.detach().cpu().numpy()
     N, D = x.shape
-    assert D == 2, "This function is for 2D inputs only."
+    assert D >= 2, "This function needs at least 2D inputs."
 
     if torch.is_tensor(weights):
         w_t = weights.detach().cpu().double()
@@ -140,6 +140,7 @@ def plot_ensemble_marginals_2d_kernel(
     except Exception:
         device = torch.device("cpu")
 
+    from scipy.stats import gaussian_kde as _gkde
     rng = np.random.default_rng(seed)
 
     for i in range(D):
@@ -164,9 +165,17 @@ def plot_ensemble_marginals_2d_kernel(
         hist_target = hist_target_counts / (N_target * bin_widths)
         err_target = np.sqrt(hist_target_counts) / (N_target * bin_widths)
 
-        # Pre sample other feature values from data, NF 4D style
+        # Proposal = the data's OWN (other-feature) distribution: samples sit on the
+        # density ridge, so the sharp correlated peak is captured (a broad Gaussian
+        # proposal smooths it; rejection sampling clips it). De-bias the data's mode
+        # over-weighting with 1/p_data (KDE) -> unbiased int f(x_i=c, x_other) dx_other,
+        # consistent with the fitted (ratio-form) member_probs.
+        oth = [d for d in range(D) if d != i]
         idx = rng.integers(0, N, size=K)
-        X_others = x[idx].copy()  # (K, 2)
+        X_others = x[idx].copy()
+        sub = x[rng.choice(N, size=min(N, 4000), replace=False)][:, oth].T
+        kde = _gkde(sub)
+        is_w = 1.0 / np.clip(kde(X_others[:, oth].T), 1e-300, None)  # (K,) 1/p_data
 
         B = len(bin_centers)
 
@@ -187,9 +196,10 @@ def plot_ensemble_marginals_2d_kernel(
 
         probs_per_model = torch.cat(probs_chunks, dim=0)  # (B*K, M)
 
-        # Average over K to get v(c) per bin center, shape (B, M)
+        # IS-weighted average over K -> v(c) = true per-member marginal, shape (B, M)
         probs_per_model = probs_per_model.view(B, K, -1)
-        v_mat = probs_per_model.mean(dim=1)  # (B, M)
+        isw_t = torch.from_numpy(is_w).to(probs_per_model).view(1, K, 1)
+        v_mat = (probs_per_model * isw_t).mean(dim=1)  # (B, M)
 
         # Ensemble mean
         f_binned = (v_mat @ w_t).numpy()  # (B,)

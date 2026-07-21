@@ -69,128 +69,7 @@ def plot_coeffs_history(epochs_history, coeffs_history,
     plt.close(fig)
 
 
-# ---------- model visualisations ----------
-
-def plot_model_marginals_and_heatmap(model, n, output_folder):
-    """
-    For a given layer index n, plot:
-      - x0 / x1 marginals per layer
-      - 2D heatmap + centroids for layer n
-    """
-    colors = ['#ffffd9', '#edf8b1', '#c7e9b4', '#7fcdbb', '#41b6c4',
-              '#1d91c0', '#225ea8', '#253494', '#081d58'] + ['#081d58'] * 20
-
-    # -------------------------------------------------------
-    # Get device & dtype from a model tensor (centroids)
-    # -------------------------------------------------------
-    ref = model.get_centroids()              # [M, d], tensor on correct device
-    device = ref.device
-    dtype = ref.dtype
-
-    # Grid (on the *model* device + dtype)
-    x0 = torch.arange(-1.5, 0.5, 0.01, device=device, dtype=dtype)
-    x1 = torch.arange(-0.5, 4.5, 0.005, device=device, dtype=dtype)
-    X0, X1 = torch.meshgrid(x0, x1, indexing="xy")
-    grid = torch.stack([X0.flatten(), X1.flatten()], dim=1)  # [N, 2]
-
-    # Also keep CPU copies for plotting axes
-    x0_cpu = x0.detach().cpu().numpy()
-    x1_cpu = x1.detach().cpu().numpy()
-    grid_cpu = grid.detach().cpu().numpy()
-
-    # -------------------------------------------------------
-    # Evaluate model on grid (on device), then move to CPU
-    # -------------------------------------------------------
-    with torch.no_grad():
-        out_all = model.call(grid)        # [n_layers, N, 1] on device
-        norm = model.get_norm()           # [n_layers] on device
-        norm = norm.to(out_all.device)
-
-        # Y for layer n
-        Y = (out_all[n, :, 0] / norm[n]).detach().cpu().numpy()
-
-        # All layers normalized: shape [n_layers, N, 1]
-        model_on_grid = (out_all / norm.view(-1, 1, 1)).detach().cpu().numpy()
-
-    # -------------------------------------------------------
-    # Marginal plots
-    # -------------------------------------------------------
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharey=True)
-
-    for ni in range(n + 1):
-        axes[0].hist(grid_cpu[:, 0],
-                     weights=model_on_grid[ni, :, 0],
-                     lw=2,
-                     bins=x0_cpu[::10],
-                     color=colors[ni],
-                     histtype="step",
-                     label=f"layer {ni}")
-    axes[0].set_xlabel("x_0")
-    axes[0].set_ylabel("Model output")
-
-    for ni in range(n + 1):
-        axes[1].hist(grid_cpu[:, 1],
-                     weights=model_on_grid[ni, :, 0],
-                     lw=2,
-                     bins=x1_cpu[::10],
-                     color=colors[ni],
-                     histtype="step",
-                     label=f"layer {ni}")
-    axes[1].set_xlabel("x_1")
-
-    axes[1].legend(
-        loc="center left",
-        bbox_to_anchor=(1.02, 0.5),
-        frameon=False,
-        title=None,
-    )
-    fig.tight_layout(rect=[0.0, 0.0, 0.82, 1.0])
-    fig.savefig(os.path.join(output_folder, "marginals.png"))
-    plt.close(fig)
-
-    # -------------------------------------------------------
-    # 2D heatmap + centroids for layer n
-    # -------------------------------------------------------
-    fig = plt.figure(figsize=(4, 3))
-    plt.scatter(grid_cpu[:, 0], grid_cpu[:, 1], c=Y, edgecolors="none", s=1)
-
-    centr = model.get_centroids().detach().cpu().numpy()
-    ampl = model.get_coeffs().detach().cpu().numpy()[:, 0]
-    centr = centr[ampl > 0]
-    if len(centr):
-        plt.scatter(centr[:, 0], centr[:, 1], color="black")
-
-    plt.colorbar()
-    plt.xlim(-1.5, 0.5)
-    plt.ylim(-0.5, 4.5)
-    plt.tight_layout()
-    fig.savefig(os.path.join(output_folder, f"2Dheatmap_{n}.png"))
-    plt.close(fig)
-
-def plot_gt_heatmap(feature, output_folder):
-    """2D histogram of the (bootstrapped) training data."""
-    fig = plt.figure(figsize=(4, 3))
-
-    # make sure we are on CPU for numpy / matplotlib
-    feature_cpu = feature.detach().cpu().numpy()
-
-    x0 = torch.arange(-1.5, 0.5, 0.1).double()
-    x1 = torch.arange(-0.5, 4.5, 0.05).double()
-    x0_cpu = x0.numpy()
-    x1_cpu = x1.numpy()
-
-    plt.hist2d(
-        feature_cpu[:, 0],
-        feature_cpu[:, 1],
-        bins=[x0_cpu, x1_cpu],
-        density=True,
-    )
-    plt.colorbar()
-    plt.xlim(-1.5, 0.5)
-    plt.ylim(-0.5, 4.5)
-    plt.tight_layout()
-    fig.savefig(os.path.join(output_folder, "2Dheatmap_GT.png"))
-    plt.close(fig)
+# ---------- model sampling + marginals ----------
 
 def _final_layer_pdf(model, x, batch_size=200000):
     """
@@ -272,6 +151,36 @@ def sample_from_kernel_model_rejection(
     return torch.from_numpy(samples).float().cpu()
 
 
+def sample_from_kernel_model_exact(model, num_samples):
+    """
+    EXACT ancestral sampling — ⚠ POSITIVE-COEFFICIENT MODELS ONLY.
+
+    With all c_i >= 0 (positive_coeffs=True) the model is a proper mixture
+    p(x) = sum_i (c_i/sum c) N(x; mu_i, diag(w_i^2)): draw component
+    i ~ c_i/sum(c), then x ~ that Gaussian. No rejection, no pmax estimate.
+
+    Why this exists: the rejection sampler estimates pmax from UNIFORM box
+    probes, which cannot find a sharp 4D peak (~1e-8 of the box volume) ->
+    pmax underestimated (measured 13x on the 4D QCD embedding) -> acceptance
+    saturates and the sampled histogram CLIPS the peaks the model actually fits.
+
+    ⚠ If you ever go back to SIGNED coefficients (positive_coeffs=False),
+    this sampler is invalid — plot_kernel_marginals detects that case and
+    falls back to the rejection sampler automatically (with a warning).
+    """
+    with torch.no_grad():
+        c  = model.get_coeffs().detach().cpu().double().reshape(-1).numpy()  # [M]
+        mu = model.get_centroids().detach().cpu().double().numpy()           # [M, d]
+        w  = model.get_widths().detach().cpu().double().numpy()              # [M, d]
+    if c.min() < 0:
+        raise ValueError("exact mixture sampling needs all coeffs >= 0 "
+                         "(signed model: use sample_from_kernel_model_rejection)")
+    probs = c / c.sum()
+    comp = np.random.choice(len(probs), size=num_samples, p=probs)
+    samples = mu[comp] + w[comp] * np.random.randn(num_samples, mu.shape[1])
+    return torch.from_numpy(samples).float().cpu()
+
+
 def plot_kernel_marginals(
     model,
     x_data,
@@ -307,12 +216,25 @@ def plot_kernel_marginals(
         maxs = maxs + 0.05 * span
         bounds = [[float(mins[i]), float(maxs[i])] for i in range(d)]
 
-    # Sample from the kernel model
-    samples_t = sample_from_kernel_model_rejection(
-        model,
-        num_samples=num_samples,
-        bounds=bounds,
-    )
+    # Sample from the kernel model.
+    # Positive coeffs (positive_coeffs=True) -> the model is a proper mixture
+    # -> EXACT ancestral sampling. Signed coeffs -> fall back to rejection
+    # sampling, whose probe-based pmax CLIPS sharp peaks (measured 13x
+    # underestimate on the 4D QCD embedding) — the plotted peaks are then a
+    # LOWER BOUND, cross-check with analytic marginals before trusting them.
+    coeffs_min = float(model.get_coeffs().detach().min())
+    if coeffs_min >= 0:
+        print("plot_kernel_marginals: positive coeffs -> exact mixture sampling")
+        samples_t = sample_from_kernel_model_exact(model, num_samples=num_samples)
+    else:
+        print("plot_kernel_marginals: WARNING — signed coeffs (min c = "
+              f"{coeffs_min:.3g}) -> rejection sampling; sharp peaks may be "
+              "CLIPPED by the pmax estimate (do not over-interpret low peaks)")
+        samples_t = sample_from_kernel_model_rejection(
+            model,
+            num_samples=num_samples,
+            bounds=bounds,
+        )
     samples_np = samples_t.numpy()
     data_np = x_data_t.numpy()
 
@@ -356,8 +278,4 @@ def plot_kernel_marginals(
     fig.tight_layout()
     fig.savefig(os.path.join(output_folder, filename))
     plt.close(fig)
-
-
-
-
 

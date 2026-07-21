@@ -1,22 +1,10 @@
 #!/usr/bin/env python
 
-import os, sys, glob, h5py, math, time, json, random, yaml, argparse, datetime
+import os, sys, time, json, argparse
 from pathlib import Path
 
-from scipy.stats import norm, expon, chi2, uniform, chisquare
-from sklearn.datasets import make_moons
-from scipy.spatial.distance import cdist
-import torch
-import jax.numpy as jnp
-from jax import random as jax_random
 import numpy as np
-from torchvision.datasets import MNIST
-from torch.utils.data import DataLoader, Dataset, random_split, Subset
-import torchvision.transforms as transforms
-from mpl_toolkits.axes_grid1 import ImageGrid
-
-from torch.autograd.functional import hessian
-from torch.autograd import grad
+import torch
 
 # -------------------------------------------------------------------
 # Make parent directory (Train_Models) importable, then import utilities
@@ -36,8 +24,6 @@ from plot_utils import (
     plot_loss,
     plot_centroids_history,
     plot_coeffs_history,
-    plot_model_marginals_and_heatmap,
-    plot_gt_heatmap,
     plot_kernel_marginals,
 )
 
@@ -105,7 +91,7 @@ N_MODELS = args.n_models  # can be None
 # decay_epochs*epochs of each layer (was a no-op before: init == fin).
 if N_LAYERS == 5:
     # history: old 2D-toy schedule [0.15,0.10,0.07,0.05,0.035]; first 4D try [0.15,0.10,0.06,0.04,0.02]
-    width_fin_list  = [0.10, 0.07, 0.045, 0.03, 0.018]   # 4D-QCD, data-driven (Option A)
+    width_fin_list  = [0.10, 0.07, 0.045, 0.03, 0.018]   # 4D-QCD, data-driven (kept; counts reverted to 80,70,60,50,40 for joint)
     width_init_list = [0.20, 0.14, 0.09,  0.06, 0.036]   # 2x final -> within-layer annealing
 else:
     # Generic schedule that still ends narrow
@@ -140,7 +126,13 @@ config_json = {
     "t_ini": 0,
     "decay_epochs": 0.5,
 
-    "coeffs_init": [0 for _ in range(N_LAYERS)],
+    # Nonzero POSITIVE init is mandatory with the normalized objective:
+    # c=0 init -> f=0 -> 1/1e-10 gradient explosion poisons Adam's v (the
+    # 2026-07-12 joint run froze at c=0.30 for 9870 epochs exactly this way),
+    # and mixed-sign init -> sum(c)~0 -> |sum(c)| division blow-up.
+    # 1/M_total for every kernel = uniform mixture with sum(c)=1 (EM's canonical
+    # init; under the normalized objective only ratios matter, scale is free).
+    "coeffs_init": [1.0 / float(np.sum(number_centroids)) for _ in range(N_LAYERS)],
     "coeffs_clip": 10000000,
 
     "number_centroids": number_centroids,
@@ -177,12 +169,10 @@ trial_name = (
     f"{n_models_str}"
     f"L{n_layers}_K{k_per_l}_M{total_M}_"
     f"Nboot{config_json['N']}_lr{config_json['learning_rate']}_"
-    f"clip_{int(config_json['coeffs_clip']):d}"
+    f"clip_{int(config_json['coeffs_clip']):d}_joint_norm"
 )
 
-# Final output directory for this trial:
-# .../EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/
-#N_100000_dim_2_kernels_Soft-SparKer2_M60_Nboot10000_lr0.01
+# Final output directory for this trial: <outdir>/<trial_name>
 OUTPUT_DIRECTORY = os.path.join(BASE_OUTPUT_DIRECTORY, trial_name)
 
 config_json["output_directory"] = OUTPUT_DIRECTORY
@@ -196,9 +186,7 @@ def NLL(pred):
     return -torch.log(pred + 1e-10).mean()
 
 def training_loop(seed, data_train_tot, config_json, json_path):
-    # train kernels on different bootstrapped datasets 
-    # np.random.seed(seed)
-    # print('Random seed:', seed)
+    # train kernels on different bootstrapped datasets
     model_seed = int(seed)
     bootstrap_seed = int(seed) + 10000
 
@@ -275,8 +263,12 @@ def training_loop(seed, data_train_tot, config_json, json_path):
     widths_init = [np.ones((M[i], d)) * width_ini[i] for i in range(n_layers)]
 
     np.random.seed(model_seed)
+    # uniform POSITIVE init (no random +-1 sign flip: mixed signs would put
+    # sum(c)~0 under the |sum(c)| normalization -> division blow-up at epoch 0;
+    # coeff randomness contributed nothing before anyway: +-1 x 0 = 0 in all
+    # past runs -- ensemble diversity comes from bootstrap + centroid sampling)
     coeffs_init = [
-        (np.random.binomial(p=0.5, n=1, size=(M[i], 1)) * 2 - 1) * config_json["coeffs_init"][i]
+        np.ones((M[i], 1)) * config_json["coeffs_init"][i]
         for i in range(n_layers)
     ]
     centroids_init = [
@@ -319,8 +311,14 @@ def training_loop(seed, data_train_tot, config_json, json_path):
         train_widths=train_widths,
         train_coeffs=train_coeffs,
         train_centroids=train_centroids,
-        positive_coeffs=False,
-        probability_coeffs=False,
+        # Normalized-ML fix (2026-07-13): train the same object wifi deploys.
+        # probability_coeffs=True -> loss sees f/|sum(c)| (scale degeneracy gone:
+        # the raw unnormalized NLL made Adam ride the "grow all coeffs" direction,
+        # leaving weights ~uniform ∝ count x epochs instead of fitting the data).
+        # positive_coeffs=True keeps the |sum(c)| denominator away from 0 and
+        # matches proper-mixture semantics (wifi clamps members >=0 anyway).
+        positive_coeffs=True,
+        probability_coeffs=True,
         model=model_type,
     ).to(DEVICE)
 
@@ -358,83 +356,80 @@ def training_loop(seed, data_train_tot, config_json, json_path):
     epochs_history[0]        = 0
 
     # training
+    # =====================================================================
+    # JOINT training (replaces the greedy coarse->fine per-layer schedule).
+    # All layers' params (coeffs @ lr, centroids @ centroid_lr) train TOGETHER
+    # from epoch 0 against the FULL-model NLL, so the fine peak-builder kernels
+    # compete for mass from the start instead of arriving last to an already-
+    # explained dataset (the old greedy schedule front-loaded mass onto the
+    # coarse layer -> peaks under-filled to ~1/3; see debug_notes). Every
+    # layer's width anneals broad->narrow on one shared horizon. Keeps the
+    # plain-SparKer form -> nothing downstream (LRT/wifi/hit-or-miss) changes.
+    # =====================================================================
     t1 = time.time()
-    ttmp = time.time()
     monitor_idx = 1
 
-    for n in range(n_layers):
-        print("layer:", n, ', time since last layer:', time.time() - ttmp)
-        ttmp = time.time()
-        # Split learning rates: coeffs/widths at `lr`, centroids at `centroid_lr`
-        # (much smaller). The bare-NLL gradient pulls centroids off the dense
-        # core to cover the sparse tails; a small centroid lr keeps them near
-        # their data-sampled init while still allowing local adaptation.
-        param_groups = []
+    joint_epochs = int(np.sum(total_epochs))     # same total step budget as the old 5x2000
+    t_fin = int(decay_epochs * joint_epochs)      # width-anneal horizon (shared by all layers)
 
-        if train_coeffs:
-            coeff_params = [model.get_coeffs_j(j=m) for m in range(n_layers) if m <= n]
-            param_groups.append({"params": coeff_params, "lr": lr})
-        if train_widths:
-            width_params = [model.get_widths_j(j=m) for m in range(n_layers) if m <= n]
-            param_groups.append({"params": width_params, "lr": lr})
-        if train_centroids:
-            cent_params = [model.get_centroids_j(j=m) for m in range(n_layers) if m <= n]
-            param_groups.append({"params": cent_params, "lr": centroid_lr})
+    # ONE optimizer over ALL layers
+    param_groups = []
+    if train_coeffs:
+        param_groups.append({"params": [model.get_coeffs_j(j=m)    for m in range(n_layers)], "lr": lr})
+    if train_widths:
+        param_groups.append({"params": [model.get_widths_j(j=m)    for m in range(n_layers)], "lr": lr})
+    if train_centroids:
+        param_groups.append({"params": [model.get_centroids_j(j=m) for m in range(n_layers)], "lr": centroid_lr})
+    optimizer = torch.optim.Adam(param_groups)
 
-        optimizer = torch.optim.Adam(param_groups)
-
-        for i in range(int(total_epochs[n])):
-            if i > t_ini:
+    for i in range(joint_epochs):
+        # anneal EVERY layer's width broad->narrow simultaneously
+        if i > t_ini:
+            for j in range(n_layers):
                 model.set_width_j(
-                    Annealing_Linear(
-                        t=i - t_ini,
-                        ini=width_ini[n],
-                        fin=width_fin[n],
-                        t_fin=int(decay_epochs * total_epochs[n])
-                    ),
-                    j=n
+                    Annealing_Linear(t=i - t_ini, ini=width_ini[j], fin=width_fin[j], t_fin=t_fin),
+                    j=j,
                 )
 
-            optimizer.zero_grad()
-            nplm_loss_value = NLL(model.call_cumsum_j(feature, j=n))
-            loss_value = nplm_loss_value
+        optimizer.zero_grad()
+        # full-model likelihood: sum over ALL layers (j = n_layers - 1)
+        nplm_loss_value = NLL(model.call_cumsum_j(feature, j=n_layers - 1))
+        loss_value = nplm_loss_value
 
-            if lam_coeffs and coeffs_regularizer is not None:
-                loss_value = loss_value + lam_coeffs * coeffs_regularizer(model.get_coeffs_j(j=n))
-            if lam_widths:
-                loss_value = loss_value + lam_widths * widths_regularizer(model.get_widths_j(j=n))
-            if lam_entropy:
-                loss_value = loss_value + lam_entropy * CentroidsEntropyRegularizer(model.get_centroids_entropy())
+        if lam_coeffs and coeffs_regularizer is not None:
+            loss_value = loss_value + lam_coeffs * coeffs_regularizer(model.get_coeffs())
+        if lam_widths:
+            loss_value = loss_value + lam_widths * widths_regularizer(model.get_widths())
+        if lam_entropy:
+            loss_value = loss_value + lam_entropy * CentroidsEntropyRegularizer(model.get_centroids_entropy())
 
-            loss_value.backward()
-            optimizer.step()
-            model.clip_coeffs()
+        loss_value.backward()
+        optimizer.step()
+        model.clip_coeffs()
 
-            if not (i % patience):
-                widths_history[monitor_idx, :, :]    = model.get_widths().detach().cpu().numpy()
-                centroids_history[monitor_idx, :, :] = model.get_centroids().detach().cpu().numpy()
-                coeffs_history[monitor_idx, :]       = model.get_coeffs().detach().cpu().numpy().reshape((np.sum(M)))
-                loss_history[monitor_idx]            = loss_value.detach().cpu().numpy()
-                epochs_history[monitor_idx]          = monitor_idx
-                monitor_idx += 1
-                print('epoch: %i, NLL loss: %f, COEFFS: %f' %
-                      (int(i + 1), nplm_loss_value, loss_value - nplm_loss_value))
+        if not (i % patience):
+            widths_history[monitor_idx, :, :]    = model.get_widths().detach().cpu().numpy()
+            centroids_history[monitor_idx, :, :] = model.get_centroids().detach().cpu().numpy()
+            coeffs_history[monitor_idx, :]       = model.get_coeffs().detach().cpu().numpy().reshape((np.sum(M)))
+            loss_history[monitor_idx]            = loss_value.detach().cpu().numpy()
+            epochs_history[monitor_idx]          = monitor_idx
+            monitor_idx += 1
+            print('epoch: %i, NLL loss: %f, COEFFS: %f' %
+                  (int(i + 1), nplm_loss_value, loss_value - nplm_loss_value))
 
-            if not plot:
-                continue
-            if ((i % plt_patience) or (i == 0)) and (i != (total_epochs[n] - 1)):
-                continue
+        if not plot:
+            continue
+        if ((i % plt_patience) or (i == 0)) and (i != (joint_epochs - 1)):
+            continue
 
-            # --------- plots (delegated to plot_utils) ---------
-            total_M = int(np.sum(M))
-            
-            plot_loss(epochs_history, loss_history, monitor_idx, output_folder)
-            plot_centroids_history(epochs_history, centroids_history,
-                                   monitor_idx, d, total_M, output_folder)
-            plot_coeffs_history(epochs_history, coeffs_history,
-                                monitor_idx, total_M, output_folder)
-            #plot_model_marginals_and_heatmap(model, n, output_folder)
+        # --------- plots (delegated to plot_utils) ---------
+        total_M = int(np.sum(M))
 
+        plot_loss(epochs_history, loss_history, monitor_idx, output_folder)
+        plot_centroids_history(epochs_history, centroids_history,
+                               monitor_idx, d, total_M, output_folder)
+        plot_coeffs_history(epochs_history, coeffs_history,
+                            monitor_idx, total_M, output_folder)
 
     t2 = time.time()
     print('End training')
@@ -480,5 +475,3 @@ def training_loop(seed, data_train_tot, config_json, json_path):
 if __name__ == "__main__":
     print(f"Running training for seed = {args.seed}")
     training_loop(args.seed, data_train_tot, config_json, json_path)
-
-

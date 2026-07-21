@@ -334,3 +334,821 @@ def train_loop(
             param_hist['coeffs'] = np.array(coeff_hist)   # (n_checkpoints, M)
 
     return np.array(epoch_hist, np.int32), np.array(loss_hist, np.float32), param_hist
+
+
+# ======================================================================
+# Exact profiling fit — analogue of wifi_better_basis/classifier_gof.py's
+# fit_classifier, adapted to the density-space LRT.
+#
+#   minimize over (w, c):
+#     L(w, c) = - sum_i log f_i
+#               + 0.5 (w - w_mean)^T (Sigma_w + ridge)^{-1} (w - w_mean)   [if Sigma_w]
+#               + lam_pert * || c - mean(c) ||^2                           [if Kmat]
+#     f_i = a_i + Phi_i . w + sum_j (c_j - mean(c)) K_ij ,   |c_j| <= clip
+#
+# f is linear in (w, c), so -sum log f is convex on the feasible set
+# {f > 0}; with the convex penalties and box the optimum is unique.
+# Solved by active-set projected damped Newton with closed-form gradient
+# and Hessian. The line search only accepts steps with f > 0 at every
+# data point — the log is its own barrier, there is NO density clamp.
+# This replaces the Adam + eps-clamp path, whose clamp severed the
+# barrier and enabled the signed-weight runaway.
+#
+# Conventions match TAU exactly: the last ensemble column is the derived
+# weight 1 - sum(w) (callers pass Phi = probs[:, :-1] - probs[:, -1:] and
+# a = probs[:, -1]); kernel coefficients are mean-centred in the density
+# and in the L2 penalty (lam_pert * sum(c_eff^2), no 1/2 factor); the box
+# applies to the raw coefficients.
+# ======================================================================
+
+GRAD_NORM_OK = 1e-4   # same "well-converged" threshold as classifier_gof.py
+
+
+def gaussian_kernel_matrix(x, centers, sigma, chunk=20000):
+    """K[i, j] = normalized isotropic Gaussian kernel j at x_i, shape (N, M)."""
+    x = np.asarray(x, dtype=np.float64)
+    centers = np.asarray(centers, dtype=np.float64)
+    d = x.shape[1]
+    norm_const = (2.0 * np.pi) ** (-d / 2.0) * float(sigma) ** (-d)
+    out = np.empty((x.shape[0], centers.shape[0]), dtype=np.float64)
+    for i0 in range(0, x.shape[0], chunk):
+        diff = x[i0:i0 + chunk, None, :] - centers[None, :, :]
+        out[i0:i0 + chunk] = norm_const * np.exp(
+            -0.5 * (diff ** 2).sum(axis=2) / float(sigma) ** 2)
+    return out
+
+
+def fit_lrt_exact(Phi, a, w_init, Kmat=None, clip=None, lam_pert=0.0,
+                  Sigma_w=None, w_mean=None, frozen_weights=False,
+                  max_iter=500, gtol=1e-6, dec_tol=1e-7, ridge_rel=1e-8,
+                  verbose=False, name="fit"):
+    """
+    Returns dict:
+        loss         : final penalized objective
+        loglik       : sum_i log f_i at the optimum (no penalties)
+        aux          : -0.5 (w-w_mean)^T Sinv (w-w_mean) (0 if no prior);
+                       MVN normalization constants cancel in T differences
+        f            : (N,) fitted density at the data points (all > 0)
+        w, c, c_eff  : final parameters (c raw, c_eff mean-centred; None if absent)
+        grad_norm    : projected-gradient norm at the final point
+        n_iter, converged, hit_max_iter, fmin, n_at_clip, loss_hist
+    """
+    Phi = np.ascontiguousarray(Phi, dtype=np.float64)
+    a = np.ascontiguousarray(a, dtype=np.float64)
+    N, K1 = Phi.shape
+    train_w = not frozen_weights
+    has_pert = Kmat is not None
+
+    w = np.array(w_init, dtype=np.float64).ravel().copy()
+    if has_pert:
+        Kt = np.ascontiguousarray(Kmat, dtype=np.float64)
+        Kt = Kt - Kt.mean(axis=1, keepdims=True)   # mean-centring: zero-mass perturbation
+        M = Kt.shape[1]
+        c = np.zeros(M, dtype=np.float64)
+        box = np.inf if clip is None else float(clip)
+        # tiny ridge along the constant direction (f and the penalty are
+        # invariant under c -> c + const, which would make H singular)
+        mu = 1e-10 * max(1.0, lam_pert)
+        C_pen = np.eye(M) - np.ones((M, M)) / M
+    else:
+        M = 0
+        c = None
+
+    use_prior = (Sigma_w is not None) and train_w
+    if use_prior:
+        S = np.asarray(Sigma_w, dtype=np.float64)
+        eps = ridge_rel * (np.trace(S) / S.shape[0])
+        Sinv = np.linalg.inv(S + eps * np.eye(S.shape[0]))
+        wm = np.asarray(w_mean, dtype=np.float64).ravel()
+
+    def density(w_, c_):
+        f = a + Phi @ w_
+        if has_pert:
+            f = f + Kt @ c_
+        return f
+
+    def objective(w_, c_):
+        f = density(w_, c_)
+        if f.min() <= 0.0:
+            return np.inf, f
+        L = -np.log(f).sum()
+        if use_prior:
+            dw = w_ - wm
+            L += 0.5 * float(dw @ Sinv @ dw)
+        if has_pert and lam_pert > 0:
+            ce = c_ - c_.mean()
+            L += lam_pert * float(ce @ ce)
+        return L, f
+
+    def result(L, f, grad_norm, n_iter, converged, hit_max, loss_hist):
+        aux = 0.0
+        if use_prior:
+            dw = w - wm
+            aux = -0.5 * float(dw @ Sinv @ dw)
+        out = {
+            "loss": float(L),
+            "loglik": float(np.log(f).sum()),
+            "aux": aux,
+            "f": f.copy(),
+            "w": w.copy(),
+            "c": (c.copy() if has_pert else None),
+            "c_eff": ((c - c.mean()).copy() if has_pert else None),
+            "grad_norm": float(grad_norm),
+            "newton_dec": float(newton_dec),
+            "n_iter": int(n_iter),
+            "converged": bool(converged),
+            "hit_max_iter": bool(hit_max),
+            "fmin": float(f.min()),
+            "n_at_clip": (int(np.sum(np.abs(c) >= box * 0.999)) if has_pert else 0),
+            "loss_hist": np.array(loss_hist, dtype=np.float64),
+        }
+        return out
+
+    L, f = objective(w, c)
+    if not np.isfinite(L):
+        raise RuntimeError(
+            f"[{name}] infeasible start: min f = {density(w, c).min():.3e} <= 0")
+
+    newton_dec = 0.0
+
+    # Trivial case (classifier_gof parity): frozen weights, no perturbation.
+    if frozen_weights and not has_pert:
+        return result(L, f, 0.0, 0, True, False, [L])
+
+    P = (K1 if train_w else 0) + M
+    loss_hist = [L]
+    grad_norm = np.inf
+    newton_dec = np.inf
+    hit_max = True
+    lam_lm = 0.0      # Levenberg damping — adapted; handles the near-singular
+                      # Hessian from strongly-overlapping (near-collinear) components
+    stall = 0
+
+    for it in range(1, max_iter + 1):
+        r = 1.0 / f
+
+        # --- gradient (closed form) ---
+        g = np.empty(P)
+        g_c = None
+        if train_w:
+            g_w = -(Phi.T @ r)
+            if use_prior:
+                g_w = g_w + Sinv @ (w - wm)
+            g[:K1] = g_w
+        if has_pert:
+            g_c = -(Kt.T @ r) + 2.0 * lam_pert * (c - c.mean())
+            g[P - M:] = g_c
+
+        # --- active set on the box, projected gradient ---
+        free = np.ones(P, dtype=bool)
+        if has_pert:
+            at_hi = c >= box * (1 - 1e-14)
+            at_lo = c <= -box * (1 - 1e-14)
+            blocked = (at_hi & (g_c <= 0)) | (at_lo & (g_c >= 0))
+            free[P - M:] = ~blocked
+        pg = np.where(free, g, 0.0)
+        grad_norm = float(np.linalg.norm(pg))
+        if grad_norm <= gtol:
+            hit_max = False
+            break
+
+        # --- Hessian (closed form) ---
+        H = np.zeros((P, P))
+        R = Phi * r[:, None]
+        if train_w:
+            H[:K1, :K1] = R.T @ R
+            if use_prior:
+                H[:K1, :K1] += Sinv
+        if has_pert:
+            Q = Kt * r[:, None]
+            H[P - M:, P - M:] = Q.T @ Q + 2.0 * lam_pert * C_pen + mu * np.eye(M)
+            if train_w:
+                H[:K1, P - M:] = R.T @ Q
+                H[P - M:, :K1] = H[:K1, P - M:].T
+
+        idx = np.where(free)[0]
+        H_ff = H[np.ix_(idx, idx)]
+        g_f = g[idx]
+        Dscale = np.maximum(np.diag(H_ff), 1e-300)   # Marquardt scaling
+
+        # --- Levenberg-damped Newton step, fraction-to-boundary line search ---
+        accepted = False
+        for _attempt in range(15):
+            try:
+                d_f = np.linalg.solve(H_ff + lam_lm * np.diag(Dscale), -g_f)
+            except np.linalg.LinAlgError:
+                lam_lm = max(lam_lm * 10.0, 1e-12)
+                continue
+            gd = float(g_f @ d_f)
+            if not np.isfinite(gd) or gd >= 0:
+                lam_lm = max(lam_lm * 10.0, 1e-12)
+                continue
+
+            d = np.zeros(P)
+            d[idx] = d_f
+            dw = d[:K1] if train_w else None
+            dc = d[P - M:] if has_pert else None
+
+            # fraction-to-boundary: largest step keeping f > 0 everywhere,
+            # then never start the backtracking beyond 99.5% of it
+            df = np.zeros(N)
+            if train_w:
+                df += Phi @ dw
+            if has_pert:
+                df += Kt @ dc
+            negm = df < 0
+            t_feas = float((-f[negm] / df[negm]).min()) if negm.any() else np.inf
+            t0 = min(1.0, 0.995 * t_feas)
+
+            t = t0
+            for _ in range(40):
+                w_t = w + t * dw if train_w else w
+                if has_pert:
+                    c_lin = c + t * dc
+                    c_t = np.clip(c_lin, -box, box)
+                    clipped = not np.array_equal(c_t, c_lin)
+                else:
+                    c_t, clipped = None, False
+                if clipped:
+                    L_t, f_t = objective(w_t, c_t)      # projection bent the step
+                else:
+                    f_t = f + t * df                     # exact for linear f
+                    if f_t.min() <= 0.0:
+                        L_t = np.inf
+                    else:
+                        L_t = -np.log(f_t).sum()
+                        if use_prior:
+                            dwp = w_t - wm
+                            L_t += 0.5 * float(dwp @ Sinv @ dwp)
+                        if has_pert and lam_pert > 0:
+                            ce = c_t - c_t.mean()
+                            L_t += lam_pert * float(ce @ ce)
+                if np.isfinite(L_t) and L_t <= L + 1e-4 * t * gd:
+                    accepted = True
+                    break
+                t *= 0.5
+            if accepted:
+                # near-full step -> relax damping; truncated step -> stiffen
+                lam_lm = lam_lm * 0.25 if t >= 0.5 * t0 else min(lam_lm * 4.0 + 1e-12, 1e8)
+                if lam_lm < 1e-14:
+                    lam_lm = 0.0
+                break
+            lam_lm = max(lam_lm * 10.0, 1e-12)
+        if not accepted:
+            hit_max = False              # cannot improve further
+            break
+
+        newton_dec = -gd
+        dL = L - L_t
+        if train_w:
+            w = w_t
+        if has_pert:
+            c = c_t
+        L, f = L_t, f_t
+        loss_hist.append(L)
+
+        if verbose:
+            print(f"  [{name}] it {it:3d}  L {L:.6f}  |pg| {grad_norm:.3e}  "
+                  f"dec {newton_dec:.3e}  t {t:.2e}  lm {lam_lm:.1e}  "
+                  f"fmin {f.min():.3e}", flush=True)
+
+        # Newton decrement: for this barrier-type (self-concordant) objective,
+        # -g.d of the UNDAMPED step bounds the remaining suboptimality of the
+        # penalized log-likelihood — the quantity T actually depends on.
+        if newton_dec < dec_tol and lam_lm == 0.0:
+            hit_max = False
+            break
+        # loss-stall fallback: flat-valley crawl where meaningless (near-null)
+        # weight directions never settle but the likelihood no longer moves
+        stall = stall + 1 if dL < 1e-9 * (1.0 + abs(L)) else 0
+        if stall >= 3:
+            hit_max = False
+            break
+
+    # final projected-gradient norm for reporting
+    r = 1.0 / f
+    g = np.empty(P)
+    if train_w:
+        g_w = -(Phi.T @ r)
+        if use_prior:
+            g_w = g_w + Sinv @ (w - wm)
+        g[:K1] = g_w
+    if has_pert:
+        g_c = -(Kt.T @ r) + 2.0 * lam_pert * (c - c.mean())
+        at_hi = c >= box * (1 - 1e-14)
+        at_lo = c <= -box * (1 - 1e-14)
+        blocked = (at_hi & (g_c <= 0)) | (at_lo & (g_c >= 0))
+        g[P - M:] = np.where(blocked, 0.0, g_c)
+    if train_w and not has_pert:
+        pg = g[:K1]
+    else:
+        pg = g
+    grad_norm = float(np.linalg.norm(pg))
+
+    converged = (grad_norm < GRAD_NORM_OK) or (newton_dec < dec_tol)
+    flag = "OK" if converged else "WARN"
+    print(f"[{name}] exact fit [{flag}]  loss={L:.6f}  ||pg||={grad_norm:.2e}  "
+          f"dec={newton_dec:.2e}  n_iter={len(loss_hist) - 1}  fmin={f.min():.3e}",
+          flush=True)
+
+    return result(L, f, grad_norm, len(loss_hist) - 1, converged,
+                  hit_max, loss_hist)
+
+
+# ======================================================================
+# Simplex-constrained profiling fit (single-model LRT control).
+#
+# The single SParKer model is trained as a POSITIVE, sum-normalized mixture
+# (EstimationKernels.py: positive_coeffs=True -> clip_coeffs clamps to
+# [0, coeffs_clip] every step; probability_coeffs=True -> density / |sum c|).
+# So its natural weight domain is the probability simplex, NOT free signed
+# reals. Free signed-weight profiling (the old `_free_gmm_weights` mode) is
+# ill-posed: the signed-mixture log-likelihood is unbounded/degenerate along
+# recession/near-null directions (weights ran to 1e4 in 2D, 1e12 in 4D).
+# Constraining the weights to the simplex makes the feasible set COMPACT, so
+# the problem is bounded, the MIXTURE density stays positive (convex combo of
+# positive Gaussians), and the profiling stays inside the family the model was
+# actually trained in.
+#
+# Alignment with wifi_better_basis/classifier_gof.py: SAME goal (positive
+# density) and SAME solver philosophy (scipy + closed-form Hessian, à la
+# fit_classifier), but a DIFFERENT positivity mechanism. The classifier is
+# log-space (ratio = exp(w·F + b·G) > 0 for any w) so its weights are free-
+# sign + Gaussian prior; the kernels are density-space (f = Σ w_k g_k) so
+# positivity must come from w on the simplex. One residual gap the classifier
+# doesn't have: the numerator kernel perturbation Σ c_eff_j G_j is added in
+# DENSITY space, so it can in principle push f<0 (Sean's negative-density
+# mechanism). The simplex only guarantees the MIXTURE part is positive; the
+# caller must hard-check f>0 at the numerator optimum (there is NO silent
+# density clamp here — the 1e-300 in the log is an iteration-time NaN guard
+# only, and the compact feasible set means it cannot enable a runaway).
+#
+#   maximize   sum_i log f_i                       (over w, and c_eff if kernels)
+#   f_i      = a_i + Phi_i . w + Kmat_i . c_eff
+#   subject to w_k >= 0,  sum_k w_k <= 1           (=> derived weight 1-sum w >= 0)
+#              |c_eff_j| <= clip,  sum_j c_eff = 0  (zero-mass, normalization-preserving)
+#   objective  -sum_i log f_i + lam_pert * ||c_eff||^2     (convex; +convex penalty)
+#
+# Conventions match TAU / the density-space LRT: callers pass
+#   Phi = comps[:, :-1] - comps[:, -1:],  a = comps[:, -1]
+# and c_eff are the mean-centred (sum=0) kernel coefficients that
+# GaussianKernelLayer.get_coefficients() would return.
+# ======================================================================
+
+def fit_lrt_simplex(Phi, a, w_init, Kmat=None, clip=None, lam_pert=0.0,
+                    max_iter=1000, gtol=1e-8, xtol=1e-12, verbose=False, name="fit"):
+    """
+    Kernel-coefficient handling MATCHES TAU exactly (this is deliberate — an
+    earlier version added an explicit `sum c_eff = 0` equality constraint and a
+    density-space box on c_eff, which trust-constr could not satisfy on the 4D
+    numerator: 400 iters, KKT 3e3, cviol 3e-2). TAU instead keeps the RAW
+    coefficients c as the free parameter, box-clips them, and uses the
+    mean-centred c_eff = c - mean(c) inside the density and the L2 penalty
+    (GaussianKernelLayer.get_coefficients / net_coeffs_L2). Baking the
+    mean-centring into a row-mean-centred kernel matrix Kt_c = Kt - rowmean
+    means c_eff enters via Kt_c @ c with NO equality constraint — the only hard
+    constraints left are the simplex on w (bounds + sum w <= 1) and the box on c.
+    A tiny ridge mu*||c||^2 pins the otherwise-flat constant direction of c
+    (c -> c + alpha leaves c_eff, the density and the L2 unchanged) so the
+    Hessian is PD and the solution is unique.
+
+    Returns dict (keys parallel to fit_lrt_exact where they apply):
+        loss       : final penalized objective  (-sum log f + lam ||c_eff||^2)
+        loglik     : sum_i log f_i at the optimum (no penalty)
+        f          : (N,) fitted density at data points
+        w          : (K-1,) profiled free mixture weights (on the simplex)
+        c, c_eff   : (M,) mean-centred kernel coefficients (== get_coefficients()); None if no kernels
+        grad_norm  : scaled projected-gradient norm at the solution
+        n_iter, converged, hit_max_iter, fmin, n_at_clip
+
+    SOLVER: projected damped-Newton with a FEASIBILITY line search. A general
+    constrained optimiser (scipy trust-constr) fails the numerator in BOTH 2D and
+    4D: it does not know the density must stay positive, so it steps into f<0
+    (KKT ~ 1e10, fmin < 0). Here the log is its own barrier — the backtracking
+    line search NEVER accepts a step with f<=0, so the iterate stays in the
+    positive-density region by construction (no floor/clamp band-aid). The
+    weights are projected onto the simplex {w>=0, sum w<=1} and the kernels onto
+    the box each step; the objective is convex so any feasible start reaches the
+    same optimum. Closed-form gradient/Hessian; converges in ~tens of iterations
+    (trust-constr needed hundreds and ~10 min/fit).
+    """
+    Phi = np.ascontiguousarray(Phi, dtype=np.float64)
+    a = np.ascontiguousarray(a, dtype=np.float64)
+    N, K1 = Phi.shape
+    has_pert = Kmat is not None
+    if has_pert:
+        Kt = np.ascontiguousarray(Kmat, dtype=np.float64)
+        Ktc = Kt - Kt.mean(axis=1, keepdims=True)   # row-mean-centred: Ktc @ c = Kt @ (c - mean c)
+        M = Kt.shape[1]
+        box = np.inf if clip is None else float(clip)
+        mu_ridge = 1e-6 * max(lam_pert, 1.0)         # pins the constant direction of c
+    else:
+        M = 0
+    P = K1 + M
+
+    # ---- projections onto the feasible set ----
+    def proj_w(v):
+        """Euclidean projection onto {w >= 0, sum w <= 1}."""
+        w = np.maximum(v, 0.0)
+        if w.sum() <= 1.0:
+            return w
+        # else project onto the probability simplex {w >= 0, sum w = 1} (Duchi et al.)
+        u = np.sort(v)[::-1]
+        css = np.cumsum(u)
+        k = np.arange(1, v.size + 1)
+        cond = u - (css - 1.0) / k > 0
+        rho = np.nonzero(cond)[0][-1]
+        theta = (css[rho] - 1.0) / (rho + 1)
+        return np.maximum(v - theta, 0.0)
+
+    def proj(x):
+        if has_pert:
+            return np.concatenate([proj_w(x[:K1]), np.clip(x[K1:], -box, box)])
+        return proj_w(x)
+
+    def dens(x):
+        f = a + Phi @ x[:K1]
+        if has_pert:
+            f = f + Ktc @ x[K1:]
+        return f
+
+    def objective(f, x):
+        if f.min() <= 0.0:
+            return np.inf
+        L = -np.log(f).sum()
+        if has_pert:
+            c = x[K1:]; ce = c - c.mean()
+            L += lam_pert * float(ce @ ce) + mu_ridge * float(c @ c)
+        return float(L)
+
+    def grad(f, x):
+        r = 1.0 / f
+        g = np.empty(P)
+        g[:K1] = -(Phi.T @ r)
+        if has_pert:
+            c = x[K1:]
+            g[K1:] = -(Ktc.T @ r) + 2.0 * lam_pert * (c - c.mean()) + 2.0 * mu_ridge * c
+        return g
+
+    def hess(f):
+        D = 1.0 / f ** 2
+        H = np.zeros((P, P))
+        H[:K1, :K1] = Phi.T @ (Phi * D[:, None])
+        if has_pert:
+            KtcD = Ktc * D[:, None]
+            Pmat = np.eye(M) - 1.0 / M               # I - 11^T/M (mean-centring projector)
+            H[K1:, K1:] = Ktc.T @ KtcD + 2.0 * lam_pert * Pmat + 2.0 * mu_ridge * np.eye(M)
+            H[:K1, K1:] = Phi.T @ KtcD
+            H[K1:, :K1] = H[:K1, K1:].T
+        return H
+
+    # ---- feasible start: trained weights projected onto the simplex, kernels 0 ----
+    w0 = proj_w(np.array(w_init, dtype=np.float64).ravel())
+    x = np.concatenate([w0, np.zeros(M)]) if has_pert else w0
+    f = dens(x)
+    if f.min() <= 0.0:
+        raise RuntimeError(f"[{name}] infeasible start: fmin = {f.min():.3e} <= 0")
+    L = objective(f, x)
+
+    lam_lm = 1e-6          # Levenberg damping (adapted)
+    gnorm = np.inf
+    stall = 0
+    converged = False
+    it = 0
+    for it in range(1, max_iter + 1):
+        g = grad(f, x)
+        H = hess(f)
+        dH = np.maximum(np.diag(H), 1e-30)          # diagonal scaling for the KKT measure
+        gnorm = float(np.linalg.norm(x - proj(x - g / dH)))
+        if gnorm < gtol:
+            converged = True
+            break
+
+        # Levenberg-damped Newton direction
+        d = None
+        for _ in range(30):
+            try:
+                d = np.linalg.solve(H + lam_lm * np.diag(dH), -g)
+                break
+            except np.linalg.LinAlgError:
+                lam_lm = max(lam_lm * 10.0, 1e-12)
+        if d is None:
+            d = -g / dH
+
+        # feasibility + Armijo backtracking along the PROJECTED arc (never accept f<=0)
+        t = 1.0
+        accepted = False
+        for _ in range(60):
+            xt = proj(x + t * d)
+            ft = dens(xt)
+            if ft.min() > 0.0:
+                Lt = objective(ft, xt)
+                if Lt <= L + 1e-4 * float(g @ (xt - x)):
+                    accepted = True
+                    break
+            t *= 0.5
+        if not accepted:
+            lam_lm = min(lam_lm * 10.0 + 1e-12, 1e12)
+            stall += 1
+            if stall >= 3:
+                break
+            continue
+        stall = 0
+        dL = L - Lt
+        x, f, L = xt, ft, Lt
+        lam_lm = max(lam_lm * 0.5, 1e-12)
+        if dL < 1e-12 * (1.0 + abs(L)):             # objective plateau
+            converged = True
+            break
+
+    # final KKT measure
+    g = grad(f, x)
+    dH = np.maximum(np.diag(hess(f)), 1e-30)
+    gnorm = float(np.linalg.norm(x - proj(x - g / dH)))
+
+    w = x[:K1].copy()
+    c_raw = x[K1:].copy() if has_pert else None
+    c_eff = (c_raw - c_raw.mean()) if has_pert else None
+    converged = bool(converged and f.min() > 0.0)
+
+    flag = "OK" if converged else "WARN"
+    print(f"[{name}] simplex fit [{flag}]  loss={L:.6f}  kkt={gnorm:.2e}  "
+          f"n_iter={it}  fmin={float(f.min()):.3e}  sum(w)={float(w.sum()):.4f}", flush=True)
+
+    return {
+        "loss": float(L),
+        "loglik": float(np.log(f).sum()),
+        "f": f,
+        "w": w,
+        "c": c_eff,
+        "c_eff": c_eff,
+        "grad_norm": gnorm,
+        "n_iter": int(it),
+        "converged": converged,
+        "hit_max_iter": bool(it >= max_iter and not converged),
+        "fmin": float(f.min()),
+        "n_at_clip": (int(np.sum(np.abs(c_raw) >= box * 0.999)) if has_pert else 0),
+        "constr_violation": 0.0,
+    }
+
+
+# ======================================================================
+# EM fit of mixture weights on the probability simplex — the solver for the
+# one-model GoF numerator in "Sean Option 2" (2026-07-20): keep the kernels
+# ADDITIVE but force ALL weights positive and summing to 1, over ONE simplex
+# that spans the model components AND the kernels. That makes the numerator a
+# plain positive mixture:
+#     f(x) = sum_c theta_c C_c(x),   theta >= 0,  sum theta = 1,   C_c >= 0
+# so the density is positive by construction (no f<0), the feasible set is
+# compact (bounded), and — for the LRT — the denominator (a mixture over the
+# model components only) is NESTED in the numerator (set the kernel weights to
+# 0), so T >= 0. Maximum-likelihood over the simplex with fixed component
+# densities is exactly the classic mixture-weight problem, which EM solves:
+#     E/M update:  theta_c <- theta_c * (1/N) * sum_i C[i,c] / (C theta)_i
+# This is guaranteed monotonic, keeps theta on the simplex and positive, has no
+# line search / Hessian / step size, and cannot blow up (C theta > 0 as long as
+# any component explains each point — true here, since the model components do).
+# Concave in theta -> unique global optimum -> start-independent.
+#
+# DENOMINATOR:  C = the K model-component densities (comps).            -> theta = w
+# NUMERATOR:    C = [comps | kernels]  (K + M columns).                 -> theta = [w | v]
+# No clip, no L2, no mean-centring (Sean's formulation): the simplex is the only
+# constraint and it does all the regularising. (An optional L2/entropy on the
+# kernel block could be added later; start without, per Sean.)
+# ======================================================================
+
+def fit_simplex_em(C, theta_init=None, max_iter=20000, tol=1e-11, name="fit", accelerate=True):
+    """
+    Maximize sum_i log( (C @ theta)_i ) over {theta >= 0, sum theta = 1} by EM.
+
+    C : (N, P) array of per-component densities at the data (all >= 0).
+    Returns dict:
+        theta     : (P,) MLE mixture weights on the simplex
+        loglik    : sum_i log (C @ theta) at the optimum
+        f         : (N,) fitted density
+        n_iter, converged, hit_max_iter, fmin, n_active
+    """
+    C = np.ascontiguousarray(C, dtype=np.float64)
+    N, P = C.shape
+
+    if theta_init is None:
+        theta = np.full(P, 1.0 / P)
+    else:
+        theta = np.maximum(np.asarray(theta_init, dtype=np.float64).ravel(), 0.0)
+        s = theta.sum()
+        theta = theta / s if s > 0 else np.full(P, 1.0 / P)
+
+    f = C @ theta
+    if f.min() <= 0.0:
+        raise RuntimeError(f"[{name}] EM start infeasible: fmin = {f.min():.3e} <= 0 "
+                           "(some data point has zero density under every component).")
+
+    def em_step(th):
+        """One EM map: th_c <- th_c * (1/N) sum_i C[i,c]/(C th)_i. Stays on the simplex."""
+        return th * (C.T @ (1.0 / (C @ th))) / N
+
+    def loglik(th):
+        return float(np.log(C @ th).sum())
+
+    ll = loglik(theta)
+    converged = False
+    it = 0
+    for it in range(1, max_iter + 1):
+        if not accelerate:
+            theta = em_step(theta)
+            ll_new = loglik(theta)
+        else:
+            # SQUAREM (Varadhan & Roland): extrapolate two EM steps, then stabilise
+            # with one more EM map. Monotonicity safeguard: never do worse than the
+            # plain double-EM point th2 (loglik(th2) >= loglik(theta) always).
+            th1 = em_step(theta)
+            th2 = em_step(th1)
+            r = th1 - theta
+            v = (th2 - th1) - r
+            vn = float(np.linalg.norm(v))
+            if vn < 1e-300:
+                theta, ll_new = th2, loglik(th2)
+            else:
+                alpha = -float(np.linalg.norm(r)) / vn      # SQUAREM-3 steplength (<= -1)
+                th_new = theta - 2.0 * alpha * r + (alpha ** 2) * v
+                k = 0
+                while th_new.min() < 0.0 and k < 40:        # back off toward alpha=-1 (=> th2)
+                    alpha = (alpha - 1.0) / 2.0
+                    th_new = theta - 2.0 * alpha * r + (alpha ** 2) * v
+                    k += 1
+                if th_new.min() < 0.0:
+                    th_new = th2
+                th_new = np.maximum(th_new, 0.0)
+                th_new = th_new / th_new.sum()
+                th_stab = em_step(th_new)
+                ll_stab = loglik(th_stab)
+                ll_th2 = loglik(th2)
+                if ll_stab >= ll_th2:                        # keep the accelerated step
+                    theta, ll_new = th_stab, ll_stab
+                else:                                        # safeguard: fall back to plain EM
+                    theta, ll_new = th2, ll_th2
+        if ll_new - ll < tol * (1.0 + abs(ll)):
+            ll = ll_new
+            converged = True
+            break
+        ll = ll_new
+
+    f = C @ theta
+    print(f"[{name}] EM{'+sqrm' if accelerate else ''}  loglik={ll:.6f}  n_iter={it}  "
+          f"conv={converged}  fmin={float(f.min()):.3e}  "
+          f"n_active={int((theta > 1e-8).sum())}/{P}  sum(theta)={float(theta.sum()):.6f}",
+          flush=True)
+
+    return {
+        "theta": theta,
+        "loglik": ll,
+        "f": f,
+        "n_iter": int(it),
+        "converged": converged,
+        "hit_max_iter": bool(it >= max_iter and not converged),
+        "fmin": float(f.min()),
+        "n_active": int((theta > 1e-8).sum()),
+    }
+
+
+# ======================================================================
+# NPLM exponential-tilt fit — the solver for the one-model GoF numerator in
+# "Sean Option 1" (multiplicative, 2026-07-21). Instead of ADDING kernels to the
+# density (Option 2), MULTIPLY the DEN-optimal model by an exponential tilt:
+#     f_num(x) ∝ f_mix(x; w_den) · exp( tau(x) ),   tau(x) = sum_j b_j G_j(x).
+# This is the standard NPLM form and exactly what wifi_better_basis/classifier_gof.py
+# does (there the tilt is added in logit space -> multiplicative on the ratio).
+#
+# NORMALIZATION. The proper density needs Z(b) = E_{f_mix}[exp tau], which has no
+# closed form (GMM × exp-of-Gaussians). We estimate it with a REFERENCE SAMPLE
+# drawn from the DEN-optimal model (the caller samples the GMM at w_den). Because
+# the reference is drawn from exactly the DEN model, the shared sum_i log f_mix(x_i)
+# term CANCELS between numerator and denominator, leaving the pure NPLM statistic
+#     T = 2 · max_b [ sum_data tau(x_i) - N · log( (1/R) sum_ref exp tau(y_r) ) ].
+#
+# CONVEXITY. With the mixture weights FROZEN at w_den (only b is fit), the objective
+#     L(b) = - s_data·b + N·( logsumexp(K_ref b) - log R )   [ + 0.5 lam ||b||^2 ]
+# (s_data = sum_i K_data[i]) is linear minus N·log-sum-exp, hence CONVEX: the
+# Hessian N·Cov_softmax(K_ref) [+ lam I] is PSD, so the optimum is unique and any
+# Newton solver converges. Density is positive by construction (exp-tilt > 0) and
+# T >= 0 (b=0 recovers the denominator, L(0)=0). This mirrors fit_classifier in
+# classifier_gof.py (scipy trust-exact + closed-form gradient/Hessian).
+#
+# CO-PROFILING w with b is possible (keeps w coupled to b via an importance-
+# weighted Z) but makes L NON-convex — it reintroduces the non-convergence Option 2
+# escaped — so it is deliberately NOT done here; w is profiled in the denominator
+# only. See [[project-lrt-onemodel-signed-weight-runaway]].
+# ======================================================================
+
+def fit_nplm_tilt(K_data, K_ref, lam_pert=0.0, clip=None,
+                  max_iter=500, tol=1e-9, verbose=False, name="NUM"):
+    """
+    Maximize  ll(b) = sum_data tau(x_i) - N * log( mean_ref exp tau(y_r) )
+    over the tilt coefficients b, with tau(x) = sum_j b_j G_j(x). The optimum
+    ll(b*) IS T/2 (the shared log f_mix term has cancelled; see header).
+
+    K_data : (N, M) kernel matrix G_j(x_i) at the data points.
+    K_ref  : (R, M) kernel matrix G_j(y_r) at the reference points (y ~ f_mix(w_den)).
+    lam_pert : optional L2 ridge 0.5*lam*||b||^2 on the tilt coeffs (= classifier
+               lam_pert; default 0 => pure MLE).
+    clip   : optional symmetric box |b_j| <= clip (switches solver to L-BFGS-B).
+
+    Returns dict:
+        loglik    : ll(b*) = T/2
+        T         : 2 * ll(b*)  (>= 0 by construction)
+        b         : (M,) fitted tilt coefficients (signed)
+        tau_data  : (N,) tau(x_i) at the optimum
+        logZ      : log of the normalization estimate at the optimum
+        grad_norm, n_iter, converged, hit_max_iter, loss_hist
+    """
+    from scipy.optimize import minimize as _scipy_minimize
+    from scipy.special import logsumexp as _logsumexp
+
+    K_data = np.ascontiguousarray(K_data, dtype=np.float64)
+    K_ref  = np.ascontiguousarray(K_ref,  dtype=np.float64)
+    N, M = K_data.shape
+    R = K_ref.shape[0]
+    s_data = K_data.sum(axis=0)          # (M,)  sum_i G_j(x_i)
+    logR = math.log(R)
+    loss_hist = []
+
+    def _softmax_w(z):
+        z = z - z.max()
+        e = np.exp(z)
+        return e / e.sum()
+
+    def fun(b):
+        z = K_ref @ b                    # (R,)
+        L = -(s_data @ b) + N * (_logsumexp(z) - logR)
+        if lam_pert > 0:
+            L += 0.5 * lam_pert * float(b @ b)
+        loss_hist.append(L)
+        return L
+
+    def jac(b):
+        z = K_ref @ b
+        p = _softmax_w(z)                # (R,)
+        g = -s_data + N * (K_ref.T @ p)  # -sum_data G + N * softmax-weighted ref mean
+        if lam_pert > 0:
+            g = g + lam_pert * b
+        return g
+
+    def hess(b):
+        z = K_ref @ b
+        p = _softmax_w(z)                # (R,)
+        m = K_ref.T @ p                  # (M,)
+        H = N * (K_ref.T @ (K_ref * p[:, None]) - np.outer(m, m))   # N * Cov_softmax(K_ref)
+        if lam_pert > 0:
+            H = H + lam_pert * np.eye(M)
+        return H
+
+    b0 = np.zeros(M, dtype=np.float64)
+    if clip is None:
+        res = _scipy_minimize(fun, b0, jac=jac, hess=hess, method="trust-exact",
+                              options={"maxiter": max_iter, "gtol": tol})
+    else:
+        box = float(clip)
+        res = _scipy_minimize(fun, b0, jac=jac, method="L-BFGS-B",
+                              bounds=[(-box, box)] * M,
+                              options={"maxiter": max_iter, "ftol": 1e-14, "gtol": tol})
+
+    b_final = res.x
+    n_iter = int(getattr(res, "nit", 0))
+    ll = -float(res.fun)                 # ll(b*) = -L(b*) >= 0
+    grad_norm = float(np.linalg.norm(jac(b_final)))
+    max_b = float(np.abs(b_final).max())
+    hit_max_iter = n_iter >= max_iter
+    # A small gradient at a HUGE b is the separation signature: with no (or too
+    # little) regularisation the tilt runs to infinity along kernels that have
+    # data support but little reference support, and the log-sum-exp gradient
+    # goes flat there. So require a small gradient AND that we did not exhaust the
+    # iteration budget; flag a runaway on max|b|.
+    runaway = max_b > 1e3
+    converged = (grad_norm < GRAD_NORM_OK) and (not hit_max_iter) and (not runaway)
+    T = 2.0 * ll
+
+    tau_data = K_data @ b_final          # (N,)
+    logZ = float(_logsumexp(K_ref @ b_final) - logR)
+
+    flag = "OK" if converged else "WARN"
+    print(f"[{name}] nplm-tilt [{flag}]  ll={ll:.6f}  T={T:.4f}  ||g||={grad_norm:.2e}  "
+          f"n_iter={n_iter}  logZ={logZ:.4f}  max|b|={max_b:.3e}", flush=True)
+    if runaway or hit_max_iter:
+        print(f"[{name}] WARNING: max|b|={max_b:.3e}, n_iter={n_iter}/{max_iter} — "
+              f"likely tilt runaway (separation). Increase lam_pert (now {lam_pert}) "
+              f"or set clip.", flush=True)
+
+    return {
+        "loglik": ll,
+        "T": T,
+        "b": b_final,
+        "tau_data": tau_data,
+        "logZ": logZ,
+        "grad_norm": grad_norm,
+        "max_b": max_b,
+        "n_iter": n_iter,
+        "converged": converged,
+        "hit_max_iter": bool(hit_max_iter),
+        "runaway": bool(runaway),
+        "loss_hist": np.array(loss_hist, dtype=np.float64),
+    }

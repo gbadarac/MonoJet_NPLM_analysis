@@ -139,51 +139,88 @@ print(
     flush=True,
 )
 
-# ── Optimise M-1 free weights via Adam ────────────────────────────────────────
+# ── Fit SIGNED weights (sum-to-one) by damped Newton + hard feasibility line ──
+# ── search ("Level-2 barrier": positive density AT THE DATA POINTS) ────────────
+# Objective  NLL(w) = -mean_n log(sum_i w_i f_i(x_n)),  parametrised by the M-1
+# free weights u  (w = [u, 1 - sum(u)]).  Weights may take EITHER SIGN; only
+# sum-to-one is imposed (needed for f to stay normalised).  We do NOT force
+# w_i >= 0 -- that would kill cross-member compensation.  NLL is convex in u on
+# the feasible region {u : sum_i w_i f_i(x_n) > 0 for all n}, and -log(.) is a
+# barrier -> +inf at its boundary.  We stay inside it by REJECTING any trial step
+# that drives a data-point density <= 0 (inherent to the likelihood, NOT an extra
+# constraint on the weights).  The old clamp(1e-300) destroyed this barrier and
+# let the weights run away; it says nothing about the density away from data
+# (Level 3 -- Sean's -ln(w) penalty for GoF sampling -- which is deferred).
+#
+# p is linear in u  =>  grad/Hessian are exact and cheap:  a_nj = (f_nj - f_n,last)/p_n
+#   grad_j = -mean_n a_nj ,   H_jk = mean_n a_nj a_nk  (PD) ,   Newton dir d = -H^{-1} grad
 device_fit = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 mp = model_probs.to(device_fit)
 
 
 def build_w(u: torch.Tensor) -> torch.Tensor:
+    """Free (M-1) params -> full weight vector (used by the covariance below)."""
     return torch.cat([u, (1.0 - u.sum()).view(1)])
 
 
-def nll(u: torch.Tensor) -> torch.Tensor:
+def _nll(u: torch.Tensor):
+    """True NLL and the data-point densities; NLL is +inf if any density <= 0."""
     p = (mp * build_w(u)).sum(1)
-    return -torch.log(torch.clamp(p, 1e-300)).mean()
+    if bool((p <= 0).any()):
+        return float("inf"), p
+    return float(-torch.log(p).mean()), p
 
 
-u = torch.nn.Parameter(
-    torch.full((M - 1,), 1.0 / M, dtype=torch.float64, device=device_fit)
-)
-opt = torch.optim.Adam([u], lr=args.lr)
+u = torch.full((M - 1,), 1.0 / M, dtype=torch.float64, device=device_fit)
+diff   = mp[:, :-1] - mp[:, -1:]          # (N, M-1) = dp/du (constant: p is linear in u)
+N_data = mp.shape[0]
+cur, p = _nll(u)
+if cur == float("inf"):
+    raise RuntimeError("uniform-weight init is infeasible (density <= 0 at some data point)")
 
-log_every = max(1, args.epochs // 40)
-best, bad = float("inf"), 0
-loss_hist = []
+loss_hist = [cur]
+MAX_IT = 200
+for it in range(1, MAX_IT + 1):
+    a     = diff / p.unsqueeze(1)                                   # (N, M-1)
+    grad  = -a.mean(0)                                              # (M-1,)
+    H     = (a.T @ a) / N_data                                      # (M-1, M-1), PD
+    ridge = 1e-12 * float(H.diagonal().mean()) + 1e-300
+    d     = torch.linalg.solve(
+        H + ridge * torch.eye(M - 1, dtype=torch.float64, device=device_fit), -grad
+    )
+    gd    = float(grad @ d)                                         # < 0 (descent direction)
+    dec   = -gd                                                     # Newton decrement^2 >= 0
 
-for ep in range(1, args.epochs + 1):
-    opt.zero_grad(set_to_none=True)
-    nll(u).backward()
-    opt.step()
-    if ep % log_every == 0:
-        with torch.no_grad():
-            cur = float(nll(u))
-        gnorm = float(u.grad.norm()) if u.grad is not None else float("nan")
-        print(f"ep {ep:6d}  loss {cur:.6e}  |g| {gnorm:.2e}", flush=True)
-        loss_hist.append(cur)
-        if cur < best:
-            best, bad = cur, 0
-        else:
-            bad += 1
-            if bad >= args.patience:
-                print(f"Early stop at ep {ep}, best={best:.6e}")
-                break
+    # backtracking line search: hard feasibility (reject density<=0) + Armijo
+    t = 1.0
+    while t > 1e-14:
+        cand, p_cand = _nll(u + t * d)
+        if cand != float("inf") and cand <= cur + 1e-4 * t * gd:
+            break
+        t *= 0.5
+    if t <= 1e-14:
+        print(f"it {it:4d}  line search stalled (decrement {dec:.3e}); stopping", flush=True)
+        break
+    u, cur, p = u + t * d, cand, p_cand
+    loss_hist.append(cur)
 
-with torch.no_grad():
-    w_final_t = build_w(u.detach()).cpu()   # (M,) tensor
+    if it % 5 == 0 or dec < 1e-10:
+        w_now = build_w(u)
+        print(f"it {it:4d}  NLL {cur:.6e}  decr {dec:.2e}  t {t:.2e}  "
+              f"w[min={float(w_now.min()):+.3f} max={float(w_now.max()):+.3f}]  "
+              f"neg={int((w_now < 0).sum())}/{M}", flush=True)
+    if dec < 1e-10:
+        print(f"Converged at it {it}: Newton decrement {dec:.3e}", flush=True)
+        break
+
+w_final_t = build_w(u).detach().cpu()   # (M,) tensor
+_wf = w_final_t
+print(f"[fit] final NLL {cur:.6e}  sum={float(_wf.sum()):.6f}  signed weights: "
+      f"{int((_wf < 0).sum())}/{M} negative, range [{float(_wf.min()):+.3f}, {float(_wf.max()):+.3f}]",
+      flush=True)
 
 w_final = _t2np(w_final_t)
+out_dir.mkdir(parents=True, exist_ok=True)   # NFS-defensive: re-ensure dir exists before writing
 np.save(out_dir / "w_i_fitted.npy", w_final)
 np.save(out_dir / "loss_history.npy", np.array(loss_hist, dtype=np.float32))
 print(f"w_i_fitted.npy saved  sum={float(w_final_t.sum()):.8f}", flush=True)
@@ -272,24 +309,27 @@ if not args.no_plots:
                 )
             )
 
-        # Grid for 2D ratio plot
-        pad = 0.05
-        x0_lo, x0_hi = float(data_t[:, 0].min()), float(data_t[:, 0].max())
-        x1_lo, x1_hi = float(data_t[:, 1].min()), float(data_t[:, 1].max())
-        x0_pad = pad * (x0_hi - x0_lo + 1e-12)
-        x1_pad = pad * (x1_hi - x1_lo + 1e-12)
-        x0g = torch.arange(x0_lo - x0_pad, x0_hi + x0_pad, 0.01, dtype=torch.float64)
-        x1g = torch.arange(x1_lo - x1_pad, x1_hi + x1_pad, 0.005, dtype=torch.float64)
-        X0, X1 = torch.meshgrid(x0g, x1g, indexing="xy")
-        grid = torch.stack([X0.flatten(), X1.flatten()], dim=1)
-        with torch.no_grad():
-            Y = ensemble(grid)
-
         feature_names = [f"Feature {i+1}" for i in range(ndim)]
-        plot_final_marginals_and_ratio(
-            ensemble, data_t, grid, x0g, x1g, Y,
-            outdir=str(wifi_plots_dir), tag="final",
-        )
+
+        # 2D-only: density + ratio heatmap over an (x0, x1) grid.
+        if ndim == 2:
+            pad = 0.05
+            x0_lo, x0_hi = float(data_t[:, 0].min()), float(data_t[:, 0].max())
+            x1_lo, x1_hi = float(data_t[:, 1].min()), float(data_t[:, 1].max())
+            x0_pad = pad * (x0_hi - x0_lo + 1e-12)
+            x1_pad = pad * (x1_hi - x1_lo + 1e-12)
+            x0g = torch.arange(x0_lo - x0_pad, x0_hi + x0_pad, 0.01, dtype=torch.float64)
+            x1g = torch.arange(x1_lo - x1_pad, x1_hi + x1_pad, 0.005, dtype=torch.float64)
+            X0, X1 = torch.meshgrid(x0g, x1g, indexing="xy")
+            grid = torch.stack([X0.flatten(), X1.flatten()], dim=1)
+            with torch.no_grad():
+                Y = ensemble(grid)
+            plot_final_marginals_and_ratio(
+                ensemble, data_t, grid, x0g, x1g, Y,
+                outdir=str(wifi_plots_dir), tag="final",
+            )
+
+        # Per-feature marginals + weight-uncertainty bands (works for any ndim).
         plot_ensemble_marginals_2d_kernel(
             kernel_models=ensemble.ensemble,
             x_data=data_t.detach().cpu(),

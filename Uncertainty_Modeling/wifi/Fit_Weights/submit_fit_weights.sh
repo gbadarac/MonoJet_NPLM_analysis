@@ -18,7 +18,7 @@ export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:32
 
 # ─── Mode toggles (EDIT THESE) ───────────────────────────────────────────────
 MODEL_TYPE=kernels   # kernels | nf
-NDIM=4          # 2 | 4  (kernels only supports 2; nf supports both)
+NDIM=4          # 2 | 4  (both kernels and nf support 2D and 4D)
 DATASET=2d_gaussian  # nf NDIM=2 only: 2d_gaussian | 2d_bimodal_gaussian_heavy_tail
 
 # ─── Common optimiser settings ────────────────────────────────────────────────
@@ -32,9 +32,9 @@ export LD_LIBRARY_PATH="/work/gbadarac/miniforge3/envs/nplm_env/lib${LD_LIBRARY_
 
 if [[ "$MODEL_TYPE" == "kernels" ]]; then
     CONDA_ENV=kernels_env
-    FOLDER_PATH="$REPO_ROOT/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking"
-    DATA_PATH="$REPO_ROOT/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_heavy_tail_target_set.npy"
-    N_WIFI=128
+    FOLDER_PATH="$REPO_ROOT/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/4_dim/4d_embedding_qcd/N_100000_dim_4_kernels_SparKer_models160_L5_K80_M300_Nboot100000_lr0.05_clip_10000000_joint_norm"
+    DATA_PATH="$REPO_ROOT/data/4d_embedding_qcd_Ntrain100000_Ntest100000_seed42/data_train.npy"
+    N_WIFI=${N_WIFI:-160}   # ensemble size (<= 160 members); override per-job: sbatch --export=ALL,N_WIFI=80 ...
     trial_name=$(basename "$FOLDER_PATH")
     dataset_tag=$(basename "$(dirname "$FOLDER_PATH")")
     OUT_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernels/${trial_name}_${dataset_tag}_ensemblecomponents${N_WIFI}"

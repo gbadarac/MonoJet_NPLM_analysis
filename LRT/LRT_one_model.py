@@ -1,10 +1,6 @@
 import glob, math, time, os, json, argparse, datetime, sys
 from pathlib import Path
-import torch
 import numpy as np
-import matplotlib as mpl
-mpl.use('Agg')
-import matplotlib.pyplot as plt
 
 # -------------------------------------------------------------------
 # Make Sparker_utils importable
@@ -16,6 +12,31 @@ sys.path.insert(0, str(SPARKER_UTILS))
 
 import LRTGOFutils_v2 as lrt
 import GENutils as gen
+
+# ===================================================================
+# One-model kernel GoF — TWO numerator formulations (Sean's two fixes, --numerator).
+#
+# The single SParKer model is trained as a positive, sum-normalized mixture, so its
+# component weights live on the probability simplex. The DENOMINATOR profiles them
+# there by EM (fit_simplex_em):   DEN:  f = sum_k w_k g_k,  w on the K-simplex.
+# This half is SHARED and identical for both numerators below.
+#
+#  'simplex'  — Sean Option 2 (additive, positive). Keep the kernels ADDITIVE but
+#      force ALL weights positive on ONE (K+M)-simplex over model components AND
+#      kernels:   NUM: f = sum_k w_k g_k + sum_j v_j G_j,  (w,v) on the (K+M)-simplex.
+#      Plain positive-mixture MLE by EM: monotonic, always f>0, start-independent,
+#      DEN nested (v=0) so T = 2(loglik_num - loglik_den) >= 0.
+#
+#  'multiplicative' — Sean Option 1 (NPLM exp-tilt). Multiply the DEN-optimal model
+#      by an exponential tilt, the standard NPLM form (= wifi_better_basis/
+#      classifier_gof.py):   NUM: f = f_mix(x; w_den) * exp(sum_j b_j G_j(x)) / Z,
+#      Z = E_{f_mix}[exp tau]. Z is estimated with a reference sample drawn from the
+#      DEN-optimal model, so the shared log f_mix term cancels and
+#          T = 2 * max_b [ sum_data tau(x_i) - N * log(mean_ref exp tau) ].
+#      With w FROZEN at w_den (only b fit) this is CONVEX (linear - N*log-sum-exp,
+#      PSD Hessian) -> robust, always f>0, T >= 0 (b=0 recovers DEN). Solved by
+#      lrt.fit_nplm_tilt (scipy trust-exact + closed-form grad/Hessian).
+# ===================================================================
 
 # -------------------------------------------------------------------
 # CLI
@@ -41,6 +62,21 @@ parser.add_argument('--toy_id', type=int, default=None,
                     help="Toy index used for folder/file naming (0-based). Falls back to seed.")
 parser.add_argument('--save_arrays', action='store_true',
                     help="If set, also save per-event numerator/denominator/test arrays.")
+parser.add_argument('--numerator', type=str, default='multiplicative',
+                    choices=['simplex', 'multiplicative'],
+                    help="Numerator form: 'simplex' = Sean Option 2 (additive, "
+                         "positive (K+M)-simplex, EM); 'multiplicative' = Sean "
+                         "Option 1 (NPLM exp-tilt f*exp(sum b_j G_j), convex fit).")
+parser.add_argument('--n_ref', type=int, default=None,
+                    help="[multiplicative] # reference points ~ DEN-optimal model "
+                         "for the normalization estimate (default: Ntest).")
+parser.add_argument('--lam_pert', type=float, default=1.0,
+                    help="[multiplicative] L2 ridge 0.5*lam*||b||^2 on tilt coeffs "
+                         "(= classifier_gof lam_pert). lam_pert=0 SEPARATES (tilt "
+                         "runaway even under the null: max|b|~1e5 in 2D); 1.0 keeps "
+                         "max|b|<1. Must be > 0.")
+parser.add_argument('--clip_b', type=float, default=None,
+                    help="[multiplicative] optional symmetric box |b_j| <= clip_b.")
 args = parser.parse_args()
 
 # -------------------------------------------------------------------
@@ -56,21 +92,12 @@ np.random.seed(seed)
 
 label = args.toy_id if args.toy_id is not None else seed
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print("Using device:", device, flush=True)
-
 # -------------------------------------------------------------------
-# Hyperparameters  (match ensemble LRT.py)
+# Hyperparameters
 # -------------------------------------------------------------------
-Ntest                = args.ntest
-n_kernels_numerator  = 100
-epochs_tau           = 100000
-patience             = 1000
+Ntest                  = args.ntest
+n_kernels_numerator    = 100
 kernel_width_numerator = 0.3
-lambda_L2_numerator  = 10000
-lr_tau               = 1e-6
-clip_tau             = 0.0005
-train_centers_tau    = False
 
 # -------------------------------------------------------------------
 # Output folder
@@ -78,17 +105,24 @@ train_centers_tau    = False
 mode_tag = "calibration" if args.calibration else "test"
 
 seed_fmt = args.seed_format
-run_tag = "SparKer1_%s_Ntest%i_M%i_W%s_L%g" % (
+run_tag = "SparKer1_%s_Ntest%i_M%i_W%s" % (
     seed_fmt % args.model_seed,
     Ntest,
     n_kernels_numerator,
     str(kernel_width_numerator),
-    lambda_L2_numerator,
 )
-if clip_tau is not None:
-    run_tag += "_clip%s" % str(clip_tau)
-# DEN profiles the GMM mixture coefficients freely (analogous to free_wifi_weights in LRT.py)
-run_tag += "_free_gmm_weights"
+# Distinct folder per numerator form so runs never mix.
+if args.numerator == 'simplex':
+    # Sean Option 2 — positive (K+M)-simplex additive mixture (no signed weights,
+    # no clip, no mean-centring).
+    run_tag += "_num_positive_simplex"
+else:
+    # Sean Option 1 — multiplicative NPLM exp-tilt (convex fit).
+    run_tag += "_num_multiplicative"
+    if args.lam_pert > 0:
+        run_tag += "_L%g" % args.lam_pert
+    if args.clip_b is not None:
+        run_tag += "_clipb%s" % str(args.clip_b)
 
 out_dir = os.path.join(args.out_base, run_tag, mode_tag, "seed%i" % label)
 os.makedirs(out_dir, exist_ok=True)
@@ -114,23 +148,19 @@ centroids    = np.load(os.path.join(seed_dir, "centroids_history.npy"))[count]  
 coefficients = np.load(os.path.join(seed_dir, "coeffs_history.npy"))[count]          # (K,)
 widths       = np.load(os.path.join(seed_dir, "widths_history.npy"))[count, :, 0]    # (K,)
 
-# Normalize coefficients to a proper probability vector
+# Normalize coefficients to a proper probability vector (already non-negative
+# from training; this puts them on the simplex, sum = 1).
 coefficients = coefficients / coefficients.sum()
 
 print(f"Loaded model {seed_fmt % args.model_seed}: "
       f"centroids {centroids.shape}, coefficients {coefficients.shape}, widths {widths.shape}",
       flush=True)
+print(f"  trained coeffs: min={coefficients.min():.3e}  n_neg={(coefficients < 0).sum()}", flush=True)
 
 # -------------------------------------------------------------------
 # Helper: sample N points directly from the single GMM
 # -------------------------------------------------------------------
 def sample_from_gmm(centroids, coefficients, widths, n_samples, rng):
-    """
-    Sample from a Gaussian mixture model with isotropic components.
-    centroids : (K, d)
-    coefficients : (K,) normalized probability weights
-    widths : (K,) per-component isotropic std
-    """
     K, d = centroids.shape
     k_indices = rng.choice(K, size=n_samples, p=coefficients)
     noise = rng.standard_normal((n_samples, d))
@@ -150,207 +180,162 @@ else:
         raise ValueError("calibration=0 but --target_data not provided.")
     data_all = np.load(args.target_data)
     print(f"Loaded {data_all.shape[0]} target data points.", flush=True)
-    idx = np.random.choice(len(data_all), Ntest, replace=False)
+    # replace=True (bootstrap): with replace=False and Ntest == file size every
+    # "toy" is the identical dataset.
+    idx = np.random.choice(len(data_all), Ntest, replace=True)
     bootstrap_sample = data_all[idx]
 
-# -------------------------------------------------------------------
-# Evaluate individual GMM components at test points.
-# Each of the K Gaussian components is treated as an "ensemble member"
-# with a trainable mixture coefficient — directly analogous to how
-# LRT.py profiles WiFi weights for the ensemble.
-#
-# Layout (mirrors the ensemble convention in LRT.py):
-#   model_probs      (N, K-1): components 0..K-2, with free weights w[0..K-2]
-#   model_norm_probs (N, 1)  : component K-1,     weight = 1 - sum(w)
-#   weights_init     (K-1,)  : trained GMM coefficients (initial values)
-#
-# At initialisation f(x) = sum_k coeff_k * comp_k(x) = original GMM PDF. ✓
-# DEN profiles w freely (no prior) to best fit the data — same logic as
-# --free_wifi_weights in LRT.py.
-# -------------------------------------------------------------------
 N = bootstrap_sample.shape[0]
 
-EPS = 1e-300
+# -------------------------------------------------------------------
+# Component densities.
+#   comps  (N, K) : the K trained Gaussian components g_k.
+#   Kmat   (N, M) : M numerator kernels G_j (fixed shape, centred at the first
+#                   M data points), same normalized Gaussians as GENutils.
+# Both are strictly positive -> any simplex mixture of them is a positive density.
+# -------------------------------------------------------------------
 comps = gen.evaluate_gaussian_components(bootstrap_sample, centroids, widths)  # (N, K)
-comps = np.maximum(comps, EPS)
+K = comps.shape[1]
 
-model_probs      = torch.from_numpy(comps[:, :-1].astype(np.float64))   # (N, K-1)
-model_norm_probs = torch.from_numpy(comps[:, -1:].astype(np.float64))   # (N, 1)
-weights_init_gmm = torch.from_numpy(coefficients[:-1].astype(np.float64))  # (K-1,)
+centers = bootstrap_sample[:n_kernels_numerator].astype(np.float64)
+Kmat = lrt.gaussian_kernel_matrix(bootstrap_sample, centers, kernel_width_numerator)  # (N, M)
+M = Kmat.shape[1]
 
-print("model_probs       shape:", model_probs.shape,
-      " min:", float(model_probs.min()),
-      " max:", float(model_probs.max()), flush=True)
-print("model_norm_probs  shape:", model_norm_probs.shape,
-      " min:", float(model_norm_probs.min()),
-      " max:", float(model_norm_probs.max()), flush=True)
-print("weights_init_gmm  shape:", weights_init_gmm.shape,
-      " sum:", float(weights_init_gmm.sum()),
-      " w_norm_init:", float(1.0 - weights_init_gmm.sum()), flush=True)
-
-model_probs      = torch.clamp(model_probs, min=EPS)
-model_norm_probs = torch.clamp(model_norm_probs, min=EPS)
-
-x_data = torch.from_numpy(bootstrap_sample).double().to(device)
+print("comps shape:", comps.shape, " min:", float(comps.min()), " max:", float(comps.max()), flush=True)
+f_init = comps @ coefficients
+print("model density at init: min", float(f_init.min()), " (must be > 0)", flush=True)
+if f_init.min() <= 0:
+    raise RuntimeError("Model density not strictly positive at the data at init.")
 
 # -------------------------------------------------------------------
-# TAU — Denominator
-# Profiles the K-1 GMM mixture coefficients freely (no prior),
-# analogous to --free_wifi_weights in LRT.py.
-# train_net=False: no extra test kernels in the denominator.
+# Denominator (SHARED by both numerators): EM over the K model components
+# (weights on the K-simplex). w_den is also the reference model for the
+# multiplicative numerator; its log-likelihood cancels in that case.
 # -------------------------------------------------------------------
-model_den = lrt.TAU(
-    (None, centroids.shape[1]),
-    ensemble_probs=model_probs.to(device),
-    ensemble_norm_probs=model_norm_probs.to(device),
-    weights_init=weights_init_gmm.clone(),
-    weights_cov=None,    # free profiling — no Gaussian prior on GMM coefficients
-    weights_mean=None,
-    gaussian_center=[],
-    gaussian_coeffs=[],
-    gaussian_sigma=None,
-    train_net=False,
-    train_weights=True,  # profile GMM mixture coefficients
-).to(device)
-model_den = model_den.double()
+res_den = lrt.fit_simplex_em(comps, theta_init=coefficients, name="DEN")
+if not res_den["converged"]:
+    print(f"WARNING: DEN EM hit max_iter without converging (loglik={res_den['loglik']:.3f})",
+          flush=True)
+if res_den["fmin"] <= 0:
+    raise RuntimeError(f"DEN density non-positive (fmin={res_den['fmin']:.3e}) — "
+                       "impossible for a simplex mixture.")
 
-# Sanity check at initialisation (weights = trained coefficients → f = original GMM PDF)
-with torch.no_grad():
-    den_p0 = model_den.call(x_data)[:, 0]
-    den_p0 = torch.clamp(den_p0, min=model_den.eps)
-    den0 = torch.log(den_p0).sum()
-    print("den0 finite:", torch.isfinite(den0).item(), "den0:", den0.item(), flush=True)
-    if not torch.isfinite(den0):
-        raise RuntimeError("DEN loglik is not finite at init.")
+w_den        = res_den["theta"]          # (K,)
+den_log_data = np.log(res_den["f"])      # (N,)
 
-# Train DEN: profile GMM mixture coefficients on the data
-den_epochs, den_losses, _ = lrt.train_loop(
-    x_data, model_den, "DEN",
-    epochs=epochs_tau,
-    lr=lr_tau,
-    patience=patience,
-)
+if args.numerator == 'simplex':
+    # ---------------------------------------------------------------
+    # Sean Option 2 — NUM: EM over [model components | kernels] on the
+    # (K+M)-simplex. Warm-start at the DEN weights with a little mass moved
+    # onto the kernels (kernels must start > 0, else EM's multiplicative
+    # update can never activate them). Start-independent (concave).
+    # ---------------------------------------------------------------
+    delta = 0.01
+    theta0_num = np.concatenate([w_den * (1.0 - delta), np.full(M, delta / M)])
+    C_num = np.hstack([comps, Kmat])
+    res_num = lrt.fit_simplex_em(C_num, theta_init=theta0_num, name="NUM")
 
-fig, ax = plt.subplots()
-ax.plot(den_epochs, den_losses)
-ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.set_title("Denominator loss")
-fig.savefig(os.path.join(out_dir, "seed%i_denominator_loss.png" % label), dpi=180, bbox_inches="tight")
-plt.close(fig)
+    if not res_num["converged"]:
+        print(f"WARNING: NUM EM hit max_iter without converging (loglik={res_num['loglik']:.3f})",
+              flush=True)
+    if res_num["fmin"] <= 0:
+        raise RuntimeError(f"NUM density non-positive (fmin={res_num['fmin']:.3e}) — "
+                           "impossible for a simplex mixture.")
 
-# -------------------------------------------------------------------
-# TAU — Numerator (single model + extra kernels)
-# -------------------------------------------------------------------
-centers = x_data[:n_kernels_numerator].clone()
-coeffs  = torch.ones(n_kernels_numerator, dtype=torch.float64, device=device) / n_kernels_numerator
+    num_log_data = np.log(res_num["f"])
+    T    = 2.0 * (num_log_data.sum() - den_log_data.sum())
+    test = 2.0 * (num_log_data - den_log_data)
 
-model_num = lrt.TAU(
-    (None, centroids.shape[1]),
-    ensemble_probs=model_probs.to(device),
-    ensemble_norm_probs=model_norm_probs.to(device),
-    weights_init=weights_init_gmm.clone(),  # same initial GMM coefficients as DEN
-    weights_cov=None,    # free profiling — no prior
-    weights_mean=None,
-    gaussian_center=centers.to(device),
-    gaussian_coeffs=coeffs.to(device),
-    gaussian_sigma=kernel_width_numerator,
-    lambda_net=lambda_L2_numerator,
-    train_net=True,
-    train_centers=train_centers_tau,
-    clip_net_coeffs=clip_tau,
-    train_weights=True,  # profile GMM mixture coefficients (same as DEN)
-).to(device)
-model_num = model_num.double()
+    w_num      = res_num["theta"][:K]    # (K,) model part of the (K+M)-simplex
+    v_num      = res_num["theta"][K:]    # (M,) kernel weights (>= 0)
+    coeffs_out = v_num                   # saved as coeffs.npy (positive kernel weights)
+    num_report = {k: res_num[k] for k in ("loglik", "n_iter", "converged",
+                                           "hit_max_iter", "fmin", "n_active")}
 
-num_epochs, num_losses, _ = lrt.train_loop(
-    x_data, model_num, "NUM",
-    epochs=epochs_tau,
-    lr=lr_tau,
-    patience=patience,
-)
+else:
+    # ---------------------------------------------------------------
+    # Sean Option 1 — NUM: multiplicative NPLM exp-tilt. Reference sample from
+    # the DEN-optimal model estimates Z; the shared log f_mix term cancels, so
+    # T = 2*max_b[ sum_data tau - N*log(mean_ref exp tau) ]. Convex (w frozen).
+    # ---------------------------------------------------------------
+    n_ref = args.n_ref if args.n_ref is not None else Ntest
+    rng_ref = np.random.default_rng(seed=seed + 987654321)   # independent stream
+    ref_samples = sample_from_gmm(centroids, w_den, widths, n_ref, rng_ref)
+    K_ref = lrt.gaussian_kernel_matrix(ref_samples, centers, kernel_width_numerator)  # (R, M)
+    print(f"Reference: {n_ref} samples ~ DEN-optimal model; K_ref {K_ref.shape}", flush=True)
 
-fig, ax = plt.subplots()
-ax.plot(num_epochs, num_losses)
-ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.set_title("Numerator loss")
-fig.savefig(os.path.join(out_dir, "seed%i_numerator_loss.png" % label), dpi=180, bbox_inches="tight")
-plt.close(fig)
+    res_num = lrt.fit_nplm_tilt(Kmat, K_ref, lam_pert=args.lam_pert, clip=args.clip_b,
+                                name="NUM", verbose=True)
+    if not res_num["converged"]:
+        print(f"WARNING: NUM tilt fit not converged (||g||={res_num['grad_norm']:.2e})",
+              flush=True)
 
-# -------------------------------------------------------------------
-# Compute T = 2*(loglik_num - loglik_den)   (2×LLR, no aux terms)
-# -------------------------------------------------------------------
-with torch.no_grad():
-    den_p = model_den.call(x_data)[:, 0]
-    den_p = torch.clamp(den_p, min=model_den.eps)
-    den_log_data = torch.log(den_p)                         # (N,)
+    b_num        = res_num["b"]                          # (M,) signed tilt coeffs
+    logZ         = res_num["logZ"]
+    tau_data     = res_num["tau_data"]                   # (N,)
+    num_log_data = den_log_data + tau_data - logZ        # log f_num at the data
+    test         = 2.0 * (tau_data - logZ)               # per-event 2*logLR
+    # T = the PURE (unpenalized) 2*log-likelihood ratio, defined EXACTLY as the
+    # simplex path (2*(loglik_num - loglik_den)) and equal to sum(test). The L2
+    # ridge only shapes the fit (bounds b); it is NOT part of the reported
+    # statistic, so multiplicative T stays comparable to simplex T. NOTE:
+    # res_num["T"] = 2*ll is the PENALIZED value (= T - lam*||b||^2) and would
+    # break the sum(test)==T identity for lam_pert>0 — do NOT use it here.
+    T            = 2.0 * (num_log_data.sum() - den_log_data.sum())
+    assert abs(T - test.sum()) < 1e-4 * (1.0 + abs(T)), (T, float(test.sum()))
 
-    ens_p, net_out = model_num.call(x_data)
-    num_p = ens_p[:, 0] + net_out
-    num_p = torch.clamp(num_p, min=model_num.eps)
-    num_log_data = torch.log(num_p)                         # (N,)
+    w_num      = w_den                   # frozen in the numerator (w_num == w_den)
+    coeffs_out = b_num                   # saved as coeffs.npy (signed tilt coeffs)
+    # keep max_b in the report to monitor tilt runaway across the toy array
+    num_report = {k: res_num[k] for k in ("loglik", "n_iter", "converged",
+                                           "hit_max_iter", "grad_norm", "max_b")}
 
-    # 2×LLR to match LRT.py, NPLM compute_t, and the theoretical Wilks χ² scale.
-    # analyse_LRT_output.py reads these seed*_T.npy files and assumes the 2t scale
-    # (axis label "$2t$", chi2(dof) overlay, DOF_eff/2), so single-model outputs
-    # must be on the same 2× scale as everything else.
-    T_tensor = 2.0 * (num_log_data.sum() - den_log_data.sum())
-    test     = 2.0 * (num_log_data - den_log_data)
-
-    T = float(T_tensor.detach().cpu().item())
-    numerator   = num_log_data.detach().cpu().numpy()
-    denominator = den_log_data.detach().cpu().numpy()
-    test_np     = test.detach().cpu().numpy()
+assert T >= -1e-4, f"T = {T} < 0: nested LRT violated — a fit did not converge."
 
 print(f"T = {T:.6f}", flush=True)
 print(f"mean per-event log LR = {float(test.mean()):.6f}", flush=True)
 
 # -------------------------------------------------------------------
-# Save outputs
+# Save outputs. Same filenames as LRT.py where sensible so analyse_LRT_output.py
+# keeps working. NOTE the meaning of the saved "coeffs" is numerator-dependent:
+#   simplex        -> positive kernel mixture weights v (>= 0)
+#   multiplicative -> signed exp-tilt coefficients b
+# and for 'multiplicative' num_weights == den_weights (w frozen in the numerator).
 # -------------------------------------------------------------------
 with open(os.path.join(out_dir, f"seed{label}_T.txt"), "w") as f:
     f.write(f"{T}\n")
-
 np.save(os.path.join(out_dir, f"seed{label}_T.npy"), np.array(T, dtype=np.float64))
 
 if args.save_arrays:
-    np.save(os.path.join(out_dir, f"seed{label}_test.npy"),       test_np)
-    np.save(os.path.join(out_dir, f"seed{label}_numerator.npy"),  numerator)
-    np.save(os.path.join(out_dir, f"seed{label}_denominator.npy"), denominator)
+    np.save(os.path.join(out_dir, f"seed{label}_test.npy"),        test)
+    np.save(os.path.join(out_dir, f"seed{label}_numerator.npy"),   num_log_data)
+    np.save(os.path.join(out_dir, f"seed{label}_denominator.npy"), den_log_data)
 
-np.save(os.path.join(out_dir, f"seed{label}_coeffs.npy"),
-        model_num.network.get_coefficients().detach().cpu().numpy())
-# Kernel centres, same as LRT.py. plot_lrt_num_kernels.py needs BOTH
-# seed{N}_coeffs.npy AND seed{N}_kernel_centers.npy — without this it silently
-# skips every one-model run.
-np.save(os.path.join(out_dir, f"seed{label}_kernel_centers.npy"),
-        centers.detach().cpu().numpy())
+np.save(os.path.join(out_dir, f"seed{label}_coeffs.npy"), coeffs_out)
+np.save(os.path.join(out_dir, f"seed{label}_kernel_centers.npy"), centers)
+np.save(os.path.join(out_dir, f"seed{label}_den_weights.npy"),  w_den)
+np.save(os.path.join(out_dir, f"seed{label}_num_weights.npy"),  w_num)
+np.save(os.path.join(out_dir, f"seed{label}_init_weights.npy"), coefficients)
 
-# Save profiled GMM mixture weights. Use the SAME filenames as LRT.py
-# (seed{N}_den_weights / _num_weights / _init_weights) so that
-# analyse_LRT_output.py::collect_weight_arrays picks them up — otherwise the
-# weight-shift / weight-pull diagnostic panels come out blank for one-model runs.
-np.save(os.path.join(out_dir, f"seed{label}_den_weights.npy"),
-        model_den.weights.detach().cpu().numpy())
-np.save(os.path.join(out_dir, f"seed{label}_num_weights.npy"),
-        model_num.weights.detach().cpu().numpy())
-np.save(os.path.join(out_dir, f"seed{label}_init_weights.npy"),
-        weights_init_gmm.cpu().numpy())
+fit_report = {"den": {k: res_den[k] for k in ("loglik", "n_iter", "converged",
+                                              "hit_max_iter", "fmin", "n_active")},
+              "num": num_report}
+with open(os.path.join(out_dir, f"seed{label}_fit_report.json"), "w") as f:
+    json.dump(fit_report, f, indent=2)
 
 # -------------------------------------------------------------------
 # Summary
 # -------------------------------------------------------------------
-kernel_coeffs_final = model_num.network.get_coefficients().detach().cpu().numpy()
-raw_coeffs_final    = model_num.network.coefficients.detach().cpu().numpy()
-n_at_clip = int(np.sum(np.abs(raw_coeffs_final) >= clip_tau * 0.999))
-
-w_den_final  = model_den.weights.detach().cpu().numpy()
-w_num_final  = model_num.weights.detach().cpu().numpy()
-w_init_arr   = weights_init_gmm.cpu().numpy()
-delta_den    = w_den_final - w_init_arr
-delta_num    = w_num_final - w_init_arr
-
 np.set_printoptions(precision=6, suppress=True, linewidth=120)
-print(f"--- GMM mixture weights ({len(w_init_arr)} free components) ---")
-print(f"  max |Δw_den| = {np.abs(delta_den).max():.6f}  (mean |Δw| = {np.abs(delta_den).mean():.6f})")
-print(f"  max |Δw_num| = {np.abs(delta_num).max():.6f}  (mean |Δw| = {np.abs(delta_num).mean():.6f})")
-print("--- Kernel coefficients (mean-centred, %i components) ---" % n_kernels_numerator)
-print(f"  final      : {kernel_coeffs_final}")
-print(f"  saturated at clip={clip_tau}: {n_at_clip}/{n_kernels_numerator}", flush=True)
+print(f"--- Denominator mixture weights ---")
+print(f"  DEN: {K} model components, sum(w)={w_den.sum():.6f}, min={w_den.min():.3e}, "
+      f"active={int((w_den>1e-8).sum())}")
+if args.numerator == 'simplex':
+    print(f"--- Numerator (Option 2: additive (K+M)-simplex) ---")
+    print(f"  NUM: {K}+{M} on one simplex, sum={res_num['theta'].sum():.6f}")
+    print(f"       model mass sum(w_num)={w_num.sum():.6f}   kernel mass sum(v)={v_num.sum():.6f}")
+    print(f"       kernels active (v>1e-8): {int((v_num>1e-8).sum())}/{M}   max v={v_num.max():.3e}")
+else:
+    print(f"--- Numerator (Option 1: multiplicative NPLM exp-tilt) ---")
+    print(f"  w frozen at w_den; {M} tilt coeffs b, max|b|={np.abs(b_num).max():.3e}, "
+          f"logZ={logZ:.4f}")

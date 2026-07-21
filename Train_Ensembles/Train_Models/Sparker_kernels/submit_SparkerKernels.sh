@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=sparker_kernels
-#SBATCH --array=0-0
+#SBATCH --array=0-159
 #SBATCH --time=08:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
@@ -29,10 +29,12 @@ DATA_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/data/4d_embedding_q
 BASE_OUTDIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/4_dim/4d_embedding_qcd"
 mkdir -p "${BASE_OUTDIR}"
 
-# 4D-QCD Option A: rebalanced toward the fine layers (peak-builders) vs the 2D
-# schedule "80,70,60,50,40". Coarse layer halved (can't hog mass), fine layer ~4x
-# (resolves the sharp F3/F2/F4 peaks). Total 500 kernels (~1.7x the old 300).
-CENTROIDS_PER_LAYER="40,60,90,130,180"
+# 4D-QCD with JOINT training: kernel COUNT was ruled out as the peak cause
+# (debug_notes: M 270->460 no change; an equal-weight KDE already fills the peaks),
+# so use the smaller/faster 300-kernel schedule. The Option A rebalance
+# (40,60,90,130,180, M500) only existed to fight the OLD greedy schedule -- it's
+# unnecessary once training is joint, and ~1.7x slower per model x 128-160 models.
+CENTROIDS_PER_LAYER="80,70,60,50,40"
 N_MODELS=${SLURM_ARRAY_TASK_COUNT}
 
 # =============================
