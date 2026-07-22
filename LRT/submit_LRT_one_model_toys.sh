@@ -71,20 +71,15 @@ SEED_FORMAT="seed%03d"
 FIRSTSEED=12345
 
 # -------------------------
-# Numerator formulation (EDIT / OVERRIDE AT SUBMIT TIME)
+# Tilt regularization (EDIT / OVERRIDE AT SUBMIT TIME)
 # -------------------------
-# NUMERATOR=multiplicative : Sean Option 1 (NPLM exp-tilt, convex fit) — primary.
-# NUMERATOR=simplex        : Sean Option 2 (additive positive (K+M)-simplex, EM).
-# Each writes to its own run-tag folder so the two never mix; run both and
-# compare with analyse_LRT_output.py. Override per submission, e.g.:
-#   sbatch --export=ALL,NUMERATOR=simplex,CALIBRATION=1 submit_LRT_one_model_toys.sh
-NUMERATOR=${NUMERATOR:-multiplicative}
-# [multiplicative only] L2 ridge on the tilt coeffs b. lam_pert=0 SEPARATES
-# (logistic separation even under the null: max|b|~1e5 in 2D, ~2e3 in 4D), so a
-# nonzero ridge is REQUIRED. Scan (2026-07-21, one calib toy, both models):
-# lam_pert>=0.01 converges cleanly; lam_pert=1.0 keeps max|b|<1 (per-event tilt
-# bounded) with effective DOF ~35 (2D) / ~96 (4D). CLIP_B is currently NON-
-# functional (its L-BFGS-B path does not converge, ||g||~40) — use lam_pert.
+# The numerator is the multiplicative NPLM exp-tilt (the only form now). LAM_PERT is
+# the L2 ridge on the tilt coeffs b: lam_pert=0 SEPARATES (logistic separation even
+# under the null: max|b|~1e5 in 2D, ~2e3 in 4D), so a nonzero ridge is REQUIRED.
+# Scan (2026-07-21): lam_pert>=0.01 converges cleanly; lam_pert=1.0 keeps max|b|<1
+# with effective DOF ~35 (2D) / ~96 (4D). Override per submission, e.g.:
+#   sbatch --export=ALL,LAM_PERT=0.1,CALIBRATION=1 submit_LRT_one_model_toys.sh
+# CLIP_B is currently NON-functional (its L-BFGS-B path does not converge) — use LAM_PERT.
 LAM_PERT=${LAM_PERT:-1.0}
 CLIP_B=${CLIP_B:-}          # empty => no box on b (clip path unreliable; prefer lam_pert)
 
@@ -111,18 +106,15 @@ CMD=(python -u "$PY"
   -s "$SEED"
   --toy_id "$TOY_ID"
   -c "$CALIBRATION"
-  --numerator "$NUMERATOR"
+  --lam_pert "$LAM_PERT"
 )
 
 if [[ "$CALIBRATION" -eq 0 ]]; then
   CMD+=(--target_data "$TARGET_DATA")
 fi
 
-if [[ "$NUMERATOR" == "multiplicative" ]]; then
-  CMD+=(--lam_pert "$LAM_PERT")
-  if [[ -n "$CLIP_B" ]]; then
-    CMD+=(--clip_b "$CLIP_B")
-  fi
+if [[ -n "$CLIP_B" ]]; then
+  CMD+=(--clip_b "$CLIP_B")
 fi
 
 echo "Running: ${CMD[*]}"

@@ -86,24 +86,6 @@ def ensemble_pred(weights, model_probs):
     return p.detach().cpu().numpy()
 
 
-# ------------------
-# Kernel specific evaluation
-# ------------------
-def kernel_eval_probs(kernel_models, x):
-    """
-    kernel_models: list of kernel members, each supports:
-        m.call(x)[-1, :, 0] / m.get_norm()[-1]
-    x: (B, d) torch tensor on the correct device
-    returns: (B, M) torch tensor
-    """
-    with torch.no_grad():
-        vals = []
-        for m in kernel_models:
-            p = m.call(x)[-1, :, 0] / m.get_norm()[-1]
-            p = torch.clamp_min(p, 0.0)
-            vals.append(p)
-        return torch.stack(vals, dim=1)
-
 def plot_ensemble_marginals_2d_kernel(
     kernel_models,
     x_data,
@@ -112,19 +94,21 @@ def plot_ensemble_marginals_2d_kernel(
     feature_names,
     outdir,
     bins=40,
-    K=5000,
-    eval_batch=200000,
-    seed=1234,
 ):
     """
-    Proper 2D marginalisation, NF 4D style:
-    For feature i, compute v(c) = E_{x_other ~ data}[ f_j(x_i=c, x_other) ] for each model j,
-    then ensemble mean f(c) = v(c)^T w and sigma(c)^2 = v(c)^T Cov_w v(c).
+    1D marginals of the WiFi ensemble vs the target data, one panel per feature.
+
+    Each member is the Gaussian mixture the training's exact sampler uses,
+    f_m(x) = sum_k (c_k / sum_k c) N(x; mu_k, diag(wd_k^2)); its marginal over the
+    other features is the closed-form 1D mixture in feature i. The ensemble mean is
+    f(c) = sum_m w_m v_m(c) and the band is sigma(c)^2 = J(c)^T Cov_w J(c) with
+    J = v_{:-1} - v_{-1} (delta method over the M-1 free weights). Exact, smooth,
+    no Monte Carlo; works for any number of features D >= 2 (2D and 4D alike).
     """
     os.makedirs(outdir, exist_ok=True)
 
     x = x_data.detach().cpu().numpy()
-    N, D = x.shape
+    D = x.shape[1]
     assert D >= 2, "This function needs at least 2D inputs."
 
     if torch.is_tensor(weights):
@@ -133,15 +117,6 @@ def plot_ensemble_marginals_2d_kernel(
         w_t = torch.tensor(weights, dtype=torch.float64)
 
     cov_w_np = cov_w  # numpy or None
-
-    # device for kernel evaluation
-    try:
-        device = next(kernel_models[0].parameters()).device
-    except Exception:
-        device = torch.device("cpu")
-
-    from scipy.stats import gaussian_kde as _gkde
-    rng = np.random.default_rng(seed)
 
     for i in range(D):
         fig, (ax_main, ax_ratio) = plt.subplots(
@@ -165,41 +140,26 @@ def plot_ensemble_marginals_2d_kernel(
         hist_target = hist_target_counts / (N_target * bin_widths)
         err_target = np.sqrt(hist_target_counts) / (N_target * bin_widths)
 
-        # Proposal = the data's OWN (other-feature) distribution: samples sit on the
-        # density ridge, so the sharp correlated peak is captured (a broad Gaussian
-        # proposal smooths it; rejection sampling clips it). De-bias the data's mode
-        # over-weighting with 1/p_data (KDE) -> unbiased int f(x_i=c, x_other) dx_other,
-        # consistent with the fitted (ratio-form) member_probs.
-        oth = [d for d in range(D) if d != i]
-        idx = rng.integers(0, N, size=K)
-        X_others = x[idx].copy()
-        sub = x[rng.choice(N, size=min(N, 4000), replace=False)][:, oth].T
-        kde = _gkde(sub)
-        is_w = 1.0 / np.clip(kde(X_others[:, oth].T), 1e-300, None)  # (K,) 1/p_data
-
+        # Analytic marginal. Each member is the Gaussian mixture the training's exact
+        # sampler uses: member(x) = sum_k (c_k / sum_k c) N(x; mu_k, diag(wd_k^2)).
+        # Its marginal over the OTHER features is the closed-form 1D mixture in
+        # feature i -> exact, smooth, no Monte Carlo. (IS proposals cannot resolve the
+        # razor-sharp correlated peak, and 1/p_data via KDE over-weights the mode. The
+        # ratio-form member_probs is not analytically marginalisable, but this mixture
+        # representation is -- and it is exactly what the single-model plots validate.)
         B = len(bin_centers)
-
-        # Build (B, K, 2) batch, overwrite column i with scan value
-        X_batch = np.repeat(X_others[None, :, :], B, axis=0)  # (B, K, 2)
-        X_batch[:, :, i] = bin_centers[:, None]
-
-        # Flatten to (B*K, 2) and evaluate kernel models in chunks
-        X_flat = X_batch.reshape(B * K, D)
-        X_flat_t = torch.from_numpy(X_flat).to(device=device, dtype=torch.float32)
-
-        probs_chunks = []
-        with torch.no_grad():
-            for start in range(0, X_flat_t.shape[0], eval_batch):
-                xb = X_flat_t[start:start + eval_batch]
-                probs_b = kernel_eval_probs(kernel_models, xb).detach().cpu().double()  # (chunk, M)
-                probs_chunks.append(probs_b)
-
-        probs_per_model = torch.cat(probs_chunks, dim=0)  # (B*K, M)
-
-        # IS-weighted average over K -> v(c) = true per-member marginal, shape (B, M)
-        probs_per_model = probs_per_model.view(B, K, -1)
-        isw_t = torch.from_numpy(is_w).to(probs_per_model).view(1, K, 1)
-        v_mat = (probs_per_model * isw_t).mean(dim=1)  # (B, M)
+        bc = bin_centers[:, None]  # (B, 1)
+        v_cols = []
+        for m in kernel_models:
+            c  = m.get_coeffs().detach().cpu().double().numpy().reshape(-1)   # (Mk,)
+            mu = m.get_centroids().detach().cpu().double().numpy()[:, i]      # (Mk,)
+            sd = m.get_widths().detach().cpu().double().numpy()[:, i]         # (Mk,)
+            c = np.clip(c, 0.0, None); s = c.sum()
+            p = c / s if s > 0 else np.full_like(c, 1.0 / len(c))
+            z = (bc - mu[None, :]) / sd[None, :]                              # (B, Mk)
+            g = np.exp(-0.5 * z * z) / (sd[None, :] * np.sqrt(2.0 * np.pi))
+            v_cols.append(g @ p)                                             # (B,)
+        v_mat = torch.from_numpy(np.stack(v_cols, axis=1)).double()          # (B, M)
 
         # Ensemble mean
         f_binned = (v_mat @ w_t).numpy()  # (B,)
