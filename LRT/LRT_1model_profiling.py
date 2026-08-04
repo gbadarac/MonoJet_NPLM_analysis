@@ -1,4 +1,4 @@
-import glob, math, time, os, json, argparse, datetime, sys
+import math, os, json, argparse, datetime, sys
 from pathlib import Path
 import numpy as np
 from scipy.spatial.distance import pdist
@@ -15,32 +15,21 @@ import LRTGOFutils_v2 as lrt
 import GENutils as gen
 
 # ===================================================================
-# One-model kernel GoF — multiplicative NPLM exp-tilt numerator (Sean Option 1).
+# One-model kernel GoF — multiplicative NPLM exp-tilt (Sean Option 1).
 #
-# The single SParKer model is trained as a positive, sum-normalized mixture, so its
-# component weights live on the probability simplex. The DENOMINATOR fits them to the
-# data by EM (fit_simplex_em):   DEN:  f = sum_k w_k g_k,  w on the K-simplex.
+# The single SParKer model is a positive, sum-normalized mixture, so its component
+# weights live on the K-simplex.
+#   DEN: fit the weights to the data by EM (fit_simplex_em),  f = sum_k w_k g_k.
+#   NUM: tilt the DEN-optimal model,  f = f_mix(x; w_den) * exp(sum_j b_j G_j(x)) / Z.
+# The shared log f_mix cancels, so  T = 2 * max_b [ sum_data tau(x_i) - N * log Z ].
+# w is FROZEN at w_den (only b fit) -> convex (linear - N*log-sum-exp), f>0, T>=0
+# (b=0 recovers DEN). Solved by lrt.fit_nplm_tilt; L2 ridge lam_pert on b sets the DOF.
 #
-# The NUMERATOR multiplies the DEN-optimal model by an exponential tilt, the standard
-# NPLM form (= wifi_better_basis/classifier_gof.py):
-#     NUM: f = f_mix(x; w_den) * exp(sum_j b_j G_j(x)) / Z,   Z = E_{f_mix}[exp tau].
-# The shared log f_mix term cancels and
-#     T = 2 * max_b [ sum_data tau(x_i) - N * log Z ].
-# The normalization Z is computed two ways (--z_mode):
-#   sample : MC average over a reference drawn from the DEN-optimal model. This is
-#            two-sample-LOOKING (finite R broadens the null); Z(0)=1 by construction.
-#   grid   : deterministic quadrature over a fixed grid, a_r = log f_mix(y_r). This is
-#            a GENUINE one-sample test (no reference sample, no MC noise), exact in low
-#            d -> use in 2D; infeasible in high d (grid_points**d), use sample in 4D.
-# With w FROZEN at w_den (only b fit) this is CONVEX (linear - N*log-sum-exp, PSD
-# Hessian) -> robust, always f>0, T >= 0 (b=0 recovers DEN). Solved by
-# lrt.fit_nplm_tilt (scipy trust-exact + closed-form grad/Hessian). An L2 ridge
-# lam_pert on b sets the effective DOF.
-#
-# (The earlier additive positive-simplex numerator (Sean Option 2) was removed: its
-# positivity constraint gives a degenerate, over-sensitive null; the multiplicative
-# form gives a clean Wilks chi^2 null and matches the classifier. fit_simplex_em is
-# still used for the DENOMINATOR above.)
+# Z is estimated by MC over a reference sample ~ DEN-optimal model (n_ref = Ntest, 1:1).
+# The finite reference inflates the null (conservative: rejecting at 1:1 => rejecting at
+# any larger ref) and is the only estimator feasible in 4D (a grid needs grid_points**d),
+# so 2D and 4D share the same pipeline. The verdict is read from the EMPIRICAL null
+# (calibration T vs test T), not a chi^2 fit.
 # ===================================================================
 
 # -------------------------------------------------------------------
@@ -67,36 +56,21 @@ parser.add_argument('--toy_id', type=int, default=None,
                     help="Toy index used for folder/file naming (0-based). Falls back to seed.")
 parser.add_argument('--save_arrays', action='store_true',
                     help="If set, also save per-event numerator/denominator/test arrays.")
-parser.add_argument('--z_mode', type=str, default='sample', choices=['sample', 'grid'],
-                    help="Normalization Z for the numerator. 'sample' = MC over a "
-                         "reference drawn from the DEN-optimal model (two-sample-looking; "
-                         "finite-R broadens the null). 'grid' = deterministic quadrature "
-                         "over a fixed grid (genuine one-sample; exact in low d -> use in "
-                         "2D, infeasible in high d).")
-parser.add_argument('--grid_points', type=int, default=300,
-                    help="[z_mode=grid] points per dimension (total = grid_points**d).")
-parser.add_argument('--grid_pad', type=float, default=0.2,
-                    help="[z_mode=grid] fractional padding beyond the data range per dim.")
 parser.add_argument('--n_ref', type=int, default=None,
-                    help="[z_mode=sample] # reference points ~ DEN-optimal model "
-                         "for the normalization estimate (default: Ntest).")
+                    help="# reference points ~ DEN-optimal model for the sample-MC Z "
+                         "estimate (default: Ntest, i.e. 1:1).")
 parser.add_argument('--lam_pert', type=float, default=1.0,
-                    help="[multiplicative] L2 ridge 0.5*lam*||b||^2 on tilt coeffs "
-                         "(= classifier_gof lam_pert). lam_pert=0 SEPARATES (tilt "
-                         "runaway even under the null: max|b|~1e5 in 2D); 1.0 keeps "
-                         "max|b|<1. Must be > 0.")
+                    help="L2 ridge 0.5*lam*||b||^2 on tilt coeffs (= classifier_gof "
+                         "lam_pert). Must be > 0: lam_pert=0 separates (tilt runaway).")
 parser.add_argument('--clip_b', type=float, default=None,
-                    help="[multiplicative] optional symmetric box |b_j| <= clip_b.")
+                    help="Optional symmetric box |b_j| <= clip_b.")
 parser.add_argument('--n_kernels', type=int, default=100,
-                    help="Number M of exp-tilt kernels in the numerator (centred on the "
-                         "first M data points). NPLM guideline: M >= sqrt(N_train) (~316 "
-                         "for 100k) for a good kernel approximation; M below that can make "
-                         "the test under-powered. Was hardcoded to 100.")
+                    help="Number M of exp-tilt kernels (centred on the first M data "
+                         "points). NPLM guideline: M >= sqrt(N_train) (~316 for 100k).")
 parser.add_argument('--kernel_sigma', type=float, default=0.3,
-                    help="Isotropic width sigma of the numerator tilt kernels. Drives test "
-                         "power; keep FIXED across calibration and test (a per-toy value "
-                         "biases the Z estimate). candidate_sigma anchor is printed at run "
-                         "start. Was hardcoded to 0.3.")
+                    help="Isotropic width sigma of the tilt kernels. Drives test power; "
+                         "keep FIXED across calibration and test (a per-toy value biases "
+                         "Z). candidate_sigma anchor is printed at run start.")
 args = parser.parse_args()
 
 # -------------------------------------------------------------------
@@ -137,9 +111,6 @@ if args.lam_pert > 0:
     run_tag += "_L%g" % args.lam_pert
 if args.clip_b is not None:
     run_tag += "_clipb%s" % str(args.clip_b)
-# 'sample' keeps the historical folder names; tag only the new deterministic grid-Z.
-if args.z_mode != 'sample':
-    run_tag += "_zgrid"
 
 out_dir = os.path.join(args.out_base, run_tag, mode_tag, "seed%i" % label)
 os.makedirs(out_dir, exist_ok=True)
@@ -187,8 +158,7 @@ def sample_from_gmm(centroids, coefficients, widths, n_samples, rng):
 def candidate_sigma(data, perc=90, n_sub=2000):
     """NPLM bandwidth heuristic (= FLKutils_model.candidate_sigma): the perc-th
     percentile of pairwise distances on a subsample. Informational anchor only —
-    pass a FIXED value via --kernel_sigma; a per-toy data-driven sigma would differ
-    between calibration and test and bias the Z estimate."""
+    pass a FIXED value via --kernel_sigma (see its help)."""
     sub = np.asarray(data[:n_sub], dtype=np.float64)
     return float(np.around(np.percentile(pdist(sub), perc), 1))
 
@@ -256,52 +226,17 @@ w_den        = res_den["theta"]          # (K,)
 den_log_data = np.log(res_den["f"])      # (N,)
 
 # ---------------------------------------------------------------
-# NUM: multiplicative NPLM exp-tilt. The shared log f_mix term cancels, so
-# T = 2*max_b[ sum_data tau - N*log Z ]. Convex (w frozen). Z is computed over
-# reference points y_r with log-weights a_r (sum exp(a_r)=1):
-#   sample : y_r ~ DEN-optimal model, uniform a_r = -log R (MC; two-sample-looking).
-#   grid   : y_r on a fixed grid, a_r = log f_mix(y_r) (deterministic; one-sample).
+# NUM: multiplicative NPLM exp-tilt (convex, w frozen). Z is estimated by MC over a
+# reference sample y_r ~ DEN-optimal model (uniform a_r = -log R); see header.
 # ---------------------------------------------------------------
-if args.z_mode == 'sample':
-    n_ref = args.n_ref if args.n_ref is not None else Ntest
-    rng_ref = np.random.default_rng(seed=seed + 987654321)   # independent stream
-    ref_samples = sample_from_gmm(centroids, w_den, widths, n_ref, rng_ref)
-    K_ref = lrt.gaussian_kernel_matrix(ref_samples, centers, kernel_width_numerator)  # (R, M)
-    log_w_ref = None
-    print(f"Z via SAMPLE: {n_ref} refs ~ DEN-optimal model; K_ref {K_ref.shape}", flush=True)
-else:  # grid: deterministic quadrature -> genuine one-sample test
-    d = bootstrap_sample.shape[1]
-    G_total = args.grid_points ** d
-    if G_total > 4_000_000:
-        raise ValueError(f"grid too large: {args.grid_points}**{d} = {G_total} points. "
-                         "Grid-Z is for low d (2D); use --z_mode sample in high d.")
-    lo = bootstrap_sample.min(axis=0).astype(np.float64)
-    hi = bootstrap_sample.max(axis=0).astype(np.float64)
-    span = hi - lo
-    lo = lo - args.grid_pad * span
-    hi = hi + args.grid_pad * span
-    # ensure the model's own support is covered (centroids +/- 5 widths)
-    cmin = (centroids - 5.0 * widths[:, None]).min(axis=0)
-    cmax = (centroids + 5.0 * widths[:, None]).max(axis=0)
-    lo = np.minimum(lo, cmin)
-    hi = np.maximum(hi, cmax)
-    axes = [np.linspace(lo[k], hi[k], args.grid_points) for k in range(d)]
-    mesh = np.meshgrid(*axes, indexing='ij')
-    grid = np.stack([m.ravel() for m in mesh], axis=1).astype(np.float64)   # (G, d)
-    step = (hi - lo) / (args.grid_points - 1)
-    comps_grid = gen.evaluate_gaussian_components(grid, centroids, widths)  # (G, K)
-    f0_grid = comps_grid @ w_den                                           # (G,)
-    K_ref = lrt.gaussian_kernel_matrix(grid, centers, kernel_width_numerator)  # (G, M)
-    log_w_ref = np.log(np.maximum(f0_grid, 1e-300))   # self-normalized in fit_nplm_tilt
-    grid_mass = float((f0_grid * np.prod(step)).sum())
-    print(f"Z via GRID: {args.grid_points}/dim, {grid.shape[0]} pts, step={np.array2string(step, precision=3)}, "
-          f"sigma={kernel_width_numerator}; grid f0 mass = {grid_mass:.4f} (should be ~1)", flush=True)
-    if not (0.95 <= grid_mass <= 1.05):
-        print(f"WARNING: grid f0 mass = {grid_mass:.4f} far from 1 -> grid may not cover "
-              f"the model support; widen extent or raise grid_points.", flush=True)
+n_ref = args.n_ref if args.n_ref is not None else Ntest
+rng_ref = np.random.default_rng(seed=seed + 987654321)   # independent stream
+ref_samples = sample_from_gmm(centroids, w_den, widths, n_ref, rng_ref)
+K_ref = lrt.gaussian_kernel_matrix(ref_samples, centers, kernel_width_numerator)  # (R, M)
+print(f"Z via SAMPLE: {n_ref} refs ~ DEN-optimal model; K_ref {K_ref.shape}", flush=True)
 
 res_num = lrt.fit_nplm_tilt(Kmat, K_ref, lam_pert=args.lam_pert, clip=args.clip_b,
-                            log_w_ref=log_w_ref, name="NUM", verbose=True)
+                            log_w_ref=None, name="NUM", verbose=True)
 if not res_num["converged"]:
     print(f"WARNING: NUM tilt fit not converged (||g||={res_num['grad_norm']:.2e})",
           flush=True)
@@ -311,11 +246,9 @@ logZ         = res_num["logZ"]
 tau_data     = res_num["tau_data"]                   # (N,)
 num_log_data = den_log_data + tau_data - logZ        # log f_num at the data
 test         = 2.0 * (tau_data - logZ)               # per-event 2*logLR
-# T = the PURE (unpenalized) 2*log-likelihood ratio (= 2*(loglik_num - loglik_den)),
-# equal to sum(test). The L2 ridge only shapes the fit (bounds b); it is NOT part
-# of the reported statistic. NOTE: res_num["T"] = 2*ll is the PENALIZED value
-# (= T - lam*||b||^2) and would break the sum(test)==T identity for lam_pert>0 —
-# do NOT use it here.
+# T = the PURE (unpenalized) 2*log-likelihood ratio = sum(test). The L2 ridge only
+# shapes the fit; it is NOT part of the statistic. Do NOT use res_num["T"] (penalized,
+# = T - lam*||b||^2) — it breaks the sum(test)==T identity for lam_pert>0.
 T            = 2.0 * (num_log_data.sum() - den_log_data.sum())
 assert abs(T - test.sum()) < 1e-4 * (1.0 + abs(T)), (T, float(test.sum()))
 
@@ -331,9 +264,8 @@ print(f"T = {T:.6f}", flush=True)
 print(f"mean per-event log LR = {float(test.mean()):.6f}", flush=True)
 
 # -------------------------------------------------------------------
-# Save outputs. Same filenames as LRT.py where sensible so analyse_LRT_output.py
-# keeps working. Saved "coeffs" = the signed exp-tilt coefficients b, and
-# num_weights == den_weights (w is frozen in the numerator).
+# Save outputs. Same filenames as LRT.py so analyse_LRT_output.py keeps working.
+# "coeffs" = the signed exp-tilt coefficients b; num_weights == den_weights (w frozen).
 # -------------------------------------------------------------------
 with open(os.path.join(out_dir, f"seed{label}_T.txt"), "w") as f:
     f.write(f"{T}\n")

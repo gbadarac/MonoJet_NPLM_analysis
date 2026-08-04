@@ -16,9 +16,9 @@ set -euo pipefail
 # ─── Mode toggles (EDIT THESE) ───────────────────────────────────────
 MODEL_TYPE=kernels   # kernels | nf
 
-CALIBRATION=1        # 1 = null toys (SIR + calib pool)  |  0 = observed (target data)
-FIX_WIFI_WEIGHTS=false
-FREE_WIFI_WEIGHTS=false
+CALIBRATION=${CALIBRATION:-1}              # 1 = null toys (SIR + calib pool)  |  0 = observed (target data)
+FIX_WIFI_WEIGHTS=${FIX_WIFI_WEIGHTS:-false}   # respects sbatch --export override
+FREE_WIFI_WEIGHTS=${FREE_WIFI_WEIGHTS:-false} # respects sbatch --export override
 
 NTEST=100000
 FIRSTSEED=12345
@@ -27,14 +27,15 @@ FIRSTSEED=12345
 # NUMERATOR=additive       : f_ens + sum c_j G_j (current; convex; SGD).
 # NUMERATOR=multiplicative : f_ens*exp(tau)/Z (NPLM exp-tilt; matches LRT_one_model
 #                            + classifier; log-space, clean chi2). Currently requires
-#                            FROZEN weights (FIX_WIFI_WEIGHTS=true) and Z_MODE=grid (2D);
-#                            constrained/free (joint w,b) is the next step.
+#                            FROZEN weights (FIX_WIFI_WEIGHTS=true); Z_MODE defaults to
+#                            sample (importance from q; any d) — set Z_MODE=grid only for
+#                            a 2D cross-check. Constrained/free (joint w,b) is the next step.
 #   sbatch --export=ALL,NUMERATOR=multiplicative,FIX_WIFI_WEIGHTS=true,CALIBRATION=1 submit_LRT_toys.sh
 NUMERATOR=${NUMERATOR:-additive}
 N_KERNELS=${N_KERNELS:-100}
 KERNEL_SIGMA=${KERNEL_SIGMA:-0.3}
 LAM_PERT=${LAM_PERT:-1.0}          # [multiplicative] L2 ridge on tilt coeffs b
-Z_MODE=${Z_MODE:-grid}             # [multiplicative] grid (2D) | sample (importance from q; 4D)
+Z_MODE=${Z_MODE:-sample}           # [multiplicative] sample (importance from q; any d, DEFAULT) | grid (2D cross-check)
 GRID_POINTS=${GRID_POINTS:-300}    # [multiplicative grid] points per dimension
 GRID_PAD=${GRID_PAD:-0.2}          # [multiplicative grid] padding beyond data range
 N_REF=${N_REF:-}                   # [multiplicative sample] # importance refs (default Ntest; >>Ntest in 4D)

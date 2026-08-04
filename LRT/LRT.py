@@ -1,7 +1,8 @@
-import glob, gc, os, json, argparse, sys, ctypes
+import glob, gc, os, json, argparse, sys, ctypes, math, datetime
 from pathlib import Path
 import torch
 import numpy as np
+from scipy.spatial.distance import pdist
 
 
 def _np2t(arr, dtype=torch.float64):
@@ -88,21 +89,22 @@ parser.add_argument('--fix_wifi_weights', action='store_true',
 parser.add_argument('--free_wifi_weights', action='store_true',
                     help="Profile WiFi weights freely with no prior (free mode, C→∞).")
 
-# Numerator form (additive = current; multiplicative = NPLM exp-tilt, matches
-# LRT_one_model + classifier). See the multiplicative block below.
+# Numerator form (additive = current; multiplicative = NPLM exp-tilt. See the multiplicative block below.
 parser.add_argument('--numerator', type=str, default='additive',
                     choices=['additive', 'multiplicative'],
                     help="'additive' f_ens + sum c_j G_j (convex, mean-centred; current). "
-                         "'multiplicative' f_ens*exp(tau)/Z (log-space, clean chi2; matches "
-                         "LRT_one_model + classifier). Multiplicative currently requires "
+                         "'multiplicative' f_ens*exp(tau)/Z (log-space, clean chi2. Multiplicative currently requires "
                          "--fix_wifi_weights (frozen, convex); constrained/free is step 2.")
 parser.add_argument('--n_kernels', type=int, default=100, help="M numerator kernels.")
 parser.add_argument('--kernel_sigma', type=float, default=0.3, help="Kernel width sigma.")
 parser.add_argument('--lam_pert', type=float, default=1.0,
                     help="[multiplicative] L2 ridge on tilt coeffs b (= one-model/classifier).")
-parser.add_argument('--z_mode', type=str, default='grid', choices=['grid', 'sample'],
-                    help="[multiplicative] Z normalization. 'grid' deterministic quadrature "
-                         "(one-sample; 2D). 'sample' not yet wired for the ensemble.")
+parser.add_argument('--z_mode', type=str, default='sample', choices=['sample', 'grid'],
+                    help="[multiplicative] Z normalization. 'sample' (DEFAULT) = importance "
+                         "sampling from q (equal-weight member mixture); works in any d, the "
+                         "only option in 4D, and matches the one-model sample-Z choice. 'grid' "
+                         "= deterministic quadrature (exact one-sample; 2D only) — kept as a "
+                         "2D cross-check to validate the importance-sample Z is unbiased.")
 parser.add_argument('--grid_points', type=int, default=300,
                     help="[multiplicative grid] points per dimension.")
 parser.add_argument('--grid_pad', type=float, default=0.2,
@@ -117,6 +119,10 @@ train_wifi_weights = not args.fix_wifi_weights
 use_prior = train_wifi_weights and not args.free_wifi_weights
 
 seed  = args.seed
+if seed is None:
+    seed = (datetime.datetime.now().microsecond
+            + datetime.datetime.now().second
+            + datetime.datetime.now().minute)
 print('Random seed:', seed)
 label = args.toy_id if args.toy_id is not None else seed
 
@@ -302,6 +308,15 @@ def _sample_ensemble_q(n, rng):
     return out
 
 
+def candidate_sigma(data, perc=90, n_sub=2000):
+    """NPLM bandwidth heuristic (= FLKutils_model.candidate_sigma): the perc-th
+    percentile of pairwise distances on a subsample. Informational anchor only —
+    pass a FIXED --kernel_sigma; a per-toy data-driven sigma would bias Z between
+    calibration and test. Keep sigma MATCHED across the progression stages."""
+    sub = np.asarray(data[:n_sub], dtype=np.float64)
+    return float(np.around(np.percentile(pdist(sub), perc), 1))
+
+
 # ===================================================================
 # MULTIPLICATIVE numerator (NPLM exp-tilt) — self-contained path, runs BEFORE the
 # additive data-loading so the additive path is left completely untouched.
@@ -311,7 +326,7 @@ def _sample_ensemble_q(n, rng):
 #   calibration=1 : frozen null ~ f_ens(w_hat) via SIR from q (equal-weight mixture).
 #   calibration=0 : bootstrap of the target data (replace=True).
 # Z (--z_mode): grid = deterministic quadrature (2D); sample = importance from q (any d, 4D).
-# Matches LRT_one_model + the classifier's log-space perturbation (SIR-on-q like sir_toy).
+# log-space perturbation (SIR-on-q like sir_toy).
 # Constrained/free (joint w,b, non-convex) is the next step (step 3).
 # ===================================================================
 if args.numerator == 'multiplicative':
@@ -349,6 +364,12 @@ if args.numerator == 'multiplicative':
         bootstrap_sample = data_all[idx]
         probs_np = _eval_ensemble(bootstrap_sample)
     N = bootstrap_sample.shape[0]
+
+    sigma_anchor = candidate_sigma(bootstrap_sample)
+    print(f"[sigma anchor] NPLM candidate_sigma(perc=90) = {sigma_anchor:.3f}; "
+          f"running kernel_sigma={kernel_width_numerator}, M={n_kernels_numerator} "
+          f"(sqrt(N)={math.sqrt(N):.0f}). Keep sigma FIXED + MATCHED across stages.",
+          flush=True)
 
     f_ens_data = np.maximum(_f_ens(probs_np), 1e-300)             # (N,)
     den_log_np = np.log(f_ens_data)
@@ -401,6 +422,9 @@ if args.numerator == 'multiplicative':
     tau_data = res_num["tau_data"]                                # (N,)
     num_log_np = den_log_np + tau_data - logZ
     test_np  = 2.0 * (tau_data - logZ)
+    # T is the PURE (unpenalized) 2*logLR = sum(test_np). Do NOT use res_num["T"]
+    # (= 2*ll, the PENALIZED value T - lam*||b||^2); it breaks sum(test)==T for
+    # lam_pert > 0.
     T = 2.0 * (num_log_np.sum() - den_log_np.sum())
     assert abs(T - test_np.sum()) < 1e-4 * (1.0 + abs(T)), (T, float(test_np.sum()))
     assert T >= -1e-4, f"T = {T} < 0: nested LRT violated — a fit did not converge."

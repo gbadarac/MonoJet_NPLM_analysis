@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=LRT_one_model
+#SBATCH --job-name=LRT_1model_profiling
 #SBATCH --array=0-99
 #SBATCH --time=08:00:00
 #SBATCH --mem=20G
@@ -38,7 +38,7 @@ export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:32
 # Paths / config (EDIT THESE)
 # -------------------------
 REPO_ROOT="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis"
-PY="$REPO_ROOT/LRT/LRT_one_model.py"
+PY="$REPO_ROOT/LRT/LRT_1model_profiling.py"
 
 # Train_Ensembles output with config.json + seed*/ histories
 MODEL_DIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/4_dim/4d_embedding_qcd/N_100000_dim_4_kernels_SparKer_models1_L5_K80_M300_Nboot100000_lr0.05_clip_10000000_joint_norm"
@@ -67,48 +67,33 @@ TARGET_DATA="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/data/4d_embedding
 
 NTEST=100000
 SEED_FORMAT="seed%03d"
-
 FIRSTSEED=12345
 
 # -------------------------
 # Tilt regularization (EDIT / OVERRIDE AT SUBMIT TIME)
 # -------------------------
-# The numerator is the multiplicative NPLM exp-tilt (the only form now). LAM_PERT is
-# the L2 ridge on the tilt coeffs b: lam_pert=0 SEPARATES (logistic separation even
-# under the null: max|b|~1e5 in 2D, ~2e3 in 4D), so a nonzero ridge is REQUIRED.
-# Scan (2026-07-21): lam_pert>=0.01 converges cleanly; lam_pert=1.0 keeps max|b|<1
-# with effective DOF ~35 (2D) / ~96 (4D). Override per submission, e.g.:
-#   sbatch --export=ALL,LAM_PERT=0.1,CALIBRATION=1 submit_LRT_one_model_toys.sh
-# CLIP_B is currently NON-functional (its L-BFGS-B path does not converge) — use LAM_PERT.
+# LAM_PERT = L2 ridge on the tilt coeffs b. Must be > 0: lam_pert=0 separates (tilt
+# runaway under the null). lam_pert=1.0 keeps max|b|<1 (effective DOF ~35 2D / ~96 4D).
+# CLIP_B is NON-functional (its L-BFGS-B path does not converge) — use LAM_PERT.
+#   sbatch --export=ALL,LAM_PERT=0.1,CALIBRATION=1 submit_LRT_1model_profiling_toys.sh
 LAM_PERT=${LAM_PERT:-1.0}
-CLIP_B=${CLIP_B:-}          # empty => no box on b (clip path unreliable; prefer lam_pert)
+CLIP_B=${CLIP_B:-}                # empty => no box on b
 
 # -------------------------
 # Numerator kernel basis (EDIT / OVERRIDE AT SUBMIT TIME)
 # -------------------------
-# Gaia (2026-07-22): M=100 < sqrt(N)=316 gives no kernel-approximation guarantee, and
-# sigma drives test power, so the closure may be a low-power artifact. Scan M (e.g. 500)
-# and sigma to check. The script prints the NPLM candidate_sigma anchor. Each (M,sigma)
-# is a NEW null -> recalibrate. Keep sigma FIXED across a calib+test pair. Override e.g.:
-#   sbatch --export=ALL,N_KERNELS=500,KERNEL_SIGMA=0.5,CALIBRATION=1 submit_LRT_one_model_toys.sh
+# M and sigma drive test power. NPLM guideline: M >= sqrt(N)=316 for 100k. Each
+# (M,sigma) is a NEW null -> recalibrate; keep sigma FIXED across a calib+test pair.
+#   sbatch --export=ALL,N_KERNELS=500,KERNEL_SIGMA=0.5,CALIBRATION=1 submit_LRT_1model_profiling_toys.sh
 N_KERNELS=${N_KERNELS:-100}
 KERNEL_SIGMA=${KERNEL_SIGMA:-0.3}
 
 # -------------------------
 # Normalization Z (EDIT / OVERRIDE AT SUBMIT TIME)
 # -------------------------
-# Z_MODE=sample : MC over a reference drawn ~ DEN-optimal model (historical default).
-#                 Two-sample-LOOKING: the finite reference inflates the null (validated
-#                 2026-08: ~40x at n_ref=Ntest on a 2D null toy; sample T -> grid T as
-#                 n_ref grows). Use N_REF to enlarge the reference toward the grid limit.
-# Z_MODE=grid   : deterministic quadrature over a fixed grid -> GENUINE one-sample test,
-#                 exact in low d. Use in 2D (grid_points**d, infeasible in 4D -> sample).
-#                 GRID_POINTS/dim: 200 was already resolution-converged in 2D.
-#   sbatch --export=ALL,Z_MODE=grid,CALIBRATION=1 submit_LRT_one_model_toys.sh
-Z_MODE=${Z_MODE:-sample}
-GRID_POINTS=${GRID_POINTS:-300}   # [z_mode=grid] points per dimension
-GRID_PAD=${GRID_PAD:-0.2}         # [z_mode=grid] fractional padding beyond data range
-N_REF=${N_REF:-}                  # [z_mode=sample] override # reference points (default: Ntest)
+# Z is estimated by MC over a reference sample ~ DEN-optimal model (sample-Z). The
+# finite reference inflates the null (conservative); verdict from the EMPIRICAL null.
+N_REF=${N_REF:-}                  # override # reference points (default: Ntest, i.e. 1:1)
 
 # -------------------------
 # Per-task variables
@@ -136,7 +121,6 @@ CMD=(python -u "$PY"
   --lam_pert "$LAM_PERT"
   --n_kernels "$N_KERNELS"
   --kernel_sigma "$KERNEL_SIGMA"
-  --z_mode "$Z_MODE"
 )
 
 if [[ "$CALIBRATION" -eq 0 ]]; then
@@ -145,10 +129,6 @@ fi
 
 if [[ -n "$CLIP_B" ]]; then
   CMD+=(--clip_b "$CLIP_B")
-fi
-
-if [[ "$Z_MODE" == "grid" ]]; then
-  CMD+=(--grid_points "$GRID_POINTS" --grid_pad "$GRID_PAD")
 fi
 
 if [[ -n "$N_REF" ]]; then
