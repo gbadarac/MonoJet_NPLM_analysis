@@ -23,18 +23,36 @@ FREE_WIFI_WEIGHTS=false
 NTEST=100000
 FIRSTSEED=12345
 
+# ─── Numerator form (EDIT / OVERRIDE AT SUBMIT TIME) ─────────────────
+# NUMERATOR=additive       : f_ens + sum c_j G_j (current; convex; SGD).
+# NUMERATOR=multiplicative : f_ens*exp(tau)/Z (NPLM exp-tilt; matches LRT_one_model
+#                            + classifier; log-space, clean chi2). Currently requires
+#                            FROZEN weights (FIX_WIFI_WEIGHTS=true) and Z_MODE=grid (2D);
+#                            constrained/free (joint w,b) is the next step.
+#   sbatch --export=ALL,NUMERATOR=multiplicative,FIX_WIFI_WEIGHTS=true,CALIBRATION=1 submit_LRT_toys.sh
+NUMERATOR=${NUMERATOR:-additive}
+N_KERNELS=${N_KERNELS:-100}
+KERNEL_SIGMA=${KERNEL_SIGMA:-0.3}
+LAM_PERT=${LAM_PERT:-1.0}          # [multiplicative] L2 ridge on tilt coeffs b
+Z_MODE=${Z_MODE:-grid}             # [multiplicative] grid (2D) | sample (importance from q; 4D)
+GRID_POINTS=${GRID_POINTS:-300}    # [multiplicative grid] points per dimension
+GRID_PAD=${GRID_PAD:-0.2}          # [multiplicative grid] padding beyond data range
+N_REF=${N_REF:-}                   # [multiplicative sample] # importance refs (default Ntest; >>Ntest in 4D)
+# 4D: set NUMERATOR=multiplicative, Z_MODE=sample, FIX_WIFI_WEIGHTS=true; the multiplicative
+# path builds its own null (SIR-from-q) so CALIB_DATA is ignored (no 4D pool needed).
+
 # ─── Per-model paths (EDIT THESE) ────────────────────────────────────
 REPO_ROOT="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis"
 PY="$REPO_ROOT/LRT/LRT.py"
 
 if [[ "$MODEL_TYPE" == "kernels" ]]; then
     CONDA_ENV=kernels_env
-    NENSEMBLE=32
-    ENSEMBLE_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking"
-    W_PATH="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernels/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents32/w_i_fitted.npy"
-    W_COV_PATH="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernels/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents32/cov_w.npy"
-    CALIB_DATA="$REPO_ROOT/Generate_Ensemble_Samples/Sparker_kernels/saved_generated_kernel_ensemble_data/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents32"
-    TARGET_DATA="$REPO_ROOT/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/500k_2d_gaussian_heavy_tail_target_set.npy"
+    NENSEMBLE=110
+    ENSEMBLE_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/4_dim/4d_embedding_qcd/N_100000_dim_4_kernels_SparKer_models160_L5_K80_M300_Nboot100000_lr0.05_clip_10000000_joint_norm"
+    W_PATH="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernels/N_100000_dim_4_kernels_SparKer_models160_L5_K80_M300_Nboot100000_lr0.05_clip_10000000_joint_norm_4d_embedding_qcd_ensemblecomponents110/w_i_fitted.npy"
+    W_COV_PATH="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernels/N_100000_dim_4_kernels_SparKer_models160_L5_K80_M300_Nboot100000_lr0.05_clip_10000000_joint_norm_4d_embedding_qcd_ensemblecomponents110/cov_w.npy"
+    CALIB_DATA=""   # unused by the multiplicative path (self-generated SIR-from-q null); only the additive path reads it
+    TARGET_DATA="$REPO_ROOT/data/4d_embedding_qcd_Ntrain100000_Ntest100000_seed42/data_test.npy"
 
 elif [[ "$MODEL_TYPE" == "nf" ]]; then
     CONDA_ENV=nf_env
@@ -88,12 +106,20 @@ CMD=(python -u "$PY"
   -s              "$SEED"
   --toy_id        "$TOY_ID"
   -c              "$CALIBRATION"
+  --numerator     "$NUMERATOR"
+  --n_kernels     "$N_KERNELS"
+  --kernel_sigma  "$KERNEL_SIGMA"
 )
 
 if [[ "$MODEL_TYPE" == "kernels" ]]; then
     CMD+=(--ensemble_dir "$ENSEMBLE_DIR" --seed_format "seed%03d")
 elif [[ "$MODEL_TYPE" == "nf" ]]; then
     CMD+=(--fi_path "$FI_PATH" --arch_config "$ARCH_CONFIG")
+fi
+
+if [[ "$NUMERATOR" == "multiplicative" ]]; then
+    CMD+=(--lam_pert "$LAM_PERT" --z_mode "$Z_MODE" --grid_points "$GRID_POINTS" --grid_pad "$GRID_PAD")
+    [[ -n "$N_REF" ]] && CMD+=(--n_ref "$N_REF")
 fi
 
 [[ "$FIX_WIFI_WEIGHTS"  == "true" ]] && CMD+=(--fix_wifi_weights)

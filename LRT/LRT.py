@@ -88,6 +88,29 @@ parser.add_argument('--fix_wifi_weights', action='store_true',
 parser.add_argument('--free_wifi_weights', action='store_true',
                     help="Profile WiFi weights freely with no prior (free mode, C→∞).")
 
+# Numerator form (additive = current; multiplicative = NPLM exp-tilt, matches
+# LRT_one_model + classifier). See the multiplicative block below.
+parser.add_argument('--numerator', type=str, default='additive',
+                    choices=['additive', 'multiplicative'],
+                    help="'additive' f_ens + sum c_j G_j (convex, mean-centred; current). "
+                         "'multiplicative' f_ens*exp(tau)/Z (log-space, clean chi2; matches "
+                         "LRT_one_model + classifier). Multiplicative currently requires "
+                         "--fix_wifi_weights (frozen, convex); constrained/free is step 2.")
+parser.add_argument('--n_kernels', type=int, default=100, help="M numerator kernels.")
+parser.add_argument('--kernel_sigma', type=float, default=0.3, help="Kernel width sigma.")
+parser.add_argument('--lam_pert', type=float, default=1.0,
+                    help="[multiplicative] L2 ridge on tilt coeffs b (= one-model/classifier).")
+parser.add_argument('--z_mode', type=str, default='grid', choices=['grid', 'sample'],
+                    help="[multiplicative] Z normalization. 'grid' deterministic quadrature "
+                         "(one-sample; 2D). 'sample' not yet wired for the ensemble.")
+parser.add_argument('--grid_points', type=int, default=300,
+                    help="[multiplicative grid] points per dimension.")
+parser.add_argument('--grid_pad', type=float, default=0.2,
+                    help="[multiplicative grid] fractional padding beyond the data range.")
+parser.add_argument('--n_ref', type=int, default=None,
+                    help="[multiplicative z_mode=sample] # importance-sample reference points "
+                         "from q (default: Ntest; use >> Ntest in 4D to suppress MC-Z noise).")
+
 args = parser.parse_args()
 
 train_wifi_weights = not args.fix_wifi_weights
@@ -105,11 +128,11 @@ print("Device:", device, flush=True)
 # -------------------------------------------------------------------
 Ntest                  = args.ntest
 lambda_regularizer     = 0
-n_kernels_numerator    = 100
+n_kernels_numerator    = args.n_kernels
 epochs_tau             = 100000
 epochs_delta           = 100000
 patience               = 1000
-kernel_width_numerator = 0.3
+kernel_width_numerator = args.kernel_sigma
 lambda_L2_numerator    = 10000
 lr_delta               = 1e-6
 lr_tau                 = 1e-6
@@ -122,12 +145,18 @@ train_centers_tau      = False
 mode_tag = "calibration" if args.calibration else "test"
 
 prefix = "SparKer" if args.model_type == "kernels" else "NF"
-run_tag = "%s%i_Ntest%i_M%i_W%s_L%g" % (
+run_tag = "%s%i_Ntest%i_M%i_W%s" % (
     prefix, args.nensemble, Ntest,
-    n_kernels_numerator, str(kernel_width_numerator), lambda_L2_numerator,
+    n_kernels_numerator, str(kernel_width_numerator),
 )
-if clip_tau is not None:
-    run_tag += "_clip%s" % str(clip_tau)
+if args.numerator == 'multiplicative':
+    run_tag += "_multiplicative_Lp%g" % args.lam_pert
+    if args.z_mode != 'sample':
+        run_tag += "_zgrid"
+else:
+    run_tag += "_L%g" % lambda_L2_numerator
+    if clip_tau is not None:
+        run_tag += "_clip%s" % str(clip_tau)
 
 wifi_tag = '_'.join(os.path.basename(os.path.dirname(
     os.path.abspath(args.w_cov_path))).split('_')[-2:])
@@ -247,6 +276,158 @@ def _eval_ensemble(data_np):
             gc.collect()
         return _t2np(torch.stack(per_model, dim=1))  # (N, M)
 
+
+def _sample_ensemble_q(n, rng):
+    """Sample n points from q = (1/M) sum_m model_m — the equal-weight member
+    mixture. A positive, samplable proposal for importance-sampling / SIR of the
+    signed-weight ensemble density f_ens (which is NOT a mixture, so cannot be
+    sampled by picking a member ~ w). Kernels only; NF (flow.sample) is a later add."""
+    if args.model_type != 'kernels':
+        raise NotImplementedError("ensemble q-sampling is wired for kernels only "
+                                  "(NF: flow.sample TBD).")
+    M = n_wifi_components
+    d = centroids_init.shape[2]
+    midx = rng.integers(0, M, size=n)                         # member per draw ~ Uniform(M)
+    out = np.empty((n, d), dtype=np.float64)
+    for m in range(M):
+        sel = np.nonzero(midx == m)[0]
+        if sel.size == 0:
+            continue
+        if m < M - 1:
+            cen, coef, wid = centroids_init[m], coefficients_init[m], widths_init[m]
+        else:
+            cen, coef, wid = centroids_norm[0], coefficients_norm[0], widths_norm[0]
+        k = rng.choice(len(coef), size=sel.size, p=coef)      # component ~ coeffs
+        out[sel] = cen[k] + wid[k, None] * rng.standard_normal((sel.size, d))
+    return out
+
+
+# ===================================================================
+# MULTIPLICATIVE numerator (NPLM exp-tilt) — self-contained path, runs BEFORE the
+# additive data-loading so the additive path is left completely untouched.
+#   f_num = f_ens(x; w_hat) * exp(tau) / Z,  tau = sum_j b_j G_j,  w FROZEN at w_hat.
+#   T = 2[sum_i tau(x_i) - N logZ]   (shared log f_ens cancels).
+# Data + null are self-contained (no external hit-or-miss pool):
+#   calibration=1 : frozen null ~ f_ens(w_hat) via SIR from q (equal-weight mixture).
+#   calibration=0 : bootstrap of the target data (replace=True).
+# Z (--z_mode): grid = deterministic quadrature (2D); sample = importance from q (any d, 4D).
+# Matches LRT_one_model + the classifier's log-space perturbation (SIR-on-q like sir_toy).
+# Constrained/free (joint w,b, non-convex) is the next step (step 3).
+# ===================================================================
+if args.numerator == 'multiplicative':
+    if train_wifi_weights:
+        raise NotImplementedError(
+            "multiplicative numerator currently supports only frozen weights "
+            "(--fix_wifi_weights). Constrained/free (joint w,b) fitter is step 3.")
+
+    np.random.seed(seed)
+    w_hat  = weights_centralv.astype(np.float64)     # (M,) fitted wifi weights
+    w_free = w_hat[:-1]
+    def _f_ens(P):
+        return P[:, :-1] @ w_free + P[:, -1] * (1.0 - w_free.sum())
+
+    # ---- data + null (self-contained) ----
+    if args.calibration:
+        rng = np.random.default_rng(seed)
+        n_pool = max(2 * Ntest, (args.n_ref if args.n_ref is not None else Ntest))
+        q_pool = _sample_ensemble_q(n_pool, rng)                  # (n_pool, d) ~ q
+        pool_probs = _eval_ensemble(q_pool)                       # (n_pool, M)
+        f_ens_pool = _f_ens(pool_probs)
+        q_dens     = pool_probs.mean(axis=1)
+        sir_w = np.maximum(f_ens_pool, 0.0) / q_dens
+        sir_w /= sir_w.sum()
+        ess = 1.0 / (sir_w ** 2).sum()
+        print(f"[mult] frozen null via SIR-from-q: ESS = {ess:.0f}/{n_pool}", flush=True)
+        idx = rng.choice(n_pool, size=Ntest, replace=True, p=sir_w)
+        bootstrap_sample = q_pool[idx]
+        probs_np = pool_probs[idx]
+    else:
+        if args.target_data is None:
+            raise ValueError("calibration=0 but --target_data not provided.")
+        data_all = np.load(args.target_data)
+        idx = np.random.choice(len(data_all), Ntest, replace=True)   # bootstrap the target
+        bootstrap_sample = data_all[idx]
+        probs_np = _eval_ensemble(bootstrap_sample)
+    N = bootstrap_sample.shape[0]
+
+    f_ens_data = np.maximum(_f_ens(probs_np), 1e-300)             # (N,)
+    den_log_np = np.log(f_ens_data)
+    if not np.isfinite(den_log_np).all():
+        raise RuntimeError("DEN loglik not finite (multiplicative frozen).")
+
+    centers_np = bootstrap_sample[:n_kernels_numerator].astype(np.float64)
+    K_data = lrt.gaussian_kernel_matrix(bootstrap_sample.astype(np.float64),
+                                        centers_np, kernel_width_numerator)   # (N, M_ker)
+
+    # ---- normalization Z: grid (2D) or importance sample from q (any d) ----
+    if args.z_mode == 'grid':
+        grid, step = lrt.build_eval_grid(bootstrap_sample, args.grid_points, args.grid_pad)
+        f_ref = np.maximum(_f_ens(_eval_ensemble(grid)), 1e-300)   # (G,)
+        K_ref = lrt.gaussian_kernel_matrix(grid, centers_np, kernel_width_numerator)
+        log_w_ref = np.log(f_ref)                                  # self-normalized in fit
+        grid_mass = float((f_ref * np.prod(step)).sum())
+        print(f"Z via GRID: {args.grid_points}/dim, {grid.shape[0]} pts, "
+              f"step={np.array2string(step, precision=3)}; grid f_ens mass = {grid_mass:.4f} "
+              f"(should be ~1)", flush=True)
+        if not (0.95 <= grid_mass <= 1.05):
+            print(f"WARNING: grid f_ens mass = {grid_mass:.4f} far from 1 -> widen extent "
+                  f"or raise grid_points.", flush=True)
+    else:  # sample: importance sampling from q = equal-weight member mixture (4D)
+        n_ref = args.n_ref if args.n_ref is not None else Ntest
+        rng_ref = np.random.default_rng((seed if seed is not None else 0) + 987654321)
+        y = _sample_ensemble_q(n_ref, rng_ref)                    # (R, d) ~ q
+        yprobs = _eval_ensemble(y)                                # (R, M)
+        f_ens_y = _f_ens(yprobs)
+        q_y     = yprobs.mean(axis=1)
+        n_neg = int((f_ens_y <= 0).sum())
+        if n_neg:
+            print(f"WARNING: {n_neg}/{n_ref} reference points have f_ens<=0 (floored).",
+                  flush=True)
+        f_ens_y = np.maximum(f_ens_y, 1e-300)
+        K_ref = lrt.gaussian_kernel_matrix(y, centers_np, kernel_width_numerator)
+        log_w_ref = np.log(f_ens_y) - np.log(q_y)                 # importance log-weights
+        iw = f_ens_y / q_y
+        ess = float(iw.sum() ** 2 / (iw ** 2).sum())
+        print(f"Z via SAMPLE (importance from q): {n_ref} refs; ESS = {ess:.0f}/{n_ref}",
+              flush=True)
+
+    res_num = lrt.fit_nplm_tilt(K_data, K_ref, lam_pert=args.lam_pert,
+                                log_w_ref=log_w_ref, name="NUM", verbose=True)
+    if not res_num["converged"]:
+        print(f"WARNING: NUM tilt fit not converged (||g||={res_num['grad_norm']:.2e})",
+              flush=True)
+    b_num    = res_num["b"]
+    logZ     = res_num["logZ"]
+    tau_data = res_num["tau_data"]                                # (N,)
+    num_log_np = den_log_np + tau_data - logZ
+    test_np  = 2.0 * (tau_data - logZ)
+    T = 2.0 * (num_log_np.sum() - den_log_np.sum())
+    assert abs(T - test_np.sum()) < 1e-4 * (1.0 + abs(T)), (T, float(test_np.sum()))
+    assert T >= -1e-4, f"T = {T} < 0: nested LRT violated — a fit did not converge."
+    print(f"T = {T:.6f}", flush=True)
+    print(f"mean per-event log LR = {float(test_np.mean()):.6f}", flush=True)
+
+    with open(os.path.join(out_dir, f"seed{label}_T.txt"), "w") as f:
+        f.write(f"{T}\n")
+    np.save(os.path.join(out_dir, f"seed{label}_T.npy"), np.array(T, dtype=np.float64))
+    if args.save_arrays:
+        np.save(os.path.join(out_dir, f"seed{label}_test.npy"),        test_np)
+        np.save(os.path.join(out_dir, f"seed{label}_numerator.npy"),   num_log_np)
+        np.save(os.path.join(out_dir, f"seed{label}_denominator.npy"), den_log_np)
+    np.save(os.path.join(out_dir, f"seed{label}_coeffs.npy"),         b_num)
+    np.save(os.path.join(out_dir, f"seed{label}_kernel_centers.npy"), centers_np)
+    np.save(os.path.join(out_dir, f"seed{label}_den_weights.npy"),    w_free)
+    np.save(os.path.join(out_dir, f"seed{label}_num_weights.npy"),    w_free)   # frozen: num==den
+    np.save(os.path.join(out_dir, f"seed{label}_init_weights.npy"),   w_free)
+    with open(os.path.join(out_dir, f"seed{label}_fit_report.json"), "w") as f:
+        json.dump({"num": {k: res_num[k] for k in ("loglik", "n_iter", "converged",
+                                                   "hit_max_iter", "grad_norm", "max_b")}},
+                  f, indent=2)
+    print("--- Numerator (multiplicative NPLM exp-tilt, frozen w) ---")
+    print(f"  {len(b_num)} tilt coeffs b, max|b|={np.abs(b_num).max():.3e}, logZ={logZ:.4f}",
+          flush=True)
+    raise SystemExit(0)
+
 # -------------------------------------------------------------------
 # Load calibration pool or target data
 # -------------------------------------------------------------------
@@ -342,7 +523,8 @@ x_data = _np2t(bootstrap_sample).to(device)
 x_dim  = x_data.shape[1]
 
 # -------------------------------------------------------------------
-# WiFi weight initialisation for the optimiser
+# WiFi weight initialisation for the optimiser  (additive path only;
+# the multiplicative path is self-contained above and has already exited)
 # -------------------------------------------------------------------
 if train_wifi_weights:
     noise_scale = 0.1 * np.abs(weights_cov_init.diagonal()).mean()

@@ -1040,18 +1040,63 @@ def fit_simplex_em(C, theta_init=None, max_iter=20000, tol=1e-11, name="fit", ac
 # only. See [[project-lrt-onemodel-signed-weight-runaway]].
 # ======================================================================
 
-def fit_nplm_tilt(K_data, K_ref, lam_pert=0.0, clip=None,
+def build_eval_grid(data, grid_points, pad=0.2, cover_lo=None, cover_hi=None,
+                    max_points=4_000_000):
+    """Uniform tensor-product grid for deterministic quadrature of the tilt
+    normalization Z in low dimension (the grid-Z / one-sample path).
+
+    data        : (N, d) array; the grid spans [min - pad*span, max + pad*span]
+                  per dimension.
+    grid_points : points per dimension (total = grid_points**d).
+    cover_lo/hi : optional (d,) arrays; the extent is unioned with them so the
+                  model's own support is covered even where there are few data.
+    Returns (grid, step): grid (grid_points**d, d) float64, step (d,) spacing.
+    Raises if grid_points**d > max_points (grid quadrature is for low d only;
+    use the sample path in high d).
+    """
+    data = np.ascontiguousarray(data, dtype=np.float64)
+    d = data.shape[1]
+    G_total = grid_points ** d
+    if G_total > max_points:
+        raise ValueError(f"grid too large: {grid_points}**{d} = {G_total} > {max_points}. "
+                         "Grid-Z is for low d (2D); use the sample path in high d.")
+    lo = data.min(axis=0)
+    hi = data.max(axis=0)
+    span = hi - lo
+    lo = lo - pad * span
+    hi = hi + pad * span
+    if cover_lo is not None:
+        lo = np.minimum(lo, np.asarray(cover_lo, dtype=np.float64))
+    if cover_hi is not None:
+        hi = np.maximum(hi, np.asarray(cover_hi, dtype=np.float64))
+    axes = [np.linspace(lo[k], hi[k], grid_points) for k in range(d)]
+    mesh = np.meshgrid(*axes, indexing='ij')
+    grid = np.stack([m.ravel() for m in mesh], axis=1).astype(np.float64)
+    step = (hi - lo) / (grid_points - 1)
+    return grid, step
+
+
+def fit_nplm_tilt(K_data, K_ref, lam_pert=0.0, clip=None, log_w_ref=None,
                   max_iter=500, tol=1e-9, verbose=False, name="NUM"):
     """
-    Maximize  ll(b) = sum_data tau(x_i) - N * log( mean_ref exp tau(y_r) )
-    over the tilt coefficients b, with tau(x) = sum_j b_j G_j(x). The optimum
-    ll(b*) IS T/2 (the shared log f_mix term has cancelled; see header).
+    Maximize  ll(b) = sum_data tau(x_i) - N * log( Z(b) )
+    over the tilt coefficients b, with tau(x) = sum_j b_j G_j(x), where
+        log Z(b) = logsumexp_r ( a_r + tau(y_r) ),   sum_r exp(a_r) = 1,
+    estimates the normalization  Z = E_{f0}[exp tau]  over the reference points.
+    The optimum ll(b*) IS T/2 (the shared log f0 term has cancelled; see header).
 
     K_data : (N, M) kernel matrix G_j(x_i) at the data points.
-    K_ref  : (R, M) kernel matrix G_j(y_r) at the reference points (y ~ f_mix(w_den)).
+    K_ref  : (R, M) kernel matrix G_j(y_r) at the reference points y_r.
     lam_pert : optional L2 ridge 0.5*lam*||b||^2 on the tilt coeffs (= classifier
                lam_pert; default 0 => pure MLE).
     clip   : optional symmetric box |b_j| <= clip (switches solver to L-BFGS-B).
+    log_w_ref : optional (R,) reference-measure log-weights a_r (self-normalized
+               internally so sum_r exp(a_r)=1, giving Z(0)=1 exactly).
+               - None  => SAMPLE mode: y_r ~ f0, uniform a_r = -log R  (two-sample-
+                 looking; the finite-R MC noise broadens the null).
+               - given => GRID/quadrature mode: y_r on a fixed grid with
+                 a_r = log( f0(y_r) ) (+ log cell-volume; the constant cancels).
+                 This makes Z deterministic -> a genuine one-sample test.
 
     Returns dict:
         loglik    : ll(b*) = T/2
@@ -1069,17 +1114,28 @@ def fit_nplm_tilt(K_data, K_ref, lam_pert=0.0, clip=None,
     N, M = K_data.shape
     R = K_ref.shape[0]
     s_data = K_data.sum(axis=0)          # (M,)  sum_i G_j(x_i)
-    logR = math.log(R)
+    # Reference-measure log-weights a_r with sum_r exp(a_r) = 1, so that
+    #   Z(b) = sum_r exp(a_r + tau(y_r))  estimates E_{f0}[exp tau] and Z(0) = 1.
+    # SAMPLE mode (log_w_ref=None): y_r ~ f0, uniform a_r = -log R.
+    # GRID   mode (log_w_ref given): y_r on a grid, a_r = log f0(y_r) (self-normalized).
+    if log_w_ref is None:
+        a = np.full(R, -math.log(R))
+    else:
+        a = np.ascontiguousarray(log_w_ref, dtype=np.float64).ravel()
+        if a.shape != (R,):
+            raise ValueError(f"log_w_ref shape {a.shape} != ({R},)")
+        a = a - _logsumexp(a)            # self-normalize -> sum exp(a) = 1 -> Z(0)=1
     loss_hist = []
 
     def _softmax_w(z):
-        z = z - z.max()
-        e = np.exp(z)
+        za = z + a
+        za = za - za.max()
+        e = np.exp(za)
         return e / e.sum()
 
     def fun(b):
         z = K_ref @ b                    # (R,)
-        L = -(s_data @ b) + N * (_logsumexp(z) - logR)
+        L = -(s_data @ b) + N * _logsumexp(z + a)
         if lam_pert > 0:
             L += 0.5 * lam_pert * float(b @ b)
         loss_hist.append(L)
@@ -1088,7 +1144,7 @@ def fit_nplm_tilt(K_data, K_ref, lam_pert=0.0, clip=None,
     def jac(b):
         z = K_ref @ b
         p = _softmax_w(z)                # (R,)
-        g = -s_data + N * (K_ref.T @ p)  # -sum_data G + N * softmax-weighted ref mean
+        g = -s_data + N * (K_ref.T @ p)  # -sum_data G + N * measure-weighted ref mean
         if lam_pert > 0:
             g = g + lam_pert * b
         return g
@@ -1128,7 +1184,7 @@ def fit_nplm_tilt(K_data, K_ref, lam_pert=0.0, clip=None,
     T = 2.0 * ll
 
     tau_data = K_data @ b_final          # (N,)
-    logZ = float(_logsumexp(K_ref @ b_final) - logR)
+    logZ = float(_logsumexp(K_ref @ b_final + a))
 
     flag = "OK" if converged else "WARN"
     print(f"[{name}] nplm-tilt [{flag}]  ll={ll:.6f}  T={T:.4f}  ||g||={grad_norm:.2e}  "

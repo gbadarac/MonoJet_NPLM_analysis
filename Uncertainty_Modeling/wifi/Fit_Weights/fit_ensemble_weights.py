@@ -59,11 +59,6 @@ parser.add_argument("--folder_path", default=None,
 # NF-specific
 parser.add_argument("--trial_dir", default=None,
                     help="[nf] Dir with f_i.pth + architecture_config.json.")
-# Optimiser
-parser.add_argument("--epochs",   type=int,   default=2000)
-parser.add_argument("--patience", type=int,   default=10,
-                    help="Stop after this many log intervals with no improvement.")
-parser.add_argument("--lr",       type=float, default=0.1)
 parser.add_argument("--no_plots", action="store_true")
 args = parser.parse_args()
 

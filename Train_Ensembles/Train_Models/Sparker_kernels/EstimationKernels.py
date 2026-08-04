@@ -81,18 +81,28 @@ else:
 N_MODELS = args.n_models  # can be None
 
 # Width schedule, only if nlayers = 5 and a list was intended.
-# Widths set from the ACTUAL QCD-embedding marginals (data_train.npy, measured
-# 2026-07-12): peak sigma F1~0.170, F2~0.052, F3~0.035, F4~0.062; rule width~sigma/2.
-# So the finest (0.018) resolves F3, the 0.03 layer covers F2/F4, and the coarse
-# 0.10 handles F1's broad peak (sigma~0.17) + the bulk. Coarsest narrowed 0.15->0.10
-# (0.15 was broader than even F1 needs and smeared the thin manifold: cov eigen-frac
-# [0.78,0.14,0.07,0.007] => effective dim ~2-3, so no 4D count blow-up needed).
-# width_init > width_fin turns ON a broad->narrow anneal over the first
+# Rule: width ~= peak_sigma / 2 (peak_sigma = HWHM of the marginal's main mode);
+# width_init = 2x width_fin turns ON a broad->narrow anneal over the first
 # decay_epochs*epochs of each layer (was a no-op before: init == fin).
+# Keep ONE block active per target; the others stay for reference so you can
+# switch datasets without re-deriving the schedule.
 if N_LAYERS == 5:
-    # history: old 2D-toy schedule [0.15,0.10,0.07,0.05,0.035]; first 4D try [0.15,0.10,0.06,0.04,0.02]
-    width_fin_list  = [0.10, 0.07, 0.045, 0.03, 0.018]   # 4D-QCD, data-driven (kept; counts reverted to 80,70,60,50,40 for joint)
-    width_init_list = [0.20, 0.14, 0.09,  0.06, 0.036]   # 2x final -> within-layer annealing
+    # -- 2D toy (bimodal gaussian + skew-normal heavy tail):
+    # width_fin_list  = [0.15, 0.10, 0.07, 0.05, 0.035]   # (historically init == fin, no anneal)
+    #
+    # -- 4D OLD SimCLR QCD embedding (peak sigma F1~0.170,F2~0.052,F3~0.035,F4~0.062,
+    #    measured 2026-07-12): finest 0.018 resolves F3, 0.03 covers F2/F4, coarse 0.10
+    #    handles F1's broad peak + bulk (coarsest narrowed 0.15->0.10 to not smear the
+    #    thin manifold: cov eigen-frac [0.78,0.14,0.07,0.007] => eff dim ~2-3).
+    # width_fin_list  = [0.10, 0.07, 0.045, 0.03, 0.018]
+    # width_init_list = [0.20, 0.14, 0.09,  0.06, 0.036]
+    #
+    # -- 4D NEW gaussian (LeCun+SIGReg) embedding, first 4 dims (peak sigma F1~1.07,
+    #    F2~0.30,F3~0.83,F4~0.91, measured 2026-08-03; ~6-9x broader + shallower
+    #    hierarchy than OLD since it's less spiky): coarsest 0.55 covers F1's broad
+    #    peak + bulk; finest narrowed 0.15->0.12 to sharpen F2's peak (was ~15% under).
+    width_fin_list  = [0.55, 0.40, 0.29, 0.21, 0.12]     # ACTIVE: 4D NEW gaussian embedding
+    width_init_list = [1.10, 0.80, 0.58, 0.42, 0.24]     # 2x final -> within-layer annealing
 else:
     # Generic schedule that still ends narrow
     width_fin_list  = np.linspace(0.10, 0.02, N_LAYERS).tolist()[::-1]
@@ -164,12 +174,16 @@ k_per_l = config_json["number_centroids"][0] if n_layers > 0 else 0
 
 n_models_str = f"models{N_MODELS}_" if N_MODELS is not None else ""
 
+# width tag so schedule variants land in distinct folders (comparison-friendly)
+_wf = config_json["width_fin"]
+wtag = f"wf{_wf[0]:g}-{_wf[-1]:g}"
+
 trial_name = (
     f"N_{N_train_tot}_dim_{d}_kernels_{config_json['model']}_"
     f"{n_models_str}"
     f"L{n_layers}_K{k_per_l}_M{total_M}_"
     f"Nboot{config_json['N']}_lr{config_json['learning_rate']}_"
-    f"clip_{int(config_json['coeffs_clip']):d}_joint_norm"
+    f"clip_{int(config_json['coeffs_clip']):d}_joint_norm_{wtag}"
 )
 
 # Final output directory for this trial: <outdir>/<trial_name>
