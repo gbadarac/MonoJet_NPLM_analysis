@@ -46,8 +46,11 @@ parser.add_argument("--results_dir", type=str, required=True,
                     help="Path to the run-tag directory (contains calibration/ and test/).")
 parser.add_argument("--out_dir", type=str, default=None,
                     help="Output directory for plots (default: <results_dir>/plots/).")
-parser.add_argument("--dof", type=int, default=100,
-                    help="Nominal degrees of freedom (number of kernels in NUM).")
+parser.add_argument("--dof", type=int, default=None,
+                    help="Optional nominal chi2 DOF reference to overlay (dashed). If "
+                         "omitted (default) only the fitted chi2(DOF_eff) is drawn — a "
+                         "regularized/collinear NPLM tilt has no clean Wilks DOF, so the "
+                         "empirical/fitted null is the meaningful reference.")
 parser.add_argument("--xmin", type=float, default=None)
 parser.add_argument("--xmax", type=float, default=None)
 parser.add_argument("--ymax", type=float, default=None)
@@ -170,22 +173,26 @@ if len(t_calib) == 0:
 # DOF_eff fit
 # -------------------------------------------------------------------
 DOF_eff = fit_dof_eff(t_calib)
-print(f"\nNominal DOF   : {args.dof}")
+# Reference DOF for the quantile table: the explicit nominal if given, else the fitted
+# DOF_eff (there is no clean Wilks DOF for a regularized/collinear tilt).
+dof_ref = args.dof if args.dof is not None else DOF_eff
+dof_label = "nominal" if args.dof is not None else "fitted"
+print(f"\nNominal DOF   : {args.dof if args.dof is not None else '(none — using fitted)'}")
 print(f"Fitted DOF_eff: {DOF_eff:.1f}")
 
-print(f"\nCalibration {label} vs chi2({args.dof}) quantiles:")
+print(f"\nCalibration {label} vs chi2({dof_ref:.1f}, {dof_label}) quantiles:")
 print(f"{'q':>6}  {'data':>8}  {'chi2':>8}  {'ratio':>7}")
 for q in [0.10, 0.25, 0.50, 0.75, 0.90]:
     d = float(np.quantile(t_calib, q))
-    c = float(chi2.ppf(q, args.dof))
+    c = float(chi2.ppf(q, dof_ref))
     print(f"{q:>6.2f}  {d:>8.2f}  {c:>8.2f}  {d/c:>7.3f}")
 
 with open(os.path.join(out_dir, "chi2_quantile_table.txt"), "w") as fh:
-    fh.write(f"DOF_nominal={args.dof}  DOF_eff={DOF_eff:.2f}\n")
+    fh.write(f"DOF_ref={dof_ref:.2f} ({dof_label})  DOF_eff={DOF_eff:.2f}\n")
     fh.write(f"{'q':>6}  {'data':>8}  {'chi2':>8}  {'ratio':>7}\n")
     for q in [0.10, 0.25, 0.50, 0.75, 0.90]:
         d = float(np.quantile(t_calib, q))
-        c = float(chi2.ppf(q, args.dof))
+        c = float(chi2.ppf(q, dof_ref))
         fh.write(f"{q:>6.2f}  {d:>8.2f}  {c:>8.2f}  {d/c:>7.3f}\n")
 
 # -------------------------------------------------------------------
@@ -245,10 +252,11 @@ ax.errorbar(xcent_c, h1[0], yerr=err1,
             color="#8a2be2", marker="o", ls="", alpha=0.6,
             markersize=5, capsize=2, elinewidth=0.8)
 
-# --- chi2 overlays (nominal dashed, fitted solid) ---
+# --- chi2 overlays: fitted (solid) always; nominal (dashed) only if --dof given ---
 x_chi2 = np.linspace(max(0.1, xmin), xmax, 500)
-ax.plot(x_chi2, chi2.pdf(x_chi2, args.dof), "k--", lw=1.4,
-        label=rf"$\chi^2({args.dof})$ nominal")
+if args.dof is not None:
+    ax.plot(x_chi2, chi2.pdf(x_chi2, args.dof), "k--", lw=1.4,
+            label=rf"$\chi^2({args.dof})$ nominal")
 ax.plot(x_chi2, chi2.pdf(x_chi2, DOF_eff), "k-", lw=1.8,
         label=rf"$\chi^2({DOF_eff:.1f})$ fitted")
 
@@ -349,7 +357,18 @@ def collect_weight_arrays(base_dir, mode):
 dw_den_calib, dw_num_calib = collect_weight_arrays(results_dir, "calibration")
 dw_den_test,  dw_num_test  = collect_weight_arrays(results_dir, "test")
 
-if dw_den_calib is not None and dw_den_calib.shape[0] > 0:
+
+def _weights_meaningful(dw, tol=1e-12):
+    """Weight-shift/pull plots are only informative when the weights are actually
+    profiled (constrained/free modes). False for a single model (no free weights,
+    n_w == 0) and for frozen mode (Δw ≡ 0 by construction) — skip instead of
+    saving a blank/flat plot."""
+    if dw is None or dw.shape[0] == 0 or dw.shape[1] == 0:
+        return False
+    return bool(np.any(np.abs(dw) > tol))
+
+
+if _weights_meaningful(dw_den_calib):
     n_w = dw_den_calib.shape[1]
     idx = np.arange(n_w)
     # cap width: n_w can be ~300 (4D), and (300 in x 1200 dpi) is a 24 MB,
@@ -393,6 +412,12 @@ if dw_den_calib is not None and dw_den_calib.shape[0] > 0:
     fig.tight_layout()
     save_fig(fig, out_dir, "weight_shifts")
     plt.close(fig)
+else:
+    _nw = 0 if dw_den_calib is None else dw_den_calib.shape[1]
+    if _nw == 0:
+        print("  Skipping weight_shifts: single model — no free WiFi weights.")
+    else:
+        print("  Skipping weight_shifts: Δw ≡ 0 (weights frozen — expected; not plotted).")
 
 # -------------------------------------------------------------------
 # Normalised weight pulls Δw / sqrt(diag Σ_w)  (optional, needs --w_cov_path)
@@ -404,7 +429,7 @@ if args.w_cov_path and os.path.exists(args.w_cov_path):
     else:
         sigma_w = np.sqrt(Sigma_w.clip(min=1e-30))
 
-    if dw_den_calib is not None and dw_den_calib.shape[1] == sigma_w.shape[0]:
+    if _weights_meaningful(dw_den_calib) and dw_den_calib.shape[1] == sigma_w.shape[0]:
         n_w = dw_den_calib.shape[1]
         idx = np.arange(n_w)
 
@@ -455,9 +480,11 @@ if args.w_cov_path and os.path.exists(args.w_cov_path):
         fig.tight_layout()
         save_fig(fig, out_dir, "weight_pulls")
         plt.close(fig)
-    else:
-        print(f"  Skipping pulls plot: weight dim {dw_den_calib.shape[1] if dw_den_calib is not None else 'N/A'}"
+    elif _weights_meaningful(dw_den_calib):
+        print(f"  Skipping pulls plot: weight dim {dw_den_calib.shape[1]}"
               f" ≠ sigma_w dim {sigma_w.shape[0]}")
+    else:
+        print("  Skipping pulls plot: weights frozen / single model (Δw ≡ 0).")
 elif args.w_cov_path:
     print(f"  w_cov_path not found: {args.w_cov_path}")
 

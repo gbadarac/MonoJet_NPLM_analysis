@@ -1208,3 +1208,229 @@ def fit_nplm_tilt(K_data, K_ref, lam_pert=0.0, clip=None, log_w_ref=None,
         "runaway": bool(runaway),
         "loss_hist": np.array(loss_hist, dtype=np.float64),
     }
+
+
+def fit_nplm_tilt_constrained(P_data, w_hat, Sigma_w,
+                              K_data=None, P_ref=None, K_ref=None, q_ref=None,
+                              fit_w=True, lam_pert=0.0, ridge_rel=1e-8,
+                              u_init=None, b_init=None,
+                              max_iter=500, tol=1e-9, name="NUM"):
+    """
+    CONSTRAINED multiplicative NPLM tilt in DENSITY space: jointly profile the
+    ensemble weights w (Gaussian prior N(w_hat, Sigma_w) on the M-1 free weights u)
+    and the exp-tilt coeffs b. Density twin of classifier_gof.fit_classifier.
+
+        f_model(x) = f_ens(x; w) * exp(tau(x; b)) / Z(w, b),   tau = sum_j b_j G_j
+        f_ens(x; w) = P(x) . w,   w = [u, 1 - sum(u)]         (sum-to-one; u free)
+        Z(w, b)     = E_{f_ens(w)}[exp tau]  ~  sum_r m_r(u) exp(tau(y_r)),
+                      m_r(u) proportional to f_ens(y_r; u)/q(y_r)   (importance from q)
+
+    Objective MINIMIZED (MAP; the b-ridge only shapes the fit, it is NOT in the
+    reported statistic — see the T assembly in LRT.py):
+        L(u,b) = -sum_i log f_ens(x_i; u) - sum_i tau(x_i) + N log Z(u,b)
+                 + 1/2 (u-û)^T Sigma_w^{-1} (u-û) + 1/2 lam_pert ||b||^2
+
+    Legs:
+      DEN  : K_data=None            -> b absent; Z=1; L(u) = -sum log f_ens + prior.
+      NUM  : K_data given           -> joint (u, b).
+      fit_w=False fixes u=û: then the b-fit is IDENTICAL to fit_nplm_tilt (the frozen
+             path) — used as a reduction/validation check.
+
+    NON-CONVEX in u (log Z couples u and b); locally convex at the null and the
+    Sigma_w prior + start at (û, 0) stabilize. Solved with L-BFGS-B on the analytic
+    gradient (no Hessian; robust to indefiniteness). Note dlogZ/du = 0 at b=0, so at
+    the null the w-fit of NUM coincides with the DEN w-fit.
+
+    Returns dict:
+        u, w, b            : fitted free weights, full weight vector, tilt (b None for DEN)
+        ll                 : sum_i log f_model(x_i)  — the DATA loglik (prior- & ridge-free);
+                             the ingredient for T = 2[(ll_num+logprior_num)-(ll_den+logprior_den)]
+        logprior           : -1/2 (u-û)^T Sigma_w^{-1} (u-û)   (0 if fit_w=False)
+        log_model_data     : (N,) per-event log f_model(x_i)
+        logZ, grad_norm, max_b, n_iter, converged, hit_max_iter
+    """
+    from scipy.optimize import minimize as _scipy_minimize
+    from scipy.special import logsumexp as _logsumexp
+
+    P_data = np.ascontiguousarray(P_data, dtype=np.float64)      # (N, M)
+    N, M = P_data.shape
+    w_hat = np.asarray(w_hat, dtype=np.float64).ravel()          # (M,)
+    u_hat = w_hat[:-1].copy()                                    # (M-1,)
+    Pd_data = P_data[:, :-1] - P_data[:, -1:]                    # (N, M-1) = df/du
+    pl_data = P_data[:, -1]                                      # (N,)
+
+    has_b = K_data is not None
+    if has_b:
+        K_data = np.ascontiguousarray(K_data, dtype=np.float64)  # (N, Mk)
+        K_ref  = np.ascontiguousarray(K_ref,  dtype=np.float64)  # (R, Mk)
+        P_ref  = np.ascontiguousarray(P_ref,  dtype=np.float64)  # (R, M)
+        q_ref  = np.ascontiguousarray(q_ref,  dtype=np.float64).ravel()  # (R,)
+        Mk = K_data.shape[1]
+        s_data = K_data.sum(axis=0)                              # (Mk,)
+        Pd_ref = P_ref[:, :-1] - P_ref[:, -1:]                   # (R, M-1)
+        pl_ref = P_ref[:, -1]                                    # (R,)
+        log_q  = np.log(np.maximum(q_ref, 1e-300))               # (R,)
+
+    if fit_w:
+        Sig = np.ascontiguousarray(Sigma_w, dtype=np.float64)
+        K1 = Sig.shape[0]
+        eps = ridge_rel * (np.trace(Sig) / max(K1, 1))
+        Sw_inv = np.linalg.inv(Sig + eps * np.eye(K1))
+
+    def _fval(u, Pd, pl):
+        return np.maximum(Pd @ u + pl, 1e-300)
+
+    def _unpack(x):
+        if fit_w and has_b:
+            return x[:M - 1], x[M - 1:]
+        if fit_w:
+            return x, None
+        if has_b:
+            return u_hat, x
+        return u_hat, None
+
+    loss_hist = []
+
+    def fun(x):
+        u, b = _unpack(x)
+        f_d = _fval(u, Pd_data, pl_data)
+        L = -np.log(f_d).sum()
+        if has_b:
+            f_r = _fval(u, Pd_ref, pl_ref)
+            atil = np.log(f_r) - log_q
+            atil = atil - _logsumexp(atil)                       # log m (self-normalized)
+            logZ = _logsumexp(atil + (K_ref @ b))
+            L += -(s_data @ b) + N * logZ
+            if lam_pert > 0:
+                L += 0.5 * lam_pert * float(b @ b)
+        if fit_w:
+            du = u - u_hat
+            L += 0.5 * float(du @ Sw_inv @ du)
+        loss_hist.append(L)
+        return L
+
+    def jac(x):
+        u, b = _unpack(x)
+        f_d = _fval(u, Pd_data, pl_data)
+        g_u = None
+        if fit_w:
+            g_u = -(Pd_data.T @ (1.0 / f_d)) + Sw_inv @ (u - u_hat)
+        if has_b:
+            f_r = _fval(u, Pd_ref, pl_ref)
+            atil = np.log(f_r) - log_q
+            atil = atil - _logsumexp(atil)
+            m = np.exp(atil)                                     # base IS weights (sum 1)
+            zz = atil + (K_ref @ b)
+            zz = zz - zz.max()
+            p = np.exp(zz); p = p / p.sum()                      # tilted weights (sum 1)
+            g_b = -s_data + N * (K_ref.T @ p)
+            if lam_pert > 0:
+                g_b = g_b + lam_pert * b
+            if fit_w:
+                inv_fr = 1.0 / f_r
+                g_u = g_u + N * (Pd_ref.T @ (p * inv_fr) - Pd_ref.T @ (m * inv_fr))
+        if fit_w and has_b:
+            return np.concatenate([g_u, g_b])
+        return g_u if fit_w else g_b
+
+    def hess(x):
+        # Analytic Hessian. Blocks (v_r = Pd_ref_r / f_ref_r):
+        #   H_uu = Pd_d^T diag(1/f_d^2) Pd_d + Sigma^{-1} + N (v̄_m v̄_m^T - v̄_p v̄_p^T)
+        #   H_bb = N [K^T diag(p) K - K̄_p K̄_p^T] + lam I
+        #   H_ub = N [V^T diag(p) K - v̄_p K̄_p^T]
+        # The logZ u-block is rank-2 (0 at b=0). Generally indefinite -> trust-exact.
+        u, b = _unpack(x)
+        f_d = _fval(u, Pd_data, pl_data)
+        H_uu = None
+        if fit_w:
+            H_uu = (Pd_data.T @ (Pd_data * (1.0 / (f_d * f_d))[:, None])) + Sw_inv
+        if has_b:
+            f_r = _fval(u, Pd_ref, pl_ref)
+            atil = np.log(f_r) - log_q
+            atil = atil - _logsumexp(atil)
+            m = np.exp(atil)
+            zz = atil + (K_ref @ b)
+            zz = zz - zz.max()
+            p = np.exp(zz); p = p / p.sum()
+            Kp = K_ref * p[:, None]
+            Kbar = K_ref.T @ p
+            H_bb = N * (K_ref.T @ Kp - np.outer(Kbar, Kbar))
+            if lam_pert > 0:
+                H_bb = H_bb + lam_pert * np.eye(Mk)
+            if fit_w:
+                V = Pd_ref / f_r[:, None]                # (R, M-1),  v_r
+                vbar_p = V.T @ p
+                vbar_m = V.T @ m
+                H_ub = N * (V.T @ Kp - np.outer(vbar_p, Kbar))
+                H_uu = H_uu + N * (np.outer(vbar_m, vbar_m) - np.outer(vbar_p, vbar_p))
+        if fit_w and has_b:
+            n = (M - 1) + Mk
+            H = np.empty((n, n))
+            H[:M - 1, :M - 1] = H_uu
+            H[M - 1:, M - 1:] = H_bb
+            H[:M - 1, M - 1:] = H_ub
+            H[M - 1:, :M - 1] = H_ub.T
+            return H
+        return H_uu if fit_w else H_bb
+
+    # Warm-start (crucial at production scale): u_init near u_den + b_init near the
+    # frozen tilt optimum lands the joint fit next to its optimum, so trust-exact
+    # converges in a few iters instead of stalling in the far-from-optimum region.
+    u0 = u_hat.copy() if u_init is None else np.asarray(u_init, dtype=np.float64).ravel()
+    b0 = None if not has_b else (np.zeros(Mk) if b_init is None
+                                 else np.asarray(b_init, dtype=np.float64).ravel())
+    if fit_w and has_b:
+        x0 = np.concatenate([u0, b0])
+    elif fit_w:
+        x0 = u0
+    elif has_b:
+        x0 = b0
+    else:
+        x0 = np.zeros(0)
+
+    if x0.size == 0:                        # frozen w, no b: nothing to optimize
+        res_x = x0; n_iter = 0; grad_norm = 0.0; hit_max_iter = False
+    else:
+        # trust-exact: Newton trust-region with the exact (possibly indefinite)
+        # Hessian — robust to the non-convexity in u (L-BFGS-B stalls here).
+        res = _scipy_minimize(fun, x0, jac=jac, hess=hess, method="trust-exact",
+                              options={"maxiter": max_iter, "gtol": tol})
+        res_x = res.x
+        n_iter = int(getattr(res, "nit", 0))
+        grad_norm = float(np.linalg.norm(jac(res_x)))
+        hit_max_iter = n_iter >= max_iter
+
+    u_fin, b_fin = _unpack(res_x)
+    w_fin = np.append(u_fin, 1.0 - u_fin.sum())
+    log_model_data = np.log(_fval(u_fin, Pd_data, pl_data))      # (N,) log f_ens(x;u)
+    logZ = 0.0
+    if has_b:
+        f_r = _fval(u_fin, Pd_ref, pl_ref)
+        atil = np.log(f_r) - log_q
+        atil = atil - _logsumexp(atil)
+        logZ = float(_logsumexp(atil + (K_ref @ b_fin)))
+        log_model_data = log_model_data + (K_data @ b_fin) - logZ
+    ll = float(log_model_data.sum())
+    logprior = -0.5 * float((u_fin - u_hat) @ Sw_inv @ (u_fin - u_hat)) if fit_w else 0.0
+    max_b = float(np.abs(b_fin).max()) if has_b else 0.0
+    # Convergence on the RELATIVE gradient: the objective and gradient scale with N
+    # (g_b = -s_data + N*mean(...), both ~N), so an ABSOLUTE threshold is meaningless at
+    # production N. grad_rel = ||g|| / N; a rel gradient < 1e-6 means the fit sits at the
+    # optimum to ~1e-6 relative -> T accurate to many digits (verified: T stable to 4
+    # digits across ||g|| spanning 2.5 -> 1e-2). Real-target (calib=0) fits can stall the
+    # last relative 1e-7 due to near-zero f_ens stiffening the u-Hessian; T is unaffected.
+    grad_rel = grad_norm / max(1.0, float(N))
+    converged = (grad_rel < 1e-6) and (not hit_max_iter)
+
+    flag = "OK" if converged else "WARN"
+    print(f"[{name}] nplm-tilt-constrained [{flag}]  ll={ll:.4f}  logprior={logprior:.4f}  "
+          f"||g||={grad_norm:.2e}  ||g||/N={grad_rel:.2e}  n_iter={n_iter}  logZ={logZ:.4f}  "
+          f"max|b|={max_b:.3e}  fit_w={fit_w}  has_b={has_b}", flush=True)
+
+    return {
+        "u": u_fin, "w": w_fin, "b": (b_fin if has_b else None),
+        "ll": ll, "logprior": logprior, "log_model_data": log_model_data,
+        "logZ": logZ, "grad_norm": grad_norm, "grad_rel": grad_rel, "max_b": max_b,
+        "n_iter": n_iter, "converged": converged, "hit_max_iter": bool(hit_max_iter),
+        "loss_hist": np.array(loss_hist, dtype=np.float64),
+    }

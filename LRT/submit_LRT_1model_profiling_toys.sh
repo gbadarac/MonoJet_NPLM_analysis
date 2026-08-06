@@ -13,6 +13,9 @@
 
 set -euo pipefail
 
+# SCOPE: SParKer kernels pipeline ONLY (MODEL_DIR points at Sparker_kernels
+# outputs). This test does NOT apply to the NF pipeline.
+
 # -------------------------
 # Environment
 # -------------------------

@@ -1,7 +1,6 @@
 import math, os, json, argparse, datetime, sys
 from pathlib import Path
 import numpy as np
-from scipy.spatial.distance import pdist
 
 # -------------------------------------------------------------------
 # Make Sparker_utils importable
@@ -16,6 +15,9 @@ import GENutils as gen
 
 # ===================================================================
 # One-model kernel GoF — multiplicative NPLM exp-tilt (Sean Option 1).
+#
+# SCOPE: SParKer kernels pipeline ONLY (loads GMM centroids/coeffs/widths and
+# builds a Gaussian-mixture density). It does NOT handle the NF pipeline.
 #
 # The single SParKer model is a positive, sum-normalized mixture, so its component
 # weights live on the K-simplex.
@@ -155,13 +157,6 @@ def sample_from_gmm(centroids, coefficients, widths, n_samples, rng):
     samples = centroids[k_indices] + widths[k_indices, np.newaxis] * noise
     return samples.astype(np.float32)
 
-def candidate_sigma(data, perc=90, n_sub=2000):
-    """NPLM bandwidth heuristic (= FLKutils_model.candidate_sigma): the perc-th
-    percentile of pairwise distances on a subsample. Informational anchor only —
-    pass a FIXED value via --kernel_sigma (see its help)."""
-    sub = np.asarray(data[:n_sub], dtype=np.float64)
-    return float(np.around(np.percentile(pdist(sub), perc), 1))
-
 # -------------------------------------------------------------------
 # Load / generate test data
 # -------------------------------------------------------------------
@@ -183,7 +178,7 @@ else:
 N = bootstrap_sample.shape[0]
 
 # NPLM candidate_sigma anchor for choosing --kernel_sigma (informational; see helper).
-sigma_anchor = candidate_sigma(bootstrap_sample)
+sigma_anchor = gen.candidate_sigma(bootstrap_sample)
 print(f"[sigma anchor] NPLM candidate_sigma(perc=90) on this data = {sigma_anchor:.3f}; "
       f"running with kernel_sigma={kernel_width_numerator}, M={n_kernels_numerator} "
       f"(sqrt(N)={math.sqrt(N):.0f}). Keep kernel_sigma FIXED across calib+test.",

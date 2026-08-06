@@ -13,12 +13,22 @@
 
 set -euo pipefail
 
-# ─── Mode toggles (EDIT THESE) ───────────────────────────────────────
-MODEL_TYPE=kernels   # kernels | nf
+# ─── Scenario (EDIT THIS) ────────────────────────────────────────────
+# One preset per progression stage; sets MODEL_TYPE, NENSEMBLE, OUT_BASE + all paths.
+#   kernels_1model_2d : Stage 1 — single kernel model (ensemble-of-one, frozen).
+#                       NENSEMBLE=1 -> LRT.py synthesizes w=[1.0], cov=0x0 (no wifi fit),
+#                       so W_PATH/W_COV_PATH stay empty and are NOT passed. A single model
+#                       forces NUMERATOR=multiplicative + FIX_WIFI_WEIGHTS=true (below).
+#   kernels_ens_2d    : Stage 2/3 — 2D kernel ensemble (128 comps; needs wifi w_i_fitted/cov_w).
+#   kernels_ens_4d    : Stage 2/3 — 4D kernel ensemble (needs wifi w_i_fitted/cov_w).
+#   nf_ens_2d         : NF ensemble.
+#   (single-NF not wired yet — needs the NF flow.sample q-sampler.)
+#   sbatch --export=ALL,SCENARIO=kernels_1model_2d,CALIBRATION=1 submit_LRT_toys.sh
+SCENARIO=${SCENARIO:-kernels_1model_2d}
 
 CALIBRATION=${CALIBRATION:-1}              # 1 = null toys (SIR + calib pool)  |  0 = observed (target data)
+# FIX_WIFI_WEIGHTS=true -> frozen (w=w_hat); default false -> constrained (N(w_hat,Sigma) prior).
 FIX_WIFI_WEIGHTS=${FIX_WIFI_WEIGHTS:-false}   # respects sbatch --export override
-FREE_WIFI_WEIGHTS=${FREE_WIFI_WEIGHTS:-false} # respects sbatch --export override
 
 NTEST=100000
 FIRSTSEED=12345
@@ -32,8 +42,8 @@ FIRSTSEED=12345
 #                            a 2D cross-check. Constrained/free (joint w,b) is the next step.
 #   sbatch --export=ALL,NUMERATOR=multiplicative,FIX_WIFI_WEIGHTS=true,CALIBRATION=1 submit_LRT_toys.sh
 NUMERATOR=${NUMERATOR:-additive}
-N_KERNELS=${N_KERNELS:-100}
-KERNEL_SIGMA=${KERNEL_SIGMA:-0.3}
+N_KERNELS=${N_KERNELS:-500}         # NPLM guideline M >= sqrt(N)=316 for 100k
+KERNEL_SIGMA=${KERNEL_SIGMA:-0.4}   # embedding-dependent: 0.4 (2D & old-4D) | 0.7 (gaussian-4D)
 LAM_PERT=${LAM_PERT:-1.0}          # [multiplicative] L2 ridge on tilt coeffs b
 Z_MODE=${Z_MODE:-sample}           # [multiplicative] sample (importance from q; any d, DEFAULT) | grid (2D cross-check)
 GRID_POINTS=${GRID_POINTS:-300}    # [multiplicative grid] points per dimension
@@ -42,22 +52,47 @@ N_REF=${N_REF:-}                   # [multiplicative sample] # importance refs (
 # 4D: set NUMERATOR=multiplicative, Z_MODE=sample, FIX_WIFI_WEIGHTS=true; the multiplicative
 # path builds its own null (SIR-from-q) so CALIB_DATA is ignored (no 4D pool needed).
 
-# ─── Per-model paths (EDIT THESE) ────────────────────────────────────
+# ─── Per-scenario paths (EDIT THESE) ─────────────────────────────────
 REPO_ROOT="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis"
 PY="$REPO_ROOT/LRT/LRT.py"
 
-if [[ "$MODEL_TYPE" == "kernels" ]]; then
-    CONDA_ENV=kernels_env
-    NENSEMBLE=110
+# defaults; each scenario overrides what it needs (empties stay empty -> not passed)
+MODEL_TYPE=""; CONDA_ENV=""; NENSEMBLE=""
+ENSEMBLE_DIR=""; FI_PATH=""; ARCH_CONFIG=""
+W_PATH=""; W_COV_PATH=""; CALIB_DATA=""; TARGET_DATA=""; OUT_BASE=""
+
+case "$SCENARIO" in
+  kernels_1model_2d)
+    MODEL_TYPE=kernels; CONDA_ENV=kernels_env; NENSEMBLE=1
+    # -e 1 uses seed000 of this dir as the single model; no wifi files (synthesized)
+    ENSEMBLE_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking"
+    TARGET_DATA="$REPO_ROOT/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_heavy_tail_target_set.npy"
+    OUT_BASE="$REPO_ROOT/LRT/results/kernels/2d_single_model"
+    ;;
+
+  kernels_ens_2d)
+    MODEL_TYPE=kernels; CONDA_ENV=kernels_env; NENSEMBLE=128
+    ENSEMBLE_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_kernels_SparKer_models128_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking"
+    WIFI_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernels/N_100000_dim_2_kernels_SparKer_models128_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents128"
+    W_PATH="$WIFI_DIR/w_i_fitted.npy"
+    W_COV_PATH="$WIFI_DIR/cov_w.npy"
+    CALIB_DATA=""   # unused by the multiplicative path (self-generated SIR-from-q null)
+    TARGET_DATA="$REPO_ROOT/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_heavy_tail_target_set.npy"
+    OUT_BASE="$REPO_ROOT/LRT/results/kernels/2d_ensemble"
+    ;;
+
+  kernels_ens_4d)
+    MODEL_TYPE=kernels; CONDA_ENV=kernels_env; NENSEMBLE=110
     ENSEMBLE_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/4_dim/4d_embedding_qcd/N_100000_dim_4_kernels_SparKer_models160_L5_K80_M300_Nboot100000_lr0.05_clip_10000000_joint_norm"
     W_PATH="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernels/N_100000_dim_4_kernels_SparKer_models160_L5_K80_M300_Nboot100000_lr0.05_clip_10000000_joint_norm_4d_embedding_qcd_ensemblecomponents110/w_i_fitted.npy"
     W_COV_PATH="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernels/N_100000_dim_4_kernels_SparKer_models160_L5_K80_M300_Nboot100000_lr0.05_clip_10000000_joint_norm_4d_embedding_qcd_ensemblecomponents110/cov_w.npy"
-    CALIB_DATA=""   # unused by the multiplicative path (self-generated SIR-from-q null); only the additive path reads it
+    CALIB_DATA=""   # unused by the multiplicative path (self-generated SIR-from-q null)
     TARGET_DATA="$REPO_ROOT/data/4d_embedding_qcd_Ntrain100000_Ntest100000_seed42/data_test.npy"
+    OUT_BASE="$REPO_ROOT/LRT/results"
+    ;;
 
-elif [[ "$MODEL_TYPE" == "nf" ]]; then
-    CONDA_ENV=nf_env
-    NENSEMBLE=60
+  nf_ens_2d)
+    MODEL_TYPE=nf; CONDA_ENV=nf_env; NENSEMBLE=60
     NF_TRAIN_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/2_dim/2d_gaussian/N_100000_dim_2_seeds_60_4_16_128_15"
     NF_WIFI_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_60_4_16_128_15_2d_gaussian"
     FI_PATH="$NF_TRAIN_DIR/f_i.pth"
@@ -66,9 +101,21 @@ elif [[ "$MODEL_TYPE" == "nf" ]]; then
     W_COV_PATH="$NF_WIFI_DIR/cov_w.npy"
     CALIB_DATA="$REPO_ROOT/Generate_Ensemble_Samples/Normalizing_Flows/saved_generated_NFs_ensemble_data/N_100000_dim_2_seeds_60_4_16_128_15_2d_gaussian"
     TARGET_DATA="$REPO_ROOT/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/500k_2d_gaussian_target_set.npy"
+    OUT_BASE="$REPO_ROOT/LRT/results"
+    ;;
 
-else
-    echo "Unknown MODEL_TYPE=$MODEL_TYPE"; exit 1
+  *)
+    echo "Unknown SCENARIO=$SCENARIO"; exit 1 ;;
+esac
+
+# A single model (NENSEMBLE=1) has no wifi weights to profile: only frozen multiplicative
+# is valid, so enforce it (avoids the additive path + the NotImplementedError on trained w).
+if [[ "$NENSEMBLE" -eq 1 ]]; then
+    if [[ "$NUMERATOR" != "multiplicative" || "$FIX_WIFI_WEIGHTS" != "true" ]]; then
+        echo "[single model] forcing NUMERATOR=multiplicative, FIX_WIFI_WEIGHTS=true"
+    fi
+    NUMERATOR=multiplicative
+    FIX_WIFI_WEIGHTS=true
 fi
 
 # ─── Environment ─────────────────────────────────────────────────────
@@ -88,8 +135,7 @@ fi
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:32
 
 # ─── Run ─────────────────────────────────────────────────────────────
-OUT_BASE="$REPO_ROOT/LRT/results"
-mkdir -p "$OUT_BASE/logs"
+mkdir -p "$OUT_BASE" "$REPO_ROOT/LRT/results/logs"
 
 TOY_ID=${SLURM_ARRAY_TASK_ID}
 SEED=$((FIRSTSEED + TOY_ID + 1))
@@ -99,8 +145,6 @@ echo "[$(date)] MODEL_TYPE=${MODEL_TYPE}, CALIBRATION=${CALIBRATION}, Task=${TOY
 
 CMD=(python -u "$PY"
   --model_type    "$MODEL_TYPE"
-  --w_path        "$W_PATH"
-  --w_cov_path    "$W_COV_PATH"
   --out_base      "$OUT_BASE"
   -n              "$NTEST"
   -e              "$NENSEMBLE"
@@ -111,6 +155,9 @@ CMD=(python -u "$PY"
   --n_kernels     "$N_KERNELS"
   --kernel_sigma  "$KERNEL_SIGMA"
 )
+
+# wifi weights: only for a real ensemble (NENSEMBLE>1); a single model synthesizes them
+[[ -n "$W_PATH" ]] && CMD+=(--w_path "$W_PATH" --w_cov_path "$W_COV_PATH")
 
 if [[ "$MODEL_TYPE" == "kernels" ]]; then
     CMD+=(--ensemble_dir "$ENSEMBLE_DIR" --seed_format "seed%03d")
@@ -124,10 +171,9 @@ if [[ "$NUMERATOR" == "multiplicative" ]]; then
 fi
 
 [[ "$FIX_WIFI_WEIGHTS"  == "true" ]] && CMD+=(--fix_wifi_weights)
-[[ "$FREE_WIFI_WEIGHTS" == "true" ]] && CMD+=(--free_wifi_weights)
 
 if [[ "$CALIBRATION" -eq 1 ]]; then
-  CMD+=(--calib_data "$CALIB_DATA")
+  [[ -n "$CALIB_DATA" ]] && CMD+=(--calib_data "$CALIB_DATA")   # multiplicative null is self-contained
 else
   CMD+=(--target_data "$TARGET_DATA")
 fi

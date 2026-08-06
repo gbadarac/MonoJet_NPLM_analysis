@@ -2,7 +2,6 @@ import glob, gc, os, json, argparse, sys, ctypes, math, datetime
 from pathlib import Path
 import torch
 import numpy as np
-from scipy.spatial.distance import pdist
 
 
 def _np2t(arr, dtype=torch.float64):
@@ -42,6 +41,7 @@ sys.path.insert(0, str(SPARKER_UTILS))
 sys.path.insert(0, str(NF_UTILS))
 
 import LRTGOFutils_v2 as lrt
+import GENutils as gen        # candidate_sigma (also re-used by the kernels block below)
 
 # -------------------------------------------------------------------
 # CLI
@@ -65,10 +65,12 @@ parser.add_argument('--arch_config', type=str, default=None,
                     help="[nf] Path to architecture_config.json.")
 
 # Common WiFi / data
-parser.add_argument('--w_path', type=str, required=True,
-                    help="Path to fitted WiFi weights .npy.")
-parser.add_argument('--w_cov_path', type=str, required=True,
-                    help="Path to covariance of fitted WiFi weights .npy.")
+parser.add_argument('--w_path', type=str, default=None,
+                    help="Path to fitted WiFi weights .npy. Required for nensemble>1; "
+                         "ignored for nensemble=1 (single model = ensemble-of-one, w=[1.0]).")
+parser.add_argument('--w_cov_path', type=str, default=None,
+                    help="Path to covariance of fitted WiFi weights .npy ((M-1)x(M-1)). "
+                         "Required for nensemble>1; ignored for nensemble=1 (cov=0x0).")
 parser.add_argument('--out_base', type=str, required=True,
                     help="Base output directory.")
 parser.add_argument('--calib_data', type=str, default=None,
@@ -85,9 +87,8 @@ parser.add_argument('-s', '--seed', type=int, default=None)
 parser.add_argument('--toy_id', type=int, default=None)
 parser.add_argument('--save_arrays', action='store_true')
 parser.add_argument('--fix_wifi_weights', action='store_true',
-                    help="Freeze WiFi weights at central value (frozen mode).")
-parser.add_argument('--free_wifi_weights', action='store_true',
-                    help="Profile WiFi weights freely with no prior (free mode, C→∞).")
+                    help="Freeze WiFi weights at w_hat (frozen mode). Default (no flag) = "
+                         "constrained: profile w under the N(w_hat, Sigma_w) prior.")
 
 # Numerator form (additive = current; multiplicative = NPLM exp-tilt. See the multiplicative block below.
 parser.add_argument('--numerator', type=str, default='additive',
@@ -116,7 +117,7 @@ parser.add_argument('--n_ref', type=int, default=None,
 args = parser.parse_args()
 
 train_wifi_weights = not args.fix_wifi_weights
-use_prior = train_wifi_weights and not args.free_wifi_weights
+use_prior = train_wifi_weights   # constrained (N(w_hat, Sigma) prior) unless frozen (--fix_wifi_weights)
 
 seed  = args.seed
 if seed is None:
@@ -164,14 +165,17 @@ else:
     if clip_tau is not None:
         run_tag += "_clip%s" % str(clip_tau)
 
-wifi_tag = '_'.join(os.path.basename(os.path.dirname(
-    os.path.abspath(args.w_cov_path))).split('_')[-2:])
+if args.nensemble == 1:
+    wifi_tag = "single"          # single model = ensemble-of-one, no wifi fit
+else:
+    wifi_tag = '_'.join(os.path.basename(os.path.dirname(
+        os.path.abspath(args.w_cov_path))).split('_')[-2:])
 run_tag += "_wifi_%s" % wifi_tag
 
 if not train_wifi_weights:
     run_tag += "_frozen_weights"
-elif args.free_wifi_weights:
-    run_tag += "_free_weights"
+elif args.numerator == 'multiplicative':
+    run_tag += "_constrained"        # multiplicative w profiled under the N(w_hat, Sigma) prior
 
 out_dir = os.path.join(args.out_base, run_tag, mode_tag, "seed%i" % label)
 os.makedirs(out_dir, exist_ok=True)
@@ -180,10 +184,22 @@ print("Writing outputs to:", out_dir, flush=True)
 # -------------------------------------------------------------------
 # Load WiFi weights (common to both model types)
 # -------------------------------------------------------------------
-weights_centralv = np.load(args.w_path)       # (M,)
-weights_cov_init = np.load(args.w_cov_path)   # (M-1, M-1)
-assert weights_cov_init.shape == (len(weights_centralv) - 1, len(weights_centralv) - 1), \
-    f"cov_w shape {weights_cov_init.shape} != ({len(weights_centralv)-1}, {len(weights_centralv)-1})"
+if args.nensemble == 1:
+    # Single model = ensemble-of-one: trivial weight 1.0, no weight uncertainty.
+    # There is no wifi fit for one model, so --w_path/--w_cov_path are not required;
+    # the frozen multiplicative path then reduces to a plain single-model sample-Z test.
+    weights_centralv = np.array([1.0], dtype=np.float64)         # (1,)
+    weights_cov_init = np.zeros((0, 0), dtype=np.float64)        # (0, 0)
+    if args.w_path is not None or args.w_cov_path is not None:
+        print("[M=1] ignoring --w_path/--w_cov_path; single model uses w=[1.0], cov=0x0",
+              flush=True)
+else:
+    if args.w_path is None or args.w_cov_path is None:
+        raise ValueError("--w_path and --w_cov_path are required for nensemble > 1.")
+    weights_centralv = np.load(args.w_path)       # (M,)
+    weights_cov_init = np.load(args.w_cov_path)   # (M-1, M-1)
+    assert weights_cov_init.shape == (len(weights_centralv) - 1, len(weights_centralv) - 1), \
+        f"cov_w shape {weights_cov_init.shape} != ({len(weights_centralv)-1}, {len(weights_centralv)-1})"
 
 n_wifi_components = args.nensemble   # M total models (last is norm model)
 
@@ -191,7 +207,6 @@ n_wifi_components = args.nensemble   # M total models (last is norm model)
 # Load ensemble model (model-type specific)
 # -------------------------------------------------------------------
 if args.model_type == 'kernels':
-    import GENutils as gen
     with open(os.path.join(args.ensemble_dir, "config.json"), "r") as f:
         config_json = json.load(f)
     n_kernels_list = config_json["number_centroids"]
@@ -224,14 +239,21 @@ if args.model_type == 'kernels':
             coefficients_norm.append(coeffs_all)
             widths_norm.append(widths_all)
 
-    centroids_init      = np.stack(centroids_init, axis=0)
-    coefficients_init   = np.stack(coefficients_init, axis=0)
-    coefficients_init   = coefficients_init / np.sum(coefficients_init, axis=1, keepdims=True)
-    widths_init         = np.stack(widths_init, axis=0)
-    centroids_norm      = np.stack(centroids_norm, axis=0)
+    # Norm model always exists (the last of the M members); stack it first so we can
+    # shape the mixture arrays from it when M==1 (no mixture members -> empty stacks).
+    centroids_norm      = np.stack(centroids_norm, axis=0)                       # (1, K, d)
     coefficients_norm   = np.stack(coefficients_norm, axis=0)
     coefficients_norm   = coefficients_norm / np.sum(coefficients_norm, axis=1, keepdims=True)
     widths_norm         = np.stack(widths_norm, axis=0)
+    if centroids_init:                                                          # M > 1
+        centroids_init    = np.stack(centroids_init, axis=0)
+        coefficients_init = np.stack(coefficients_init, axis=0)
+        coefficients_init = coefficients_init / np.sum(coefficients_init, axis=1, keepdims=True)
+        widths_init       = np.stack(widths_init, axis=0)
+    else:                                                                       # M == 1: no mixture members
+        centroids_init    = np.empty((0,) + centroids_norm.shape[1:], dtype=centroids_norm.dtype)     # (0, K, d)
+        coefficients_init = np.empty((0,) + coefficients_norm.shape[1:], dtype=coefficients_norm.dtype)
+        widths_init       = np.empty((0,) + widths_norm.shape[1:], dtype=widths_norm.dtype)
     print(centroids_init.shape, coefficients_init.shape, widths_init.shape)
 
 elif args.model_type == 'nf':
@@ -308,15 +330,6 @@ def _sample_ensemble_q(n, rng):
     return out
 
 
-def candidate_sigma(data, perc=90, n_sub=2000):
-    """NPLM bandwidth heuristic (= FLKutils_model.candidate_sigma): the perc-th
-    percentile of pairwise distances on a subsample. Informational anchor only —
-    pass a FIXED --kernel_sigma; a per-toy data-driven sigma would bias Z between
-    calibration and test. Keep sigma MATCHED across the progression stages."""
-    sub = np.asarray(data[:n_sub], dtype=np.float64)
-    return float(np.around(np.percentile(pdist(sub), perc), 1))
-
-
 # ===================================================================
 # MULTIPLICATIVE numerator (NPLM exp-tilt) — self-contained path, runs BEFORE the
 # additive data-loading so the additive path is left completely untouched.
@@ -330,17 +343,133 @@ def candidate_sigma(data, perc=90, n_sub=2000):
 # Constrained/free (joint w,b, non-convex) is the next step (step 3).
 # ===================================================================
 if args.numerator == 'multiplicative':
-    if train_wifi_weights:
-        raise NotImplementedError(
-            "multiplicative numerator currently supports only frozen weights "
-            "(--fix_wifi_weights). Constrained/free (joint w,b) fitter is step 3.")
-
     np.random.seed(seed)
     w_hat  = weights_centralv.astype(np.float64)     # (M,) fitted wifi weights
     w_free = w_hat[:-1]
     def _f_ens(P):
         return P[:, :-1] @ w_free + P[:, -1] * (1.0 - w_free.sum())
 
+    # =====================================================================
+    # CONSTRAINED (default = use_prior): jointly profile w under the N(w_hat, Sigma_w)
+    # prior AND the tilt b — the "uncertainty propagated" leg. FULLY SELF-CONTAINED and
+    # exits before the frozen block, so the validated frozen path stays byte-identical.
+    # Sample-Z only.  T = 2[(ll_num+logprior_num) - (ll_den+logprior_den)]  (b-ridge
+    # excluded; reduces to the frozen T as Sigma_w -> 0). See fit_nplm_tilt_constrained.
+    # =====================================================================
+    if use_prior:
+        if args.z_mode == 'grid':
+            raise NotImplementedError(
+                "constrained multiplicative uses sample-Z (importance from q); "
+                "z_mode=grid is a frozen-only 2D cross-check.")
+        # ---- data + posterior-predictive null ----
+        if args.calibration:
+            rng = np.random.default_rng(seed)
+            n_pool = max(2 * Ntest, (args.n_ref if args.n_ref is not None else Ntest))
+            q_pool = _sample_ensemble_q(n_pool, rng)
+            pool_probs = _eval_ensemble(q_pool)
+            q_dens = pool_probs.mean(axis=1)
+            # w_toy ~ N(w_hat, Sigma_w) then SIR-from-q to f_ens(w_toy): the null carries
+            # the weight uncertainty (the whole point of the constrained test).
+            cov = weights_cov_init
+            eps_chol = 1e-8 * np.trace(cov) / cov.shape[0]
+            L_chol = np.linalg.cholesky(cov + eps_chol * np.eye(cov.shape[0]))
+            w_toy_free = w_free + L_chol @ rng.standard_normal(len(w_free))
+            w_toy = np.append(w_toy_free, 1.0 - w_toy_free.sum())
+            f_gen = pool_probs @ w_toy
+            sir_w = np.maximum(f_gen, 0.0) / q_dens
+            sir_w /= sir_w.sum()
+            ess = 1.0 / (sir_w ** 2).sum()
+            print(f"[mult constrained] posterior-predictive null: ||w_toy-w_hat||="
+                  f"{np.linalg.norm(w_toy - w_hat):.4f}, SIR-from-q ESS={ess:.0f}/{n_pool}",
+                  flush=True)
+            idx = rng.choice(n_pool, size=Ntest, replace=True, p=sir_w)
+            bootstrap_sample = q_pool[idx]
+            probs_np = pool_probs[idx]
+        else:
+            if args.target_data is None:
+                raise ValueError("calibration=0 but --target_data not provided.")
+            data_all = np.load(args.target_data)
+            idx = np.random.choice(len(data_all), Ntest, replace=True)
+            bootstrap_sample = data_all[idx]
+            probs_np = _eval_ensemble(bootstrap_sample)
+        N = bootstrap_sample.shape[0]
+
+        sigma_anchor = gen.candidate_sigma(bootstrap_sample)
+        print(f"[sigma anchor] NPLM candidate_sigma(perc=90) = {sigma_anchor:.3f}; "
+              f"kernel_sigma={kernel_width_numerator}, M={n_kernels_numerator} "
+              f"(sqrt(N)={math.sqrt(N):.0f}). Keep sigma FIXED + MATCHED across stages.",
+              flush=True)
+
+        centers_np = bootstrap_sample[:n_kernels_numerator].astype(np.float64)
+        K_data = lrt.gaussian_kernel_matrix(bootstrap_sample.astype(np.float64),
+                                            centers_np, kernel_width_numerator)
+        # reference for Z: importance-sample from q (Z(w,b) recomputed inside the fitter)
+        n_ref = args.n_ref if args.n_ref is not None else Ntest
+        rng_ref = np.random.default_rng((seed if seed is not None else 0) + 987654321)
+        y = _sample_ensemble_q(n_ref, rng_ref)
+        yprobs = _eval_ensemble(y)
+        q_y = yprobs.mean(axis=1)
+        K_ref = lrt.gaussian_kernel_matrix(y, centers_np, kernel_width_numerator)
+        n_neg = int((_f_ens(yprobs) <= 0).sum())
+        if n_neg:
+            print(f"WARNING: {n_neg}/{n_ref} reference points have f_ens(w_hat)<=0.", flush=True)
+
+        den = lrt.fit_nplm_tilt_constrained(
+            probs_np, w_hat, weights_cov_init, fit_w=True, name="DEN")
+        # Warm-start the joint NUM at (u_den, b*(u_den)): u already at its b=0 optimum,
+        # b at the frozen tilt optimum given u_den — near the joint optimum, so trust-exact
+        # polishes in a few iters (from (u_hat, 0) it stalls at production M=500 scale).
+        w_den_full = den["w"]                                       # (M,)
+        lw_ref_den = np.log(np.maximum(yprobs @ w_den_full, 1e-300)) - np.log(np.maximum(q_y, 1e-300))
+        b_init = lrt.fit_nplm_tilt(K_data, K_ref, lam_pert=args.lam_pert,
+                                   log_w_ref=lw_ref_den, name="NUM-binit")["b"]
+        num = lrt.fit_nplm_tilt_constrained(
+            probs_np, w_hat, weights_cov_init, K_data, yprobs, K_ref, q_y,
+            fit_w=True, lam_pert=args.lam_pert, u_init=den["u"], b_init=b_init, name="NUM")
+        if not (den["converged"] and num["converged"]):
+            print(f"WARNING: constrained fit not converged (DEN ||g||={den['grad_norm']:.2e}, "
+                  f"NUM ||g||={num['grad_norm']:.2e})", flush=True)
+
+        den_log_np = den["log_model_data"]        # (N,) log f_ens(x; w_den)
+        num_log_np = num["log_model_data"]        # (N,) log f_num(x; w_num, b)
+        lp_den, lp_num = den["logprior"], num["logprior"]
+        b_num, logZ = num["b"], num["logZ"]
+        # per-event 2*logLR with the (global) prior aux term spread over events so
+        # sum(test_np) == T exactly (matches the additive-path convention).
+        test_np = 2.0 * ((num_log_np - den_log_np) + (lp_num - lp_den) / N)
+        T = 2.0 * ((num["ll"] + lp_num) - (den["ll"] + lp_den))
+        assert abs(T - test_np.sum()) < 1e-4 * (1.0 + abs(T)), (T, float(test_np.sum()))
+        assert T >= -1e-4, f"T = {T} < 0: nested LRT violated — a fit did not converge."
+        print(f"T = {T:.6f}", flush=True)
+        print(f"mean per-event log LR = {float(test_np.mean()):.6f}", flush=True)
+
+        with open(os.path.join(out_dir, f"seed{label}_T.txt"), "w") as f:
+            f.write(f"{T}\n")
+        np.save(os.path.join(out_dir, f"seed{label}_T.npy"), np.array(T, dtype=np.float64))
+        if args.save_arrays:
+            np.save(os.path.join(out_dir, f"seed{label}_test.npy"),        test_np)
+            np.save(os.path.join(out_dir, f"seed{label}_numerator.npy"),   num_log_np)
+            np.save(os.path.join(out_dir, f"seed{label}_denominator.npy"), den_log_np)
+        np.save(os.path.join(out_dir, f"seed{label}_coeffs.npy"),         b_num)
+        np.save(os.path.join(out_dir, f"seed{label}_kernel_centers.npy"), centers_np)
+        np.save(os.path.join(out_dir, f"seed{label}_den_weights.npy"),    den["w"][:-1])
+        np.save(os.path.join(out_dir, f"seed{label}_num_weights.npy"),    num["w"][:-1])
+        np.save(os.path.join(out_dir, f"seed{label}_init_weights.npy"),   w_free)
+        with open(os.path.join(out_dir, f"seed{label}_fit_report.json"), "w") as f:
+            json.dump({"den": {k: den[k] for k in ("ll", "logprior", "grad_norm",
+                                                   "n_iter", "converged", "hit_max_iter")},
+                       "num": {k: num[k] for k in ("ll", "logprior", "logZ", "grad_norm",
+                                                   "max_b", "n_iter", "converged", "hit_max_iter")}},
+                      f, indent=2)
+        print("--- Numerator (multiplicative NPLM exp-tilt, CONSTRAINED w) ---")
+        print(f"  {len(b_num)} tilt coeffs b, max|b|={np.abs(b_num).max():.3e}, logZ={logZ:.4f}; "
+              f"||w_num-w_hat||={np.linalg.norm(num['w']-w_hat):.4f}", flush=True)
+        raise SystemExit(0)
+
+    # =====================================================================
+    # FROZEN (--fix_wifi_weights): w fixed at w_hat, only b fit — convex, VALIDATED,
+    # left exactly as before. Runs only when NOT use_prior. Z: grid | sample.
+    # =====================================================================
     # ---- data + null (self-contained) ----
     if args.calibration:
         rng = np.random.default_rng(seed)
@@ -365,7 +494,7 @@ if args.numerator == 'multiplicative':
         probs_np = _eval_ensemble(bootstrap_sample)
     N = bootstrap_sample.shape[0]
 
-    sigma_anchor = candidate_sigma(bootstrap_sample)
+    sigma_anchor = gen.candidate_sigma(bootstrap_sample)
     print(f"[sigma anchor] NPLM candidate_sigma(perc=90) = {sigma_anchor:.3f}; "
           f"running kernel_sigma={kernel_width_numerator}, M={n_kernels_numerator} "
           f"(sqrt(N)={math.sqrt(N):.0f}). Keep sigma FIXED + MATCHED across stages.",

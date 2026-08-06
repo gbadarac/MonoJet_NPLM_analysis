@@ -43,11 +43,14 @@ def inv_standardize_physics(dataset, mean_all, std_all):
             dataset_new[:, j] = dataset[:, j] * mean
     return dataset_new
 
-def candidate_sigma(data, perc=90):
-    # this function estimates the width of the gaussian kernel. 
-    # use on a (small) sample of reference data (standardize first if necessary)  
-    pairw = pdist(data)
-    return np.around(np.percentile(pairw,perc),2)
+def candidate_sigma(data, perc=90, n_sub=2000):
+    """NPLM bandwidth heuristic (= FLKutils_model.candidate_sigma): the perc-th
+    percentile of pairwise distances on the first n_sub points. The subsample keeps
+    pdist cheap on large data (O(n_sub^2), not O(N^2)). Informational anchor only —
+    the LRT scripts pass a FIXED --kernel_sigma; a per-toy data-driven sigma would
+    differ between calibration and test and bias the Z estimate."""
+    sub = np.asarray(data[:n_sub], dtype=np.float64)
+    return float(np.around(np.percentile(pdist(sub), perc), 1))
 
   
 def compute_bandwidths(data, number_bandwidths):
