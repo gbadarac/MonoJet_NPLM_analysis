@@ -1213,7 +1213,7 @@ def fit_nplm_tilt(K_data, K_ref, lam_pert=0.0, clip=None, log_w_ref=None,
 def fit_nplm_tilt_constrained(P_data, w_hat, Sigma_w,
                               K_data=None, P_ref=None, K_ref=None, q_ref=None,
                               fit_w=True, lam_pert=0.0, ridge_rel=1e-8,
-                              u_init=None, b_init=None,
+                              u_init=None, b_init=None, feasible=True,
                               max_iter=500, tol=1e-9, name="NUM"):
     """
     CONSTRAINED multiplicative NPLM tilt in DENSITY space: jointly profile the
@@ -1237,9 +1237,17 @@ def fit_nplm_tilt_constrained(P_data, w_hat, Sigma_w,
              path) — used as a reduction/validation check.
 
     NON-CONVEX in u (log Z couples u and b); locally convex at the null and the
-    Sigma_w prior + start at (û, 0) stabilize. Solved with L-BFGS-B on the analytic
-    gradient (no Hessian; robust to indefiniteness). Note dlogZ/du = 0 at b=0, so at
+    Sigma_w prior + start at (û, 0) stabilize. Note dlogZ/du = 0 at b=0, so at
     the null the w-fit of NUM coincides with the DEN w-fit.
+
+    feasible=True (Sean Opt 1, the signed-density fix): restrict u to the polytope
+    {f_ens>0 at every data (and ref) point}. f_ens is AFFINE in u, so the max feasible
+    step along any Newton direction is closed-form; the fit is a modified-Newton with a
+    feasibility line search (starts at û, or at uniform weights — always feasible — if û
+    is infeasible for these toy data). Returns a "veto" dict quantifying how often/hard
+    the constraint binds (start_infeasible, n_neg_data_at_start, n_feas_capped_steps,
+    min_data_dens_soln) so the toy distortion can be measured. feasible=False keeps the
+    plain trust-exact solver (used for the fit_w=False reduction check).
 
     Returns dict:
         u, w, b            : fitted free weights, full weight vector, tilt (b None for DEN)
@@ -1277,8 +1285,31 @@ def fit_nplm_tilt_constrained(P_data, w_hat, Sigma_w,
         eps = ridge_rel * (np.trace(Sig) / max(K1, 1))
         Sw_inv = np.linalg.inv(Sig + eps * np.eye(K1))
 
+    # Floor at 1e-12 (NOT 1e-300): the Hessian's 1/f^2 underflows to 0 -> inf when a
+    # data/ref point has f_ens ~ 1e-300 (a near-zero signed-ensemble density, common for
+    # the constrained null whose data is drawn at w_toy but first evaluated at w_hat),
+    # which crashes trust-exact ("array must not contain infs or NaNs"). 1e-12 keeps every
+    # reciprocal finite; T is robust to it (log f_ens largely cancels between num and den).
     def _fval(u, Pd, pl):
-        return np.maximum(Pd @ u + pl, 1e-300)
+        return np.maximum(Pd @ u + pl, 1e-12)
+
+    def _ref_masked(u):
+        """Positive-projection of the Z importance-sampling refs: ref points with
+        f_ens(y;u) <= 0 are DROPPED (base weight m=0, 1/f_r=0), NOT floored. Flooring a
+        negative f_r to 1e-12 breaks the m ∝ f_r cancellation in m/f_r and injects a
+        spurious ~O(1/q) gradient per point that pins ||g|| well above the 1e-6 tol (the
+        cause of the NUM non-convergence, capped_steps=500). The dropped points are ~0.01%
+        of Z (measured 4-12 / 100k), and this is the same positive projection the H0 uses.
+        Returns (atil = self-normalized log base-weights, inv_fr, pos_mask)."""
+        f_r = Pd_ref @ u + pl_ref                          # raw signed f_ens at ref
+        pos = f_r > 0.0
+        log_fr = np.full(f_r.shape, -np.inf)
+        log_fr[pos] = np.log(f_r[pos])
+        atil = log_fr - log_q                              # -inf where f_r<=0 -> m=0
+        atil = atil - _logsumexp(atil)
+        inv_fr = np.zeros_like(f_r)
+        inv_fr[pos] = 1.0 / f_r[pos]                       # 0 where dropped
+        return atil, inv_fr, pos
 
     def _unpack(x):
         if fit_w and has_b:
@@ -1296,9 +1327,7 @@ def fit_nplm_tilt_constrained(P_data, w_hat, Sigma_w,
         f_d = _fval(u, Pd_data, pl_data)
         L = -np.log(f_d).sum()
         if has_b:
-            f_r = _fval(u, Pd_ref, pl_ref)
-            atil = np.log(f_r) - log_q
-            atil = atil - _logsumexp(atil)                       # log m (self-normalized)
+            atil, _, _ = _ref_masked(u)                          # log m (self-normalized)
             logZ = _logsumexp(atil + (K_ref @ b))
             L += -(s_data @ b) + N * logZ
             if lam_pert > 0:
@@ -1316,9 +1345,7 @@ def fit_nplm_tilt_constrained(P_data, w_hat, Sigma_w,
         if fit_w:
             g_u = -(Pd_data.T @ (1.0 / f_d)) + Sw_inv @ (u - u_hat)
         if has_b:
-            f_r = _fval(u, Pd_ref, pl_ref)
-            atil = np.log(f_r) - log_q
-            atil = atil - _logsumexp(atil)
+            atil, inv_fr, _ = _ref_masked(u)
             m = np.exp(atil)                                     # base IS weights (sum 1)
             zz = atil + (K_ref @ b)
             zz = zz - zz.max()
@@ -1327,7 +1354,6 @@ def fit_nplm_tilt_constrained(P_data, w_hat, Sigma_w,
             if lam_pert > 0:
                 g_b = g_b + lam_pert * b
             if fit_w:
-                inv_fr = 1.0 / f_r
                 g_u = g_u + N * (Pd_ref.T @ (p * inv_fr) - Pd_ref.T @ (m * inv_fr))
         if fit_w and has_b:
             return np.concatenate([g_u, g_b])
@@ -1345,9 +1371,7 @@ def fit_nplm_tilt_constrained(P_data, w_hat, Sigma_w,
         if fit_w:
             H_uu = (Pd_data.T @ (Pd_data * (1.0 / (f_d * f_d))[:, None])) + Sw_inv
         if has_b:
-            f_r = _fval(u, Pd_ref, pl_ref)
-            atil = np.log(f_r) - log_q
-            atil = atil - _logsumexp(atil)
+            atil, inv_fr, _ = _ref_masked(u)
             m = np.exp(atil)
             zz = atil + (K_ref @ b)
             zz = zz - zz.max()
@@ -1358,7 +1382,7 @@ def fit_nplm_tilt_constrained(P_data, w_hat, Sigma_w,
             if lam_pert > 0:
                 H_bb = H_bb + lam_pert * np.eye(Mk)
             if fit_w:
-                V = Pd_ref / f_r[:, None]                # (R, M-1),  v_r
+                V = Pd_ref * inv_fr[:, None]             # (R, M-1),  v_r (0 rows if dropped)
                 vbar_p = V.T @ p
                 vbar_m = V.T @ m
                 H_ub = N * (V.T @ Kp - np.outer(vbar_p, Kbar))
@@ -1372,6 +1396,72 @@ def fit_nplm_tilt_constrained(P_data, w_hat, Sigma_w,
             H[M - 1:, :M - 1] = H_ub.T
             return H
         return H_uu if fit_w else H_bb
+
+    # ---- feasibility-constrained solve (Sean Opt 1) -------------------------------
+    # f_ens(x;u) = Pd@u + pl is AFFINE in u, so {u : f_ens>0 at all DATA points} is a
+    # polytope and the largest feasible step along a direction du is closed-form. The
+    # -sum log f_d term is itself a log-barrier (->+inf as any f_d->0), so the optimum is
+    # strictly interior; the line search only stops a Newton step from OVERSHOOTING across
+    # f_ens=0. u-only affects feasibility (the exp-tilt b is always positive).
+    # DATA ONLY (Sean's prescription): the Z importance-sampling REF points are NOT hard-
+    # constrained — hard-constraining the ~0.01% negative ref points trapped the NUM Newton
+    # (capped_steps=500, no convergence). Negative ref points are instead dropped from Z via
+    # the positive projection in _ref_masked (m=0), which is smooth and needs no feasibility.
+    TOL_REL   = 1e-6      # relative-gradient stop (matches the `converged` flag below)
+    FEAS_BACK = 0.99      # stay strictly interior of the feasible polytope
+
+    def _max_feasible_alpha(u, du):
+        """Largest a>0 with f_ens(x; u + a du) > 0 at every DATA point."""
+        a = np.inf
+        dd = Pd_data @ du
+        neg = dd < 0
+        if neg.any():
+            fd = Pd_data @ u + pl_data
+            a = min(a, float(np.min(-fd[neg] / dd[neg])))
+        return a
+
+    def _newton_dir(H, g):
+        """Modified-Newton descent direction: floor Hessian eigenvalues to make it PD."""
+        Hs = 0.5 * (H + H.T)
+        evals, evecs = np.linalg.eigh(Hs)
+        delta = 1e-8 * (float(np.abs(evals).max()) + 1.0)
+        return -(evecs @ ((evecs.T @ g) / np.maximum(evals, delta)))
+
+    def _solve_feasible(x0):
+        x = np.array(x0, dtype=np.float64)
+        u_cur = _unpack(x)[0]
+        fd0 = Pd_data @ u_cur + pl_data
+        fr0 = (Pd_ref @ u_cur + pl_ref) if has_b else np.empty(0)
+        n_neg_d0 = int((fd0 <= 0.0).sum())
+        n_neg_r0 = int((fr0 <= 0.0).sum()) if has_b else 0   # informational only (ref not constrained)
+        start_infeasible = (n_neg_d0 > 0)          # DATA feasibility only (see note above)
+        if start_infeasible:                       # uniform weights (mean of members) are
+            x[:M - 1] = 1.0 / M                    # always feasible: f_ens = mean f_i > 0
+        n_capped = 0
+        it = 0
+        for it in range(1, max_iter + 1):
+            g = jac(x)
+            if np.linalg.norm(g) / max(1.0, float(N)) < TOL_REL:
+                it -= 1
+                break
+            dx = _newton_dir(hess(x), g)
+            a_feas = _max_feasible_alpha(_unpack(x)[0], dx[:M - 1])
+            a_cap = min(1.0, FEAS_BACK * a_feas)
+            if a_feas < 1.0:
+                n_capped += 1
+            f0 = fun(x); gTdx = float(g @ dx); a = a_cap   # Armijo within the feasible cap
+            while a > 1e-14:
+                if fun(x + a * dx) <= f0 + 1e-4 * a * gTdx:
+                    break
+                a *= 0.5
+            x = x + a * dx
+        g_fin = jac(x)
+        fd_s = Pd_data @ _unpack(x)[0] + pl_data
+        veto = {"start_infeasible": bool(start_infeasible),
+                "n_neg_data_at_start": n_neg_d0, "n_neg_ref_at_start": n_neg_r0,
+                "n_feas_capped_steps": int(n_capped),
+                "min_data_dens_soln": float(fd_s.min())}
+        return x, it, float(np.linalg.norm(g_fin)), (it >= max_iter), veto
 
     # Warm-start (crucial at production scale): u_init near u_den + b_init near the
     # frozen tilt optimum lands the joint fit next to its optimum, so trust-exact
@@ -1388,8 +1478,14 @@ def fit_nplm_tilt_constrained(P_data, w_hat, Sigma_w,
     else:
         x0 = np.zeros(0)
 
+    veto = {"start_infeasible": False, "n_neg_data_at_start": 0, "n_neg_ref_at_start": 0,
+            "n_feas_capped_steps": 0, "min_data_dens_soln": float("nan")}
     if x0.size == 0:                        # frozen w, no b: nothing to optimize
         res_x = x0; n_iter = 0; grad_norm = 0.0; hit_max_iter = False
+    elif fit_w and feasible:
+        # Sean Opt 1: modified-Newton with a closed-form feasibility line search that
+        # keeps f_ens>0 at the data (+ref); `veto` records how hard the constraint binds.
+        res_x, n_iter, grad_norm, hit_max_iter, veto = _solve_feasible(x0)
     else:
         # trust-exact: Newton trust-region with the exact (possibly indefinite)
         # Hessian — robust to the non-convexity in u (L-BFGS-B stalls here).
@@ -1405,9 +1501,7 @@ def fit_nplm_tilt_constrained(P_data, w_hat, Sigma_w,
     log_model_data = np.log(_fval(u_fin, Pd_data, pl_data))      # (N,) log f_ens(x;u)
     logZ = 0.0
     if has_b:
-        f_r = _fval(u_fin, Pd_ref, pl_ref)
-        atil = np.log(f_r) - log_q
-        atil = atil - _logsumexp(atil)
+        atil, _, _ = _ref_masked(u_fin)              # positive projection, matches the fit
         logZ = float(_logsumexp(atil + (K_ref @ b_fin)))
         log_model_data = log_model_data + (K_data @ b_fin) - logZ
     ll = float(log_model_data.sum())
@@ -1423,14 +1517,19 @@ def fit_nplm_tilt_constrained(P_data, w_hat, Sigma_w,
     converged = (grad_rel < 1e-6) and (not hit_max_iter)
 
     flag = "OK" if converged else "WARN"
+    veto_str = (f"  veto[start_infeas={veto['start_infeasible']} "
+                f"nneg_data@start={veto['n_neg_data_at_start']} "
+                f"capped_steps={veto['n_feas_capped_steps']} "
+                f"min_dens={veto['min_data_dens_soln']:.2e}]"
+                if (fit_w and feasible) else "")
     print(f"[{name}] nplm-tilt-constrained [{flag}]  ll={ll:.4f}  logprior={logprior:.4f}  "
           f"||g||={grad_norm:.2e}  ||g||/N={grad_rel:.2e}  n_iter={n_iter}  logZ={logZ:.4f}  "
-          f"max|b|={max_b:.3e}  fit_w={fit_w}  has_b={has_b}", flush=True)
+          f"max|b|={max_b:.3e}  fit_w={fit_w}  has_b={has_b}{veto_str}", flush=True)
 
     return {
         "u": u_fin, "w": w_fin, "b": (b_fin if has_b else None),
         "ll": ll, "logprior": logprior, "log_model_data": log_model_data,
         "logZ": logZ, "grad_norm": grad_norm, "grad_rel": grad_rel, "max_b": max_b,
         "n_iter": n_iter, "converged": converged, "hit_max_iter": bool(hit_max_iter),
-        "loss_hist": np.array(loss_hist, dtype=np.float64),
+        "loss_hist": np.array(loss_hist, dtype=np.float64), "veto": veto,
     }

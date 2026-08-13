@@ -71,6 +71,11 @@ parser.add_argument('--w_path', type=str, default=None,
 parser.add_argument('--w_cov_path', type=str, default=None,
                     help="Path to covariance of fitted WiFi weights .npy ((M-1)x(M-1)). "
                          "Required for nensemble>1; ignored for nensemble=1 (cov=0x0).")
+parser.add_argument('--w_cov_scale', type=float, default=1.0,
+                    help="Scale factor on Sigma_w (diagnostic). <1 shrinks the weight prior "
+                         "toward frozen (Sigma_w->0 must reduce constrained T to frozen T); "
+                         "!=1 appends _covscale%%g to the run_tag so it never clobbers the "
+                         "nominal (scale=1) outputs.")
 parser.add_argument('--out_base', type=str, required=True,
                     help="Base output directory.")
 parser.add_argument('--calib_data', type=str, default=None,
@@ -177,6 +182,9 @@ if not train_wifi_weights:
 elif args.numerator == 'multiplicative':
     run_tag += "_constrained"        # multiplicative w profiled under the N(w_hat, Sigma) prior
 
+if args.w_cov_scale != 1.0:          # diagnostic runs land in a SEPARATE dir (no clobber)
+    run_tag += "_covscale%g" % args.w_cov_scale
+
 out_dir = os.path.join(args.out_base, run_tag, mode_tag, "seed%i" % label)
 os.makedirs(out_dir, exist_ok=True)
 print("Writing outputs to:", out_dir, flush=True)
@@ -200,6 +208,11 @@ else:
     weights_cov_init = np.load(args.w_cov_path)   # (M-1, M-1)
     assert weights_cov_init.shape == (len(weights_centralv) - 1, len(weights_centralv) - 1), \
         f"cov_w shape {weights_cov_init.shape} != ({len(weights_centralv)-1}, {len(weights_centralv)-1})"
+    if args.w_cov_scale != 1.0:
+        weights_cov_init = weights_cov_init * args.w_cov_scale
+        print(f"[w_cov_scale={args.w_cov_scale:g}] scaled Sigma_w (trace now "
+              f"{np.trace(weights_cov_init):.4e}); constrained T should -> frozen T as scale->0",
+              flush=True)
 
 n_wifi_components = args.nensemble   # M total models (last is norm model)
 
@@ -434,10 +447,15 @@ if args.numerator == 'multiplicative':
         num_log_np = num["log_model_data"]        # (N,) log f_num(x; w_num, b)
         lp_den, lp_num = den["logprior"], num["logprior"]
         b_num, logZ = num["b"], num["logZ"]
-        # per-event 2*logLR with the (global) prior aux term spread over events so
-        # sum(test_np) == T exactly (matches the additive-path convention).
-        test_np = 2.0 * ((num_log_np - den_log_np) + (lp_num - lp_den) / N)
-        T = 2.0 * ((num["ll"] + lp_num) - (den["ll"] + lp_den))
+        # PENALIZED 2*logLR: the b-ridge 1/2 lam||b||^2 is INCLUDED in T (matches
+        # classifier_gof.py `t = 2(L_den - L_num)` and the gof2d_gmm notebook — both keep
+        # the kernel ridge in t). T = 2[(ll_num + logprior_num - 1/2 lam||b||^2)
+        #                              - (ll_den + logprior_den)].
+        # The weight-prior AND the b-ridge are spread over events so sum(test_np) == T.
+        # b=0 recovers the den fit (ridge=0) => T >= 0 preserved.
+        b_ridge = 0.5 * args.lam_pert * float(np.dot(b_num, b_num))
+        test_np = 2.0 * ((num_log_np - den_log_np) + (lp_num - lp_den - b_ridge) / N)
+        T = 2.0 * ((num["ll"] + lp_num - b_ridge) - (den["ll"] + lp_den))
         assert abs(T - test_np.sum()) < 1e-4 * (1.0 + abs(T)), (T, float(test_np.sum()))
         assert T >= -1e-4, f"T = {T} < 0: nested LRT violated — a fit did not converge."
         print(f"T = {T:.6f}", flush=True)
@@ -456,11 +474,22 @@ if args.numerator == 'multiplicative':
         np.save(os.path.join(out_dir, f"seed{label}_num_weights.npy"),    num["w"][:-1])
         np.save(os.path.join(out_dir, f"seed{label}_init_weights.npy"),   w_free)
         with open(os.path.join(out_dir, f"seed{label}_fit_report.json"), "w") as f:
-            json.dump({"den": {k: den[k] for k in ("ll", "logprior", "grad_norm",
+            json.dump({"den": {**{k: den[k] for k in ("ll", "logprior", "grad_norm",
                                                    "n_iter", "converged", "hit_max_iter")},
-                       "num": {k: num[k] for k in ("ll", "logprior", "logZ", "grad_norm",
-                                                   "max_b", "n_iter", "converged", "hit_max_iter")}},
+                               "veto": den["veto"]},
+                       "num": {**{k: num[k] for k in ("ll", "logprior", "logZ", "grad_norm",
+                                                   "max_b", "n_iter", "converged", "hit_max_iter")},
+                               "veto": num["veto"]}},
                       f, indent=2)
+        # Feasibility-constraint diagnostic (Sean Opt 1): how hard the f_ens>0 constraint
+        # bound on this toy. Aggregate `start_infeasible` / `n_feas_capped_steps` across the
+        # 100 null toys -> if the constraint rarely binds (~1/100) the toy distortion is small.
+        print(f"  [veto] DEN start_infeasible={den['veto']['start_infeasible']} "
+              f"nneg_data@start={den['veto']['n_neg_data_at_start']} "
+              f"capped_steps={den['veto']['n_feas_capped_steps']} "
+              f"min_dens={den['veto']['min_data_dens_soln']:.2e} | "
+              f"NUM start_infeasible={num['veto']['start_infeasible']} "
+              f"capped_steps={num['veto']['n_feas_capped_steps']}", flush=True)
         print("--- Numerator (multiplicative NPLM exp-tilt, CONSTRAINED w) ---")
         print(f"  {len(b_num)} tilt coeffs b, max|b|={np.abs(b_num).max():.3e}, logZ={logZ:.4f}; "
               f"||w_num-w_hat||={np.linalg.norm(num['w']-w_hat):.4f}", flush=True)
@@ -550,11 +579,12 @@ if args.numerator == 'multiplicative':
     logZ     = res_num["logZ"]
     tau_data = res_num["tau_data"]                                # (N,)
     num_log_np = den_log_np + tau_data - logZ
-    test_np  = 2.0 * (tau_data - logZ)
-    # T is the PURE (unpenalized) 2*logLR = sum(test_np). Do NOT use res_num["T"]
-    # (= 2*ll, the PENALIZED value T - lam*||b||^2); it breaks sum(test)==T for
-    # lam_pert > 0.
-    T = 2.0 * (num_log_np.sum() - den_log_np.sum())
+    # PENALIZED 2*logLR: subtract the b-ridge 1/2 lam||b||^2 so T matches classifier_gof.py
+    # + the gof2d_gmm notebook (both keep the kernel ridge in t). Spread over events so
+    # sum(test_np) == T; b=0 recovers den (ridge=0) => T >= 0 preserved. (Was unpenalized.)
+    b_ridge  = 0.5 * args.lam_pert * float(np.dot(b_num, b_num))
+    test_np  = 2.0 * (tau_data - logZ - b_ridge / N)
+    T = 2.0 * (num_log_np.sum() - den_log_np.sum()) - 2.0 * b_ridge
     assert abs(T - test_np.sum()) < 1e-4 * (1.0 + abs(T)), (T, float(test_np.sum()))
     assert T >= -1e-4, f"T = {T} < 0: nested LRT violated — a fit did not converge."
     print(f"T = {T:.6f}", flush=True)

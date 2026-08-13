@@ -49,6 +49,7 @@ Z_MODE=${Z_MODE:-sample}           # [multiplicative] sample (importance from q;
 GRID_POINTS=${GRID_POINTS:-300}    # [multiplicative grid] points per dimension
 GRID_PAD=${GRID_PAD:-0.2}          # [multiplicative grid] padding beyond data range
 N_REF=${N_REF:-}                   # [multiplicative sample] # importance refs (default Ntest; >>Ntest in 4D)
+W_COV_SCALE=${W_COV_SCALE:-1.0}    # [constrained] diagnostic scale on Sigma_w; <1 -> frozen limit (separate out dir)
 # 4D: set NUMERATOR=multiplicative, Z_MODE=sample, FIX_WIFI_WEIGHTS=true; the multiplicative
 # path builds its own null (SIR-from-q) so CALIB_DATA is ignored (no 4D pool needed).
 
@@ -168,6 +169,7 @@ fi
 if [[ "$NUMERATOR" == "multiplicative" ]]; then
     CMD+=(--lam_pert "$LAM_PERT" --z_mode "$Z_MODE" --grid_points "$GRID_POINTS" --grid_pad "$GRID_PAD")
     [[ -n "$N_REF" ]] && CMD+=(--n_ref "$N_REF")
+    [[ "$W_COV_SCALE" != "1.0" ]] && CMD+=(--w_cov_scale "$W_COV_SCALE")
 fi
 
 [[ "$FIX_WIFI_WEIGHTS"  == "true" ]] && CMD+=(--fix_wifi_weights)
