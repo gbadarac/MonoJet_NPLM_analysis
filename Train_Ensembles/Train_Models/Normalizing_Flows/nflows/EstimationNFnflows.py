@@ -15,15 +15,13 @@ import torch.optim as optim
 
 from utils_flows import make_flow
 
-import gc
-
 # ------------------
 # Args
 # ------------------
 parser = argparse.ArgumentParser()
-parser.add_argument("--data_path", type=str, help="Path to training data")
+parser.add_argument("--data_path", type=str, required=True, help="Path to training data")
 parser.add_argument("--outdir", type=str, required=True)
-parser.add_argument("--seed", type=int, help="Random seed for training")
+parser.add_argument("--seed", type=int, required=True, help="Random seed / ensemble-member index")
 parser.add_argument("--n_epochs", type=int, default=1001)
 parser.add_argument("--batch_size", type=int, default=512)
 parser.add_argument("--learning_rate", type=float, default=5e-6)
@@ -31,57 +29,21 @@ parser.add_argument("--hidden_features", type=int, default=64)
 parser.add_argument("--num_blocks", type=int, default=2)
 parser.add_argument("--num_bins", type=int, default=8)
 parser.add_argument("--num_layers", type=int, default=5)
-parser.add_argument("--collect_all", action="store_true", help="Collect all trained models into f_i.pth")
-parser.add_argument("--num_models", type=int, default=1, help="Used with --collect_all to collect N models")
 parser.add_argument("--num_features", type=int, required=True, help="Dimensionality of the data")
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-# --- Conditional required arguments ---
-if not args.collect_all:
-    if args.data_path is None or args.seed is None:
-        parser.error("--data_path and --seed are required unless --collect_all is used")
-
-# ------------------
-# If collecting, skip training
-# ------------------
-if args.collect_all:
-    f_i = []
-    failed = []
-
-    for i in range(args.num_models):
-        model_path = os.path.join(args.outdir, f"model_{i:03d}", "model.pth")
-        if not os.path.exists(model_path):
-            print(f"[WARN] Missing: {model_path}")
-            failed.append(model_path)
-            continue
-        try:
-            state_dict = torch.load(model_path, map_location="cpu")
-            f_i.append(state_dict)
-            del state_dict
-            gc.collect()
-        except Exception as e:
-            print(f"[ERROR] Could not load {model_path}: {e}")
-            failed.append(model_path)
-
-    if len(f_i) == args.num_models and len(failed) == 0:
-        output_path = os.path.join(args.outdir, "f_i.pth")
-        torch.save(f_i, output_path)
-        print(f"[OK] Saved {len(f_i)} models to {output_path}")
-    else:
-        print(f"[SKIP] f_i.pth not saved: {len(failed)} models failed or missing.")
-        print("Failed files:")
-        for f in failed:
-            print(f"  - {f}")
-    exit(0)
+# Each ensemble member is written to its own <outdir>/model_{seed:03d}/model.pth
+# (+ info.json), analogous to the kernel pipeline's seed{NNN}/ folders. There is
+# no bundling step: downstream loads the members by iterating those subdirs.
 
 # ------------------
 # Load data
 # ------------------
 target_data = np.load(args.data_path) #load data from generate_target_data.py 
-target_tensor = torch.from_numpy(target_data)
+target_tensor = torch.from_numpy(target_data).float()  # seed-42 data is float64; nflows weights are float32
 
 # ------------------
 # Training function
@@ -105,7 +67,9 @@ def train_flow(data, model_seed, bootstrap_seed):
     #flow.apply(lambda m: init(m, noise_std))
 
     opt=optim.Adam(flow.parameters(), lr=args.learning_rate)
-    scheduler = CosineAnnealingLR(opt, T_max=args.n_epochs, eta_min=1e-3)
+    # anneal DOWN from the base lr to lr/10 (was eta_min=1e-3 > base lr, which
+    # made the schedule ramp the rate UP -- an optimization bug, not a feature).
+    scheduler = CosineAnnealingLR(opt, T_max=args.n_epochs, eta_min=args.learning_rate * 0.1)
     
     train_size = int(0.8 * len(data))
     train_data, val_data = data[:train_size], data[train_size:]

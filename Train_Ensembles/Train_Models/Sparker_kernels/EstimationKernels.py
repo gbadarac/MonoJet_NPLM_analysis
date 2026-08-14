@@ -87,22 +87,24 @@ N_MODELS = args.n_models  # can be None
 # Keep ONE block active per target; the others stay for reference so you can
 # switch datasets without re-deriving the schedule.
 if N_LAYERS == 5:
-    # -- 2D toy (bimodal gaussian + skew-normal heavy tail):
-    # width_fin_list  = [0.15, 0.10, 0.07, 0.05, 0.035]   # (historically init == fin, no anneal)
+    # -- 4D OLD SimCLR QCD embedding (NON-gaussian) (peak sigma F1~0.170,F2~0.052,
+    #    F3~0.035,F4~0.062, measured 2026-07-12): finest 0.018 resolves F3, 0.03 covers
+    #    F2/F4, coarse 0.10 handles F1's broad peak + bulk (coarsest narrowed 0.15->0.10
+    #    to not smear the thin manifold: cov eigen-frac [0.78,0.14,0.07,0.007] => eff dim ~2-3).
+    # width_fin_list  = [0.10, 0.07, 0.045, 0.03, 0.018]   # for the 4D OLD SimCLR (non-gaussian) embedding
+    # width_init_list = [0.20, 0.14, 0.09,  0.06, 0.036]   # 2x final -> within-layer annealing
     #
-    # -- 4D OLD SimCLR QCD embedding (peak sigma F1~0.170,F2~0.052,F3~0.035,F4~0.062,
-    #    measured 2026-07-12): finest 0.018 resolves F3, 0.03 covers F2/F4, coarse 0.10
-    #    handles F1's broad peak + bulk (coarsest narrowed 0.15->0.10 to not smear the
-    #    thin manifold: cov eigen-frac [0.78,0.14,0.07,0.007] => eff dim ~2-3).
-    # width_fin_list  = [0.10, 0.07, 0.045, 0.03, 0.018]
-    # width_init_list = [0.20, 0.14, 0.09,  0.06, 0.036]
-    #
-    # -- 4D NEW gaussian (LeCun+SIGReg) embedding, first 4 dims (peak sigma F1~1.07,
+    # -- 4D NEW GAUSSIAN (LeCun+SIGReg) embedding, first 4 dims (peak sigma F1~1.07,
     #    F2~0.30,F3~0.83,F4~0.91, measured 2026-08-03; ~6-9x broader + shallower
     #    hierarchy than OLD since it's less spiky): coarsest 0.55 covers F1's broad
     #    peak + bulk; finest narrowed 0.15->0.12 to sharpen F2's peak (was ~15% under).
-    width_fin_list  = [0.55, 0.40, 0.29, 0.21, 0.12]     # ACTIVE: 4D NEW gaussian embedding
-    width_init_list = [1.10, 0.80, 0.58, 0.42, 0.24]     # 2x final -> within-layer annealing
+    # width_fin_list  = [0.55, 0.40, 0.29, 0.21, 0.12]     # for the 4D NEW GAUSSIAN (LeCun+SIGReg) embedding
+    # width_init_list = [1.10, 0.80, 0.58, 0.42, 0.24]     # 2x final -> within-layer annealing
+    #
+    # -- 2D toy (bimodal gaussian + skew-normal heavy tail): already-calibrated widths;
+    #    historically init == fin (no within-layer anneal).
+    width_fin_list  = [0.15, 0.10, 0.07, 0.05, 0.035]    # ACTIVE: 2D toy (bimodal gaussian + skew-normal)
+    width_init_list = [0.15, 0.10, 0.07, 0.05, 0.035]    # init == fin -> no anneal (calibrated 2D)
 else:
     # Generic schedule that still ends narrow
     width_fin_list  = np.linspace(0.10, 0.02, N_LAYERS).tolist()[::-1]

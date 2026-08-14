@@ -66,14 +66,14 @@ case "$SCENARIO" in
   kernels_1model_2d)
     MODEL_TYPE=kernels; CONDA_ENV=kernels_env; NENSEMBLE=1
     # -e 1 uses seed000 of this dir as the single model; no wifi files (synthesized)
-    ENSEMBLE_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking"
+    ENSEMBLE_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs_outdated/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_kernels_SparKer_models60_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking"
     TARGET_DATA="$REPO_ROOT/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_heavy_tail_target_set.npy"
     OUT_BASE="$REPO_ROOT/LRT/results/kernels/2d_single_model"
     ;;
 
   kernels_ens_2d)
     MODEL_TYPE=kernels; CONDA_ENV=kernels_env; NENSEMBLE=128
-    ENSEMBLE_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_kernels_SparKer_models128_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking"
+    ENSEMBLE_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs_outdated/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_kernels_SparKer_models128_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking"
     WIFI_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernels/N_100000_dim_2_kernels_SparKer_models128_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents128"
     W_PATH="$WIFI_DIR/w_i_fitted.npy"
     W_COV_PATH="$WIFI_DIR/cov_w.npy"
