@@ -121,6 +121,15 @@ def train_flow(data, model_seed, bootstrap_seed):
             if patience_counter >= 10:
                 break
             
+    # Persist this member's per-epoch loss history so overtraining can be
+    # inspected post-hoc (plot_nf_loss.py), mirroring plot_nf_marginals.py.
+    # best_epoch = argmin(val) = the checkpoint that was actually kept above.
+    model_dir = os.path.join(args.outdir, f"model_{model_seed:03d}")
+    os.makedirs(model_dir, exist_ok=True)
+    np.savez(os.path.join(model_dir, "losses.npz"),
+             train=np.asarray(train_losses), val=np.asarray(val_losses),
+             best_epoch=int(np.argmin(val_losses)))
+
     return flow
 
 # ------------------
