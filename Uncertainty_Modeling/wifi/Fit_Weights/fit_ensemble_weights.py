@@ -58,7 +58,7 @@ parser.add_argument("--folder_path", default=None,
                     help="[kernels] Dir with config.json + seed*/ subdirs.")
 # NF-specific
 parser.add_argument("--trial_dir", default=None,
-                    help="[nf] Dir with f_i.pth + architecture_config.json.")
+                    help="[nf] Dir with model_*/model.pth members + architecture_config.json.")
 parser.add_argument("--no_plots", action="store_true")
 args = parser.parse_args()
 
@@ -101,18 +101,31 @@ elif args.model_type == "nf":
     from utils_flows import make_flow
     from Uncertainty_Modeling.wifi.utils_NF_wifi import (
         plot_ensemble_marginals_2d,
-        plot_ensemble_marginals_4d,
+        plot_ensemble_marginals_nd,
     )
     trial_dir = Path(args.trial_dir).resolve()
     with open(trial_dir / "architecture_config.json") as f:
         arch = json.load(f)
     flow_kwargs = {k: v for k, v in arch.items() if k != "backend"}
-    f_i_statedicts = torch.load(str(trial_dir / "f_i.pth"), map_location="cpu")
+    # Per-member layout: each ensemble member is <trial_dir>/model_<seed:03d>/model.pth
+    # (a raw flow.state_dict()). This replaces the old monolithic f_i.pth.
+    member_dirs = sorted(
+        d for d in trial_dir.glob("model_*") if (d / "model.pth").exists()
+    )
+    if len(member_dirs) < M:
+        raise ValueError(
+            f"Requested M={M} NF members but only {len(member_dirs)} "
+            f"model_*/model.pth found in {trial_dir}"
+        )
+    f_i_statedicts = [
+        torch.load(str(d / "model.pth"), map_location="cpu") for d in member_dirs[:M]
+    ]
+    print(f"Loaded {len(f_i_statedicts)} NF member state dicts from {trial_dir}", flush=True)
     device_nf = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data_t = _np2t(data_np, dtype=torch.float32)
     print(f"Evaluating {M} NF models on data ...", flush=True)
     rows = []
-    for i, sd in enumerate(f_i_statedicts[:M]):
+    for i, sd in enumerate(f_i_statedicts):
         flow = make_flow(**flow_kwargs).to(device_nf).float().eval()
         flow.load_state_dict(sd)
         chunks = []
@@ -209,9 +222,9 @@ for it in range(1, MAX_IT + 1):
         break
 
 w_final_t = build_w(u).detach().cpu()   # (M,) tensor
-_wf = w_final_t
-print(f"[fit] final NLL {cur:.6e}  sum={float(_wf.sum()):.6f}  signed weights: "
-      f"{int((_wf < 0).sum())}/{M} negative, range [{float(_wf.min()):+.3f}, {float(_wf.max()):+.3f}]",
+print(f"[fit] final NLL {cur:.6e}  sum={float(w_final_t.sum()):.6f}  signed weights: "
+      f"{int((w_final_t < 0).sum())}/{M} negative, "
+      f"range [{float(w_final_t.min()):+.3f}, {float(w_final_t.max()):+.3f}]",
       flush=True)
 
 w_final = _t2np(w_final_t)
@@ -270,6 +283,7 @@ if not args.no_plots:
     wifi_plots_dir.mkdir(exist_ok=True)
     diag_plots_dir = out_dir / "plots"
     diag_plots_dir.mkdir(exist_ok=True)
+    feature_names = [f"Feature {i+1}" for i in range(ndim)]
 
     # Simple diagnostics
     fig, ax = plt.subplots()
@@ -304,8 +318,6 @@ if not args.no_plots:
                 )
             )
 
-        feature_names = [f"Feature {i+1}" for i in range(ndim)]
-
         # 2D-only: density + ratio heatmap over an (x0, x1) grid.
         if ndim == 2:
             pad = 0.05
@@ -339,21 +351,22 @@ if not args.no_plots:
         # Reload flow models for plotting
         print("Reloading NF models for marginal plots ...", flush=True)
         f_i_models = []
-        for sd in f_i_statedicts[:M]:
+        for sd in f_i_statedicts:
             flow = make_flow(**flow_kwargs).to("cpu").float().eval()
             flow.load_state_dict(sd)
             f_i_models.append(flow)
 
         x_data_plot = data_t.to("cpu")
-        feature_names = [f"Feature {i+1}" for i in range(ndim)]
 
         if ndim == 2:
+            # exact grid marginal (unbiased) — 2D only
             plot_ensemble_marginals_2d(
                 f_i_models, x_data_plot, w_final_t, cov_np,
                 feature_names, str(wifi_plots_dir),
             )
-        elif ndim == 4:
-            plot_ensemble_marginals_4d(
+        else:
+            # any D >= 3: Monte-Carlo marginal (dense grid infeasible)
+            plot_ensemble_marginals_nd(
                 f_i_models, x_data_plot, w_final_t, cov_np,
                 feature_names, str(wifi_plots_dir),
             )

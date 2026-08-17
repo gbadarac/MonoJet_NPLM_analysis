@@ -17,9 +17,8 @@ export PYTHONPATH="${REPO_ROOT}${PYTHONPATH:+:$PYTHONPATH}"
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:32
 
 # ─── Mode toggles (EDIT THESE) ───────────────────────────────────────────────
-MODEL_TYPE=kernels   # kernels | nf
-NDIM=4          # 2 | 4  (both kernels and nf support 2D and 4D)
-DATASET=2d_gaussian  # nf NDIM=2 only: 2d_gaussian | 2d_bimodal_gaussian_heavy_tail
+MODEL_TYPE=nf   # kernels | nf
+NDIM=2          # 2 | 4  (NF fitter+plotter are dim-agnostic; only an NDIM with a TRIAL_DIR below runs. kernels is 2D-only here.)
 
 # ─── Per-mode paths ───────────────────────────────────────────────────────────
 export LD_LIBRARY_PATH="/work/gbadarac/miniforge3/envs/nplm_env/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
@@ -27,9 +26,9 @@ export LD_LIBRARY_PATH="/work/gbadarac/miniforge3/envs/nplm_env/lib${LD_LIBRARY_
 
 if [[ "$MODEL_TYPE" == "kernels" ]]; then
     CONDA_ENV=kernels_env
-    FOLDER_PATH="$REPO_ROOT/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/4_dim/4d_gaussian_embedding_qcd/N_100000_dim_4_kernels_SparKer_models160_L5_K80_M300_Nboot100000_lr0.05_clip_10000000_joint_norm_wf0.55-0.12"
-    DATA_PATH="$REPO_ROOT/data/4d_gaussian_embedding_qcd_Ntrain100000_Ntest100000_seed42/data_train.npy"
-    N_WIFI=${N_WIFI:-160}   # ensemble size (<= 160 members); override per-job: sbatch --export=ALL,N_WIFI=110 ...
+    FOLDER_PATH="$REPO_ROOT/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_gmm/N_100000_dim_2_kernels_SparKer_models128_L5_K80_M300_Nboot100000_lr0.05_clip_10000000_joint_norm_wf0.15-0.035"
+    DATA_PATH="$REPO_ROOT/data/2d_gmm_toymodel/2d_gmm_skew_Ntrain100000_Ntest100000_seed42/data_train.npy"
+    N_WIFI=${N_WIFI:-128}   # ensemble size (<= 128 members); override per-job: sbatch --export=ALL,N_WIFI=64 ...
     trial_name=$(basename "$FOLDER_PATH")
     dataset_tag=$(basename "$(dirname "$FOLDER_PATH")")
     OUT_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernels/${trial_name}_${dataset_tag}_ensemblecomponents${N_WIFI}"
@@ -37,26 +36,22 @@ if [[ "$MODEL_TYPE" == "kernels" ]]; then
 
 elif [[ "$MODEL_TYPE" == "nf" ]]; then
     CONDA_ENV=nf_env
-    N_WIFI=60
+    N_WIFI=${N_WIFI:-128}   # ensemble size (<= available members); override per-job: sbatch --export=ALL,N_WIFI=64 ...
+    # The NF fitter/plotter are dimension-agnostic; wiring a new NDIM only needs its
+    # TRIAL_DIR (dir of model_*/model.pth members + architecture_config.json) + DATA_PATH.
     if [[ "$NDIM" == "2" ]]; then
-        if [[ "$DATASET" == "2d_gaussian" ]]; then
-            TRIAL_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/2_dim/2d_gaussian/N_100000_dim_2_seeds_60_4_16_128_15"
-            DATA_PATH="$REPO_ROOT/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_target_set.npy"
-        elif [[ "$DATASET" == "2d_bimodal_gaussian_heavy_tail" ]]; then
-            TRIAL_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_seeds_60_4_16_128_15"
-            DATA_PATH="$REPO_ROOT/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/100k_2d_gaussian_heavy_tail_target_set.npy"
-        else
-            echo "Unknown DATASET=$DATASET for nf NDIM=2"; exit 1
-        fi
-        dataset_tag=$(basename "$(dirname "$TRIAL_DIR")")
-        OUT_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/$(basename "$TRIAL_DIR")_${dataset_tag}"
+        TRIAL_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_seeds_128_4_4_64_8"
+        DATA_PATH="$REPO_ROOT/data/2d_gmm_toymodel/2d_gmm_skew_Ntrain100000_Ntest100000_seed42/data_train.npy"
     elif [[ "$NDIM" == "4" ]]; then
-        TRIAL_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/4_dim/N_100000_dim_4_seeds_60_4_16_128_15"
-        DATA_PATH="$REPO_ROOT/Train_Ensembles/Generate_Data/saved_generated_target_data/4_dim/100k_4d_gaussian_target_set.npy"
-        OUT_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/$(basename "$TRIAL_DIR")"
+        # TODO: fill in once a 4D NF ensemble is trained in the per-member (model_*/model.pth) layout.
+        TRIAL_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/4_dim/<FILL_IN_4D_NF_ENSEMBLE>"
+        DATA_PATH="$REPO_ROOT/data/4d_embeddings/<FILL_IN_4D_TARGET>.npy"
     else
         echo "Unknown NDIM=$NDIM for nf"; exit 1
     fi
+    [[ -d "$TRIAL_DIR" ]] || { echo "NF trial dir for NDIM=$NDIM not found (not trained yet?): $TRIAL_DIR"; exit 1; }
+    dataset_tag=$(basename "$(dirname "$TRIAL_DIR")")
+    OUT_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/$(basename "$TRIAL_DIR")_${dataset_tag}_ensemblecomponents${N_WIFI}"
     EXTRA_ARGS="--trial_dir $TRIAL_DIR"
 
 else
