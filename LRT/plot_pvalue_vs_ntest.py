@@ -3,7 +3,7 @@ plot_pvalue_vs_ntest.py
 -----------------------
 NPLM p-value vs N_test — frozen vs constrained (and single) — in the reference
 group-standard style: a median p-value line per configuration with a single
-light IQR (25-75%) toy-spread band and bootstrap 95% CI error bars on the
+light IQR (25-75%) toy-spread band and joint-bootstrap 95% CI error bars on the
 median, plus the nominal (p=0.5) and bank-floor (p=1/(B+1)) reference lines.
 
 Design (mirrors the reference repo's per-run -> merge -> plot split):
@@ -17,8 +17,10 @@ What it does:
   3. per run computes, for each TEST toy i, the empirical p-value against the
      NULL toys:  p_i = (#{T_null >= T_test,i} + 1) / (B + 1)
      (identical estimator to analyse_LRT_output.py, just per-toy instead of the
-     single median), then the {25, 50, 75} percentiles of {p_i} plus a
-     bootstrap 95% CI of the median,
+     single median), then the {25, 50, 75} percentiles of {p_i} plus a joint
+     (double) bootstrap 95% CI of the median — resampling BOTH null and test
+     toys so the CI includes the finite-B Monte-Carlo error of the null tail,
+     not just the test-toy spread,
   4. plots one curve per (Nens, mode): median + a single light IQR band +
      median CI error bars; distinct markers (constrained=o, frozen=s,
      single=triangle); log x-axis; nominal p=0.5 and bank-floor reference lines.
@@ -29,9 +31,15 @@ test T — i.e. this p50 line is exactly the `p-value` number analyse_LRT_output
 already prints per run. The bands are the extra piece (they need the full per-toy
 p-value distribution, which the single-run script does not emit).
 
-Caveat: the test toys are BOOTSTRAP resamples of one fixed target, so these bands
-are a bootstrap spread (correlated draws) — an approximation to the true
-experiment-to-experiment spread. Label them as such.
+Caveat 1: the test toys are BOOTSTRAP resamples of one fixed target, so both the
+IQR band AND the median CI are bootstrap spreads (correlated draws) — they
+UNDERESTIMATE the true experiment-to-experiment spread. Label them as such.
+
+Caveat 2: p is discretized on a 1/(B+1) grid. When the median test T exceeds
+every null T, all p_i pin to the bank floor 1/(B+1): the band and CI then
+collapse to zero width — this means "p unresolved below the floor, need more
+null toys B", NOT an infinitely precise p. The plot annotates the bank floor;
+read a zero-width bar there as an upper limit, not a measurement.
 
 Usage:
   python plot_pvalue_vs_ntest.py \
@@ -76,21 +84,33 @@ def collect_T(run_dir, mode):
 def pvalue_percentiles(run_dir, min_toys=5):
     """Return (q25, med, q75, ci_lo, ci_hi, n_test, B) or None if insufficient.
 
-    ci_lo/ci_hi are a bootstrap 95% CI of the median p-value, resampling the
-    test toys (an approximate spread — the test toys are correlated bootstrap
-    resamples of one fixed target; see the module docstring)."""
+    ci_lo/ci_hi are a JOINT (double) bootstrap 95% CI of the median p-value:
+    each iteration resamples BOTH the null toys (size B) and the test toys
+    (size n_test), so the CI reflects the two sources of uncertainty on the
+    median p — the finite test-toy spread AND the finite-B Monte-Carlo error of
+    the null tail. (Resampling test toys alone would hold the shared null sample
+    fixed and understate the error by the usually-dominant finite-B term.)
+
+    Caveat: the test toys are correlated bootstrap resamples of one fixed target,
+    so both the band and this CI remain UNDERESTIMATES of the true
+    experiment-to-experiment spread — see the module docstring."""
     tc = collect_T(run_dir, "calibration")
     tt = collect_T(run_dir, "test")
     if len(tc) < min_toys or len(tt) < min_toys:
         return None
-    B = len(tc)
+    B, nt = len(tc), len(tt)
     # per test toy: k_i = #{null >= T_test,i};  p_i = (k_i + 1)/(B + 1)
     k = (tc[None, :] >= tt[:, None]).sum(axis=1)          # (n_test,)
     p = (k + 1.0) / (B + 1.0)
     q25, med, q75 = np.percentile(p, QS)
-    nt = len(p)
-    boots = np.median(p[RNG.integers(0, nt, (N_BOOT, nt))], axis=1)
-    lo, hi = np.percentile(boots, [2.5, 97.5])
+    # joint bootstrap of the median p: resample null AND test toys together.
+    med_boot = np.empty(N_BOOT)
+    for b in range(N_BOOT):
+        cb = tc[RNG.integers(0, B, B)]                    # null tail resample
+        tb = tt[RNG.integers(0, nt, nt)]                  # test-toy resample
+        kk = (cb[None, :] >= tb[:, None]).sum(axis=1)
+        med_boot[b] = np.median((kk + 1.0) / (B + 1.0))
+    lo, hi = np.percentile(med_boot, [2.5, 97.5])
     return q25, med, q75, lo, hi, nt, B
 
 
