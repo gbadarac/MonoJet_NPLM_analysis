@@ -2,7 +2,7 @@
 #SBATCH --job-name=LRT_1model_profiling
 #SBATCH --array=0-99
 #SBATCH --time=08:00:00
-#SBATCH --mem=20G
+#SBATCH --mem=12G
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
 #SBATCH --account=gpu_gres

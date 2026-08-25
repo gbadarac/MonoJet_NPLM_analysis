@@ -1212,7 +1212,7 @@ def fit_nplm_tilt(K_data, K_ref, lam_pert=0.0, clip=None, log_w_ref=None,
 
 def fit_nplm_tilt_constrained(P_data, w_hat, Sigma_w,
                               K_data=None, P_ref=None, K_ref=None, q_ref=None,
-                              fit_w=True, lam_pert=0.0, ridge_rel=1e-8,
+                              fit_w=True, lam_pert=0.0, clip=None, ridge_rel=1e-8,
                               u_init=None, b_init=None, feasible=True,
                               max_iter=500, tol=1e-9, name="NUM"):
     """
@@ -1229,6 +1229,12 @@ def fit_nplm_tilt_constrained(P_data, w_hat, Sigma_w,
     reported statistic — see the T assembly in LRT.py):
         L(u,b) = -sum_i log f_ens(x_i; u) - sum_i tau(x_i) + N log Z(u,b)
                  + 1/2 (u-û)^T Sigma_w^{-1} (u-û) + 1/2 lam_pert ||b||^2
+
+    clip (optional): symmetric box |b_j| <= clip on the tilt coeffs (parity with
+        fit_nplm_tilt / the additive clip_tau), to bound the tilt runaway that inflates
+        T on the ~15% non-converged NUM toys. Enforced by PROJECTION inside the feasible
+        solver (u-feasibility untouched — the box acts on b only), or by L-BFGS-B bounds
+        in the trust-exact fallback. clip=None (default) => L2 ridge (lam_pert) only.
 
     Legs:
       DEN  : K_data=None            -> b absent; Z=1; L(u) = -sum log f_ens + prior.
@@ -1397,6 +1403,31 @@ def fit_nplm_tilt_constrained(P_data, w_hat, Sigma_w,
             return H
         return H_uu if fit_w else H_bb
 
+    # ---- optional box |b_j| <= clip on the tilt coeffs (u never boxed) -------------
+    # The b-block sits at x[_b_start:] (after u when fit_w; the whole vector otherwise).
+    # Both helpers are the IDENTITY when clip is None or there is no b, so the clip=None
+    # path is byte-for-byte the previous behaviour.
+    box_b    = None if clip is None else float(clip)
+    _b_start = (M - 1) if fit_w else 0
+
+    def _project_box(xv):
+        """Clip the b-block into [-clip, clip]; u left untouched."""
+        if box_b is None or not has_b:
+            return xv
+        xv = xv.copy()
+        xv[_b_start:] = np.clip(xv[_b_start:], -box_b, box_b)
+        return xv
+
+    def _proj_grad_box(xv, g):
+        """KKT residual g_proj = x - clip(x - g, lo, hi): zeroes the outward component of a
+        b_j sitting on the box, == g everywhere else (and everywhere when clip is None)."""
+        if box_b is None or not has_b:
+            return g
+        gp = g.copy()
+        bb = xv[_b_start:]
+        gp[_b_start:] = bb - np.clip(bb - g[_b_start:], -box_b, box_b)
+        return gp
+
     # ---- feasibility-constrained solve (Sean Opt 1) -------------------------------
     # f_ens(x;u) = Pd@u + pl is AFFINE in u, so {u : f_ens>0 at all DATA points} is a
     # polytope and the largest feasible step along a direction du is closed-form. The
@@ -1428,7 +1459,7 @@ def fit_nplm_tilt_constrained(P_data, w_hat, Sigma_w,
         return -(evecs @ ((evecs.T @ g) / np.maximum(evals, delta)))
 
     def _solve_feasible(x0):
-        x = np.array(x0, dtype=np.float64)
+        x = _project_box(np.array(x0, dtype=np.float64))   # start inside the b-box (if any)
         u_cur = _unpack(x)[0]
         fd0 = Pd_data @ u_cur + pl_data
         fr0 = (Pd_ref @ u_cur + pl_ref) if has_b else np.empty(0)
@@ -1441,21 +1472,43 @@ def fit_nplm_tilt_constrained(P_data, w_hat, Sigma_w,
         it = 0
         for it in range(1, max_iter + 1):
             g = jac(x)
-            if np.linalg.norm(g) / max(1.0, float(N)) < TOL_REL:
+            # PROJECTED gradient stop: a b_j resting on the box is stationary even with a
+            # nonzero raw gradient, so measure KKT stationarity (== raw ||g|| when clip=None).
+            gp = _proj_grad_box(x, g)
+            if np.linalg.norm(gp) / max(1.0, float(N)) < TOL_REL:
                 it -= 1
                 break
-            dx = _newton_dir(hess(x), g)
+            # Active-set (two-metric) Newton: pin the b-coords resting on the box with an
+            # OUTWARD gradient (their KKT residual is already 0) and solve the Newton system
+            # on the FREE variables only — a full-Hessian projected Newton stalls when many
+            # box coords bind. u is always free (its bound is the feasibility polytope, capped
+            # by a_feas). No active set when clip is None -> identical to the plain Newton.
+            active = np.zeros(x.size, dtype=bool)
+            if box_b is not None and has_b:
+                bb = x[_b_start:]; gb = g[_b_start:]
+                active[_b_start:] = ((bb >= box_b - 1e-12) & (gb < 0.0)) | \
+                                    ((bb <= -box_b + 1e-12) & (gb > 0.0))
+            if active.any():
+                free = ~active
+                dx = np.zeros_like(x)
+                dx[free] = _newton_dir(hess(x)[np.ix_(free, free)], g[free])
+            else:
+                dx = _newton_dir(hess(x), g)
             a_feas = _max_feasible_alpha(_unpack(x)[0], dx[:M - 1])
-            a_cap = min(1.0, FEAS_BACK * a_feas)
+            a_cap = min(1.0, FEAS_BACK * a_feas)   # u-feasibility cap; the box is handled by projection
             if a_feas < 1.0:
                 n_capped += 1
-            f0 = fun(x); gTdx = float(g @ dx); a = a_cap   # Armijo within the feasible cap
+            # Projected-arc Armijo: take the step, clip b into the box, and test sufficient
+            # decrease on the ACTUAL move g^T(x_try - x) (projection can shorten it). With
+            # clip=None the projection is identity and this reduces to the old a*(g@dx) test.
+            f0 = fun(x); a = a_cap
             while a > 1e-14:
-                if fun(x + a * dx) <= f0 + 1e-4 * a * gTdx:
+                x_try = _project_box(x + a * dx)
+                if fun(x_try) <= f0 + 1e-4 * float(g @ (x_try - x)):
                     break
                 a *= 0.5
-            x = x + a * dx
-        g_fin = jac(x)
+            x = _project_box(x + a * dx)
+        g_fin = _proj_grad_box(x, jac(x))
         fd_s = Pd_data @ _unpack(x)[0] + pl_data
         veto = {"start_infeasible": bool(start_infeasible),
                 "n_neg_data_at_start": n_neg_d0, "n_neg_ref_at_start": n_neg_r0,
@@ -1488,12 +1541,23 @@ def fit_nplm_tilt_constrained(P_data, w_hat, Sigma_w,
         res_x, n_iter, grad_norm, hit_max_iter, veto = _solve_feasible(x0)
     else:
         # trust-exact: Newton trust-region with the exact (possibly indefinite)
-        # Hessian — robust to the non-convexity in u (L-BFGS-B stalls here).
-        res = _scipy_minimize(fun, x0, jac=jac, hess=hess, method="trust-exact",
-                              options={"maxiter": max_iter, "gtol": tol})
+        # Hessian — robust to the non-convexity in u (L-BFGS-B stalls here). trust-exact
+        # has no bound support, so if a b-box is requested fall back to L-BFGS-B on the
+        # bounded b-block (u left unbounded). This is the diagnostic path only (fit_w=False
+        # reduction check / feasible=False); the production constrained NUM goes through
+        # _solve_feasible above, where the box is enforced by projection.
+        if clip is not None and has_b:
+            box = float(clip)
+            n_u = (M - 1) if fit_w else 0
+            bounds = [(None, None)] * n_u + [(-box, box)] * Mk
+            res = _scipy_minimize(fun, x0, jac=jac, method="L-BFGS-B", bounds=bounds,
+                                  options={"maxiter": max_iter, "ftol": 1e-14, "gtol": tol})
+        else:
+            res = _scipy_minimize(fun, x0, jac=jac, hess=hess, method="trust-exact",
+                                  options={"maxiter": max_iter, "gtol": tol})
         res_x = res.x
         n_iter = int(getattr(res, "nit", 0))
-        grad_norm = float(np.linalg.norm(jac(res_x)))
+        grad_norm = float(np.linalg.norm(_proj_grad_box(res_x, jac(res_x))))
         hit_max_iter = n_iter >= max_iter
 
     u_fin, b_fin = _unpack(res_x)

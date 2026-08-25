@@ -23,8 +23,10 @@ conda activate kernels_env
 REPO_ROOT="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis"
 SCRIPT="$REPO_ROOT/LRT/plot_lrt_num_kernels.py"
 
-# Target data (for histogram background in test plots)
-TARGET_DATA="$REPO_ROOT/Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/500k_2d_gaussian_heavy_tail_target_set.npy"
+# Target data (histogram background in test plots) — MUST be the SAME file the LRT
+# test runs against (submit_LRT_toys.sh TARGET_DATA) so the histogram matches the
+# tested sample: seed-42 gmm_skew data_test.npy (100k = N_test, oversampling factor 1).
+TARGET_DATA="$REPO_ROOT/data/2d_gmm_toymodel/2d_gmm_skew_Ntrain100000_Ntest100000_seed42/data_test.npy"
 
 # Pre-computed WiFi marginal npz files for 128-model ensemble
 MARGINAL_NPZ_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernels/N_100000_dim_2_kernels_SparKer_models128_L5_K75_M270_Nboot100000_lr0.05_clip_10000000_no_masking_2d_bimodal_gaussian_heavy_tail_ensemblecomponents128/wifi_ensemble_plots"

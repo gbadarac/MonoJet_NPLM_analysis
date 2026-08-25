@@ -6,6 +6,17 @@ For each seed directory in an LRT result folder, generates per-toy diagnostic pl
 showing where the numerator's auxiliary Gaussian kernels are located relative to the
 pre-trained ensemble marginal density.
 
+⚠ STALE MODEL — the 1D marginal overlay (plot_kernel_marginal_1d_overlay /
+plot_kernel_marginal_1d_fallback) reconstructs NUM ADDITIVELY as
+    f_num = f_ens + sum_k c_k G_k,
+but LRT.py's numerator is now the MULTIPLICATIVE NPLM exp-tilt
+    f_num = f_ens * exp(sum_k b_k G_k) / Z.
+So the orange "NUM (ensemble + kernels)" curve and the NUM/Ensemble ratio are
+QUANTITATIVELY WRONG for current runs (a correct multiplicative marginal needs a 2D
+grid eval of f_ens*exp(tilt), normalization, then numerical marginalization — not a
+sum of 1D Gaussians). The seed{N}_kernels_2d.png scatter (centres colored by coeff
+sign) is still valid; treat only that panel as usable until the overlay is rewritten.
+
 Plots produced per seed:
   seed{N}_kernels_2d.png                   -- 2D scatter of kernel centers, colored by coefficient
   seed{N}_kernel_marginal_feat{1,2}.png    -- 1D marginal: ensemble + uncertainty bands (same

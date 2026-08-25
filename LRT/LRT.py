@@ -1,4 +1,4 @@
-import glob, gc, os, json, argparse, sys, ctypes, math, datetime
+import gc, os, json, argparse, sys, ctypes, math, datetime
 from pathlib import Path
 import torch
 import numpy as np
@@ -24,10 +24,6 @@ def _t2np(t):
     ctypes.memmove(arr.ctypes.data_as(ctypes.c_void_p), t_cpu.data_ptr(), arr.nbytes)
     return arr
 
-
-import matplotlib as mpl
-mpl.use('Agg')
-import matplotlib.pyplot as plt
 
 # -------------------------------------------------------------------
 # Repo paths
@@ -59,10 +55,16 @@ parser.add_argument('--seed_format', type=str, default='seed%03d',
                     help="[kernels] Seed folder format, e.g. seed%03d.")
 
 # NF-specific
+parser.add_argument('--nf_train_dir', type=str, default=None,
+                    help="[nf] Dir with model_%03d/model.pth members + architecture_config.json "
+                         "(the training layout; mirrors the kernels --ensemble_dir). Preferred "
+                         "loader; the f_i.pth bundle was retired.")
 parser.add_argument('--fi_path', type=str, default=None,
-                    help="[nf] Path to f_i.pth (list of NF state dicts).")
+                    help="[nf] LEGACY: single f_i.pth bundle of NF state dicts. Fallback only "
+                         "if --nf_train_dir is not given.")
 parser.add_argument('--arch_config', type=str, default=None,
-                    help="[nf] Path to architecture_config.json.")
+                    help="[nf] Path to architecture_config.json (default: "
+                         "<nf_train_dir>/architecture_config.json).")
 
 # Common WiFi / data
 parser.add_argument('--w_path', type=str, default=None,
@@ -78,10 +80,16 @@ parser.add_argument('--w_cov_scale', type=float, default=1.0,
                          "nominal (scale=1) outputs.")
 parser.add_argument('--out_base', type=str, required=True,
                     help="Base output directory.")
-parser.add_argument('--calib_data', type=str, default=None,
-                    help="Calibration data: folder of *.npy OR a single .npy file.")
 parser.add_argument('--target_data', type=str, default=None,
-                    help="Target data: single .npy file.")
+                    help="Target data: single .npy file. Bootstrapped (replace=True) per "
+                         "toy for the observed run — the ONLY option when there is no analytic "
+                         "truth (4D: finite data holdout). For the 2D toy prefer --target_truth.")
+parser.add_argument('--target_truth', type=str, default=None, choices=['2d_gmm_skew'],
+                    help="Observed run (calibration=0): draw Ntest events FRESH from this "
+                         "analytic truth every toy instead of bootstrapping --target_data. "
+                         "Only for the 2D toy model (known DGP) — gives genuinely independent "
+                         "events (no replace=True) so the Ntest/Ntrain oversampling factor is "
+                         "real even at factor>1. 4D has no analytic truth -> leave None.")
 parser.add_argument('-e', '--nensemble', type=int, required=True,
                     help="Number of ensemble models (incl. norm model).")
 parser.add_argument('-n', '--ntest', type=int, required=True,
@@ -95,34 +103,48 @@ parser.add_argument('--fix_wifi_weights', action='store_true',
                     help="Freeze WiFi weights at w_hat (frozen mode). Default (no flag) = "
                          "constrained: profile w under the N(w_hat, Sigma_w) prior.")
 
-# Numerator form (additive = current; multiplicative = NPLM exp-tilt. See the multiplicative block below.
-parser.add_argument('--numerator', type=str, default='additive',
-                    choices=['additive', 'multiplicative'],
-                    help="'additive' f_ens + sum c_j G_j (convex, mean-centred; current). "
-                         "'multiplicative' f_ens*exp(tau)/Z (log-space, clean chi2. Multiplicative currently requires "
-                         "--fix_wifi_weights (frozen, convex); constrained/free is step 2.")
+# Numerator = NPLM exp-tilt  f_num = f_ens * exp(sum_j b_j G_j) / Z  (log-space, clean chi2).
 parser.add_argument('--n_kernels', type=int, default=100, help="M numerator kernels.")
 parser.add_argument('--kernel_sigma', type=float, default=0.3, help="Kernel width sigma.")
 parser.add_argument('--lam_pert', type=float, default=1.0,
-                    help="[multiplicative] L2 ridge on tilt coeffs b (= one-model/classifier).")
+                    help="L2 ridge on tilt coeffs b (= one-model/classifier).")
+parser.add_argument('--clip_b', type=float, default=None,
+                    help="Symmetric box |b_j| <= clip_b on the tilt coeffs. Bounds the tilt "
+                         "runaway on kernels with data support but little reference support (the "
+                         "NUM non-convergence). Tune to b's O(1) scale (max|b|~1 here). Default "
+                         "None = off (L2 ridge only).")
 parser.add_argument('--z_mode', type=str, default='sample', choices=['sample', 'grid'],
-                    help="[multiplicative] Z normalization. 'sample' (DEFAULT) = importance "
-                         "sampling from q (equal-weight member mixture); works in any d, the "
-                         "only option in 4D, and matches the one-model sample-Z choice. 'grid' "
-                         "= deterministic quadrature (exact one-sample; 2D only) — kept as a "
-                         "2D cross-check to validate the importance-sample Z is unbiased.")
+                    help="Z normalization. 'sample' (DEFAULT) = importance sampling from q "
+                         "(equal-weight member mixture); works in any d, the only option in 4D, "
+                         "and matches the one-model sample-Z choice. 'grid' = deterministic "
+                         "quadrature (exact one-sample; 2D only) — kept as a 2D cross-check to "
+                         "validate the importance-sample Z is unbiased.")
 parser.add_argument('--grid_points', type=int, default=300,
-                    help="[multiplicative grid] points per dimension.")
+                    help="[grid] points per dimension.")
 parser.add_argument('--grid_pad', type=float, default=0.2,
-                    help="[multiplicative grid] fractional padding beyond the data range.")
+                    help="[grid] fractional padding beyond the data range.")
 parser.add_argument('--n_ref', type=int, default=None,
-                    help="[multiplicative z_mode=sample] # importance-sample reference points "
-                         "from q (default: Ntest; use >> Ntest in 4D to suppress MC-Z noise).")
+                    help="N_ref = # REFERENCE events used to estimate the normalization "
+                         "Z = integral f_ens*exp(sum b_j G_j) dx. This makes the test a genuine "
+                         "2-SAMPLE test: N_ref is the reference partner of Ntest (the test "
+                         "sample). Importance-sampled from q (z_mode=sample). Default None -> "
+                         "Ntest (1:1); use >> Ntest in 4D to suppress MC-Z noise.")
 
 args = parser.parse_args()
 
 train_wifi_weights = not args.fix_wifi_weights
 use_prior = train_wifi_weights   # constrained (N(w_hat, Sigma) prior) unless frozen (--fix_wifi_weights)
+
+# M=1 (ensemble-of-one) has ZERO free weights: w is pinned to 1.0 by sum-to-one and Sigma_w
+# is 0x0, so there is nothing to profile -- constrained is mathematically IDENTICAL to frozen
+# (empty weight-prior, null carries no weight uncertainty). Force frozen so the constrained
+# path (fit_nplm_tilt_constrained) never hits the degenerate empty-w case. Makes LRT.py robust
+# for -e 1 regardless of how it is invoked (no longer relies on the submit-script guardrail).
+if args.nensemble == 1 and train_wifi_weights:
+    print("[M=1] ensemble-of-one has no free weights to profile; forcing frozen "
+          "(constrained == frozen here).", flush=True)
+    train_wifi_weights = False
+    use_prior          = False
 
 seed  = args.seed
 if seed is None:
@@ -136,20 +158,11 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Device:", device, flush=True)
 
 # -------------------------------------------------------------------
-# Hyperparameters (shared)
+# Hyperparameters
 # -------------------------------------------------------------------
 Ntest                  = args.ntest
-lambda_regularizer     = 0
 n_kernels_numerator    = args.n_kernels
-epochs_tau             = 100000
-epochs_delta           = 100000
-patience               = 1000
 kernel_width_numerator = args.kernel_sigma
-lambda_L2_numerator    = 10000
-lr_delta               = 1e-6
-lr_tau                 = 1e-6
-clip_tau               = 0.0005
-train_centers_tau      = False
 
 # -------------------------------------------------------------------
 # Output folder
@@ -157,18 +170,18 @@ train_centers_tau      = False
 mode_tag = "calibration" if args.calibration else "test"
 
 prefix = "SparKer" if args.model_type == "kernels" else "NF"
-run_tag = "%s%i_Ntest%i_M%i_W%s" % (
+# Folder name exposes, up front, the five knobs that define a run: ensemble size (Nens),
+# test-sample size (Ntest), # numerator kernels (M), kernel width (W); frozen/constrained is
+# appended below. Keep these labelled so the run is identifiable from the path alone.
+run_tag = "%s_Nens%i_Ntest%i_M%i_W%s" % (
     prefix, args.nensemble, Ntest,
     n_kernels_numerator, str(kernel_width_numerator),
 )
-if args.numerator == 'multiplicative':
-    run_tag += "_multiplicative_Lp%g" % args.lam_pert
-    if args.z_mode != 'sample':
-        run_tag += "_zgrid"
-else:
-    run_tag += "_L%g" % lambda_L2_numerator
-    if clip_tau is not None:
-        run_tag += "_clip%s" % str(clip_tau)
+run_tag += "_Lp%g" % args.lam_pert   # NPLM exp-tilt is the only numerator now (no additive/mult label)
+if args.clip_b is not None:
+    run_tag += "_clipb%g" % args.clip_b
+if args.z_mode != 'sample':
+    run_tag += "_zgrid"
 
 if args.nensemble == 1:
     wifi_tag = "single"          # single model = ensemble-of-one, no wifi fit
@@ -179,8 +192,8 @@ run_tag += "_wifi_%s" % wifi_tag
 
 if not train_wifi_weights:
     run_tag += "_frozen_weights"
-elif args.numerator == 'multiplicative':
-    run_tag += "_constrained"        # multiplicative w profiled under the N(w_hat, Sigma) prior
+else:
+    run_tag += "_constrained"        # w profiled under the N(w_hat, Sigma) prior
 
 if args.w_cov_scale != 1.0:          # diagnostic runs land in a SEPARATE dir (no clobber)
     run_tag += "_covscale%g" % args.w_cov_scale
@@ -195,7 +208,7 @@ print("Writing outputs to:", out_dir, flush=True)
 if args.nensemble == 1:
     # Single model = ensemble-of-one: trivial weight 1.0, no weight uncertainty.
     # There is no wifi fit for one model, so --w_path/--w_cov_path are not required;
-    # the frozen multiplicative path then reduces to a plain single-model sample-Z test.
+    # the frozen path then reduces to a plain single-model sample-Z test.
     weights_centralv = np.array([1.0], dtype=np.float64)         # (1,)
     weights_cov_init = np.zeros((0, 0), dtype=np.float64)        # (0, 0)
     if args.w_path is not None or args.w_cov_path is not None:
@@ -271,8 +284,24 @@ if args.model_type == 'kernels':
 
 elif args.model_type == 'nf':
     from utils_flows import make_flow
-    f_i_statedicts = torch.load(args.fi_path, map_location="cpu")
-    with open(args.arch_config) as f:
+    # Per-member state dicts. Preferred: iterate <nf_train_dir>/model_{i:03d}/model.pth
+    # (the training layout, mirrors the kernels seed%03d loop; the f_i.pth bundle was
+    # retired). Legacy fallback: a single --fi_path bundle.
+    if args.nf_train_dir is not None:
+        arch_path = args.arch_config or os.path.join(args.nf_train_dir,
+                                                      "architecture_config.json")
+        f_i_statedicts = [
+            torch.load(os.path.join(args.nf_train_dir, "model_%03d" % i, "model.pth"),
+                       map_location="cpu")
+            for i in range(n_wifi_components)
+        ]
+    elif args.fi_path is not None:
+        arch_path = args.arch_config
+        f_i_statedicts = torch.load(args.fi_path, map_location="cpu")
+    else:
+        raise ValueError("nf model_type needs --nf_train_dir (dir of model_%03d/model.pth) "
+                         "or a legacy --fi_path bundle.")
+    with open(arch_path) as f:
         arch_config = json.load(f)
     print(f"Loaded {len(f_i_statedicts)} NF state dicts, arch: {arch_config}", flush=True)
 
@@ -322,182 +351,249 @@ def _sample_ensemble_q(n, rng):
     """Sample n points from q = (1/M) sum_m model_m — the equal-weight member
     mixture. A positive, samplable proposal for importance-sampling / SIR of the
     signed-weight ensemble density f_ens (which is NOT a mixture, so cannot be
-    sampled by picking a member ~ w). Kernels only; NF (flow.sample) is a later add."""
-    if args.model_type != 'kernels':
-        raise NotImplementedError("ensemble q-sampling is wired for kernels only "
-                                  "(NF: flow.sample TBD).")
+    sampled by picking a member ~ w). Wired for BOTH kernels (component ~ coeffs +
+    Gaussian draw) and NF (flow.sample) — the universal IS proposal that replaces the
+    external hit-or-miss pool (Generate_Ensemble_Samples) for every model type."""
     M = n_wifi_components
-    d = centroids_init.shape[2]
     midx = rng.integers(0, M, size=n)                         # member per draw ~ Uniform(M)
-    out = np.empty((n, d), dtype=np.float64)
-    for m in range(M):
-        sel = np.nonzero(midx == m)[0]
-        if sel.size == 0:
-            continue
-        if m < M - 1:
-            cen, coef, wid = centroids_init[m], coefficients_init[m], widths_init[m]
-        else:
-            cen, coef, wid = centroids_norm[0], coefficients_norm[0], widths_norm[0]
-        k = rng.choice(len(coef), size=sel.size, p=coef)      # component ~ coeffs
-        out[sel] = cen[k] + wid[k, None] * rng.standard_normal((sel.size, d))
-    return out
+
+    if args.model_type == 'kernels':
+        d = centroids_init.shape[2]
+        out = np.empty((n, d), dtype=np.float64)
+        for m in range(M):
+            sel = np.nonzero(midx == m)[0]
+            if sel.size == 0:
+                continue
+            if m < M - 1:
+                cen, coef, wid = centroids_init[m], coefficients_init[m], widths_init[m]
+            else:
+                cen, coef, wid = centroids_norm[0], coefficients_norm[0], widths_norm[0]
+            k = rng.choice(len(coef), size=sel.size, p=coef)  # component ~ coeffs
+            out[sel] = cen[k] + wid[k, None] * rng.standard_normal((sel.size, d))
+        return out
+
+    elif args.model_type == 'nf':
+        # q = (1/M) sum_m flow_m: pick member ~ Uniform(M), draw from that flow via
+        # flow.sample. Torch's RNG is seeded from the passed numpy rng so the draw is
+        # reproducible and tied to the same seed stream as the kernel branch.
+        d = int(arch_config["num_features"])
+        out = np.empty((n, d), dtype=np.float64)
+        torch.manual_seed(int(rng.integers(0, 2**31 - 1)))
+        flow_kwargs = {k: v for k, v in arch_config.items() if k != 'backend'}
+        for m in range(M):
+            sel = np.nonzero(midx == m)[0]
+            if sel.size == 0:
+                continue
+            flow = make_flow(**flow_kwargs)
+            flow.load_state_dict(f_i_statedicts[m])
+            flow = flow.to(device).float().eval()
+            with torch.no_grad():
+                sm = flow.sample(int(sel.size))               # (sel, d) on device
+            out[sel] = _t2np(sm)
+            del flow
+            if device.type == 'cuda':
+                torch.cuda.empty_cache()
+            gc.collect()
+        return out
+
+    raise NotImplementedError(f"q-sampling not wired for model_type={args.model_type}")
+
+
+# -------------------------------------------------------------------
+# Observed sample (calibration=0)
+# -------------------------------------------------------------------
+def _sample_2d_gmm_skew(N, rng):
+    """Fresh i.i.d. draw from the 2D analytic truth behind the target data:
+    x0 = bimodal Gaussian mixture (50/50, mu=-0.70/-0.30, sig=0.12),
+    x1 = skew-normal (loc=1.0, scale=0.75, alpha=8.0).
+    This is the SAME distribution for BOTH the kernels (generate_2d_gmm_skew) and NF
+    (generate_2d_gaussian_heavy_tail_target_data) branches — identical params, only the
+    old cache seed/dtype differed. Drawing per toy makes the observed sample genuinely
+    independent (no replace=True), so the Ntest/Ntrain oversampling factor is real even
+    at factor>1. Params are the verbatim DGP; do not change."""
+    wG = 0.50
+    mu_a, sig_a = -0.70, 0.12
+    mu_b, sig_b = -0.30, 0.12
+    n_a = int(rng.binomial(N, wG))
+    x0 = np.concatenate([rng.normal(mu_a, sig_a, n_a),
+                         rng.normal(mu_b, sig_b, N - n_a)])
+    loc, scale, alpha = 1.0, 0.75, 8.0
+    delta = alpha / np.sqrt(1.0 + alpha ** 2)
+    z0 = rng.standard_normal(N)
+    z1 = rng.standard_normal(N)
+    x1 = loc + scale * (delta * np.abs(z0) + np.sqrt(1.0 - delta ** 2) * z1)
+    data = np.column_stack([x0, x1]).astype(np.float64)
+    rng.shuffle(data)
+    return data
+
+
+_TARGET_TRUTHS = {'2d_gmm_skew': _sample_2d_gmm_skew}
+
+
+def _draw_observed(Ntest, seed):
+    """calibration=0 observed events. --target_truth set (2D toy) -> fresh analytic
+    draw per toy (genuine, non-bootstrap; the oversampling factor is real). Else (4D,
+    no analytic truth) -> bootstrap the finite --target_data holdout (replace=True)."""
+    if args.target_truth is not None:
+        rng_obs = np.random.default_rng((seed if seed is not None else 0) + 20240517)
+        return _TARGET_TRUTHS[args.target_truth](Ntest, rng_obs)
+    if args.target_data is None:
+        raise ValueError("calibration=0 needs --target_truth (2D toy) or --target_data (4D).")
+    data_all = np.load(args.target_data)
+    idx = np.random.choice(len(data_all), Ntest, replace=True)   # finite holdout bootstrap
+    return data_all[idx]
 
 
 # ===================================================================
-# MULTIPLICATIVE numerator (NPLM exp-tilt) — self-contained path, runs BEFORE the
-# additive data-loading so the additive path is left completely untouched.
-#   f_num = f_ens(x; w_hat) * exp(tau) / Z,  tau = sum_j b_j G_j,  w FROZEN at w_hat.
-#   T = 2[sum_i tau(x_i) - N logZ]   (shared log f_ens cancels).
+# NUMERATOR = NPLM exp-tilt:  f_num = f_ens(x; w) * exp(tau) / Z,  tau = sum_j b_j G_j.
+#   T = 2[sum_i tau(x_i) - N logZ]  (shared log f_ens cancels in the frozen case).
 # Data + null are self-contained (no external hit-or-miss pool):
-#   calibration=1 : frozen null ~ f_ens(w_hat) via SIR from q (equal-weight mixture).
+#   calibration=1 : null via SIR from q (equal-weight mixture).
 #   calibration=0 : bootstrap of the target data (replace=True).
 # Z (--z_mode): grid = deterministic quadrature (2D); sample = importance from q (any d, 4D).
-# log-space perturbation (SIR-on-q like sir_toy).
-# Constrained/free (joint w,b, non-convex) is the next step (step 3).
+#   CONSTRAINED (use_prior): jointly profile w under the N(w_hat, Sigma_w) prior AND the tilt b
+#     (the "uncertainty propagated" leg); sample-Z only. See fit_nplm_tilt_constrained.
+#   FROZEN (--fix_wifi_weights): w fixed at w_hat, only b fit — convex; Z: grid | sample.
 # ===================================================================
-if args.numerator == 'multiplicative':
-    np.random.seed(seed)
-    w_hat  = weights_centralv.astype(np.float64)     # (M,) fitted wifi weights
-    w_free = w_hat[:-1]
-    def _f_ens(P):
-        return P[:, :-1] @ w_free + P[:, -1] * (1.0 - w_free.sum())
+np.random.seed(seed)
+w_hat  = weights_centralv.astype(np.float64)     # (M,) fitted wifi weights
+w_free = w_hat[:-1]
+def _f_ens(P):
+    return P[:, :-1] @ w_free + P[:, -1] * (1.0 - w_free.sum())
 
+if use_prior:
     # =====================================================================
-    # CONSTRAINED (default = use_prior): jointly profile w under the N(w_hat, Sigma_w)
-    # prior AND the tilt b — the "uncertainty propagated" leg. FULLY SELF-CONTAINED and
-    # exits before the frozen block, so the validated frozen path stays byte-identical.
-    # Sample-Z only.  T = 2[(ll_num+logprior_num) - (ll_den+logprior_den)]  (b-ridge
-    # excluded; reduces to the frozen T as Sigma_w -> 0). See fit_nplm_tilt_constrained.
+    # CONSTRAINED: profile w under N(w_hat, Sigma_w) prior jointly with the tilt b.
+    # T = 2[(ll_num + logprior_num) - (ll_den + logprior_den)]  (b-ridge excluded from the
+    # priors; reduces to the frozen T as Sigma_w -> 0). Sample-Z only.
     # =====================================================================
-    if use_prior:
-        if args.z_mode == 'grid':
-            raise NotImplementedError(
-                "constrained multiplicative uses sample-Z (importance from q); "
-                "z_mode=grid is a frozen-only 2D cross-check.")
-        # ---- data + posterior-predictive null ----
-        if args.calibration:
-            rng = np.random.default_rng(seed)
-            n_pool = max(2 * Ntest, (args.n_ref if args.n_ref is not None else Ntest))
-            q_pool = _sample_ensemble_q(n_pool, rng)
-            pool_probs = _eval_ensemble(q_pool)
-            q_dens = pool_probs.mean(axis=1)
-            # w_toy ~ N(w_hat, Sigma_w) then SIR-from-q to f_ens(w_toy): the null carries
-            # the weight uncertainty (the whole point of the constrained test).
-            cov = weights_cov_init
-            eps_chol = 1e-8 * np.trace(cov) / cov.shape[0]
-            L_chol = np.linalg.cholesky(cov + eps_chol * np.eye(cov.shape[0]))
-            w_toy_free = w_free + L_chol @ rng.standard_normal(len(w_free))
-            w_toy = np.append(w_toy_free, 1.0 - w_toy_free.sum())
-            f_gen = pool_probs @ w_toy
-            sir_w = np.maximum(f_gen, 0.0) / q_dens
-            sir_w /= sir_w.sum()
-            ess = 1.0 / (sir_w ** 2).sum()
-            print(f"[mult constrained] posterior-predictive null: ||w_toy-w_hat||="
-                  f"{np.linalg.norm(w_toy - w_hat):.4f}, SIR-from-q ESS={ess:.0f}/{n_pool}",
-                  flush=True)
-            idx = rng.choice(n_pool, size=Ntest, replace=True, p=sir_w)
-            bootstrap_sample = q_pool[idx]
-            probs_np = pool_probs[idx]
-        else:
-            if args.target_data is None:
-                raise ValueError("calibration=0 but --target_data not provided.")
-            data_all = np.load(args.target_data)
-            idx = np.random.choice(len(data_all), Ntest, replace=True)
-            bootstrap_sample = data_all[idx]
-            probs_np = _eval_ensemble(bootstrap_sample)
-        N = bootstrap_sample.shape[0]
-
-        sigma_anchor = gen.candidate_sigma(bootstrap_sample)
-        print(f"[sigma anchor] NPLM candidate_sigma(perc=90) = {sigma_anchor:.3f}; "
-              f"kernel_sigma={kernel_width_numerator}, M={n_kernels_numerator} "
-              f"(sqrt(N)={math.sqrt(N):.0f}). Keep sigma FIXED + MATCHED across stages.",
+    if args.z_mode == 'grid':
+        raise NotImplementedError(
+            "constrained multiplicative uses sample-Z (importance from q); "
+            "z_mode=grid is a frozen-only 2D cross-check.")
+    # ---- data + posterior-predictive null ----
+    if args.calibration:
+        rng = np.random.default_rng(seed)
+        n_pool = max(2 * Ntest, (args.n_ref if args.n_ref is not None else Ntest))
+        q_pool = _sample_ensemble_q(n_pool, rng)
+        pool_probs = _eval_ensemble(q_pool)
+        q_dens = pool_probs.mean(axis=1)
+        # w_toy ~ N(w_hat, Sigma_w) then SIR-from-q to f_ens(w_toy): the null carries
+        # the weight uncertainty (the whole point of the constrained test).
+        cov = weights_cov_init
+        eps_chol = 1e-8 * np.trace(cov) / cov.shape[0]
+        L_chol = np.linalg.cholesky(cov + eps_chol * np.eye(cov.shape[0]))
+        w_toy_free = w_free + L_chol @ rng.standard_normal(len(w_free))
+        w_toy = np.append(w_toy_free, 1.0 - w_toy_free.sum())
+        f_gen = pool_probs @ w_toy
+        sir_w = np.maximum(f_gen, 0.0) / q_dens
+        sir_w /= sir_w.sum()
+        ess = 1.0 / (sir_w ** 2).sum()
+        print(f"[constrained] posterior-predictive null: ||w_toy-w_hat||="
+              f"{np.linalg.norm(w_toy - w_hat):.4f}, SIR-from-q ESS={ess:.0f}/{n_pool}",
               flush=True)
+        idx = rng.choice(n_pool, size=Ntest, replace=True, p=sir_w)
+        bootstrap_sample = q_pool[idx]
+        probs_np = pool_probs[idx]
+    else:
+        # calib=0 observed. 2D toy: fresh i.i.d. draw from the analytic truth
+        # (--target_truth) -> genuine oversampling, NO bootstrap. 4D: bootstrap the
+        # finite --target_data holdout (replace=True). See _draw_observed.
+        bootstrap_sample = _draw_observed(Ntest, seed)
+        probs_np = _eval_ensemble(bootstrap_sample)
+    N = bootstrap_sample.shape[0]
 
-        centers_np = bootstrap_sample[:n_kernels_numerator].astype(np.float64)
-        K_data = lrt.gaussian_kernel_matrix(bootstrap_sample.astype(np.float64),
-                                            centers_np, kernel_width_numerator)
-        # reference for Z: importance-sample from q (Z(w,b) recomputed inside the fitter)
-        n_ref = args.n_ref if args.n_ref is not None else Ntest
-        rng_ref = np.random.default_rng((seed if seed is not None else 0) + 987654321)
-        y = _sample_ensemble_q(n_ref, rng_ref)
-        yprobs = _eval_ensemble(y)
-        q_y = yprobs.mean(axis=1)
-        K_ref = lrt.gaussian_kernel_matrix(y, centers_np, kernel_width_numerator)
-        n_neg = int((_f_ens(yprobs) <= 0).sum())
-        if n_neg:
-            print(f"WARNING: {n_neg}/{n_ref} reference points have f_ens(w_hat)<=0.", flush=True)
+    sigma_anchor = gen.candidate_sigma(bootstrap_sample)
+    print(f"[sigma anchor] NPLM candidate_sigma(perc=90) = {sigma_anchor:.3f}; "
+          f"kernel_sigma={kernel_width_numerator}, M={n_kernels_numerator} "
+          f"(sqrt(N)={math.sqrt(N):.0f}). Keep sigma FIXED + MATCHED across stages.",
+          flush=True)
 
-        den = lrt.fit_nplm_tilt_constrained(
-            probs_np, w_hat, weights_cov_init, fit_w=True, name="DEN")
-        # Warm-start the joint NUM at (u_den, b*(u_den)): u already at its b=0 optimum,
-        # b at the frozen tilt optimum given u_den — near the joint optimum, so trust-exact
-        # polishes in a few iters (from (u_hat, 0) it stalls at production M=500 scale).
-        w_den_full = den["w"]                                       # (M,)
-        lw_ref_den = np.log(np.maximum(yprobs @ w_den_full, 1e-300)) - np.log(np.maximum(q_y, 1e-300))
-        b_init = lrt.fit_nplm_tilt(K_data, K_ref, lam_pert=args.lam_pert,
-                                   log_w_ref=lw_ref_den, name="NUM-binit")["b"]
-        num = lrt.fit_nplm_tilt_constrained(
-            probs_np, w_hat, weights_cov_init, K_data, yprobs, K_ref, q_y,
-            fit_w=True, lam_pert=args.lam_pert, u_init=den["u"], b_init=b_init, name="NUM")
-        if not (den["converged"] and num["converged"]):
-            print(f"WARNING: constrained fit not converged (DEN ||g||={den['grad_norm']:.2e}, "
-                  f"NUM ||g||={num['grad_norm']:.2e})", flush=True)
+    centers_np = bootstrap_sample[:n_kernels_numerator].astype(np.float64)
+    K_data = lrt.gaussian_kernel_matrix(bootstrap_sample.astype(np.float64),
+                                        centers_np, kernel_width_numerator)
+    # reference for Z: importance-sample from q (Z(w,b) recomputed inside the fitter)
+    n_ref = args.n_ref if args.n_ref is not None else Ntest
+    rng_ref = np.random.default_rng((seed if seed is not None else 0) + 987654321)
+    y = _sample_ensemble_q(n_ref, rng_ref)
+    yprobs = _eval_ensemble(y)
+    q_y = yprobs.mean(axis=1)
+    K_ref = lrt.gaussian_kernel_matrix(y, centers_np, kernel_width_numerator)
+    n_neg = int((_f_ens(yprobs) <= 0).sum())
+    if n_neg:
+        print(f"WARNING: {n_neg}/{n_ref} reference points have f_ens(w_hat)<=0.", flush=True)
 
-        den_log_np = den["log_model_data"]        # (N,) log f_ens(x; w_den)
-        num_log_np = num["log_model_data"]        # (N,) log f_num(x; w_num, b)
-        lp_den, lp_num = den["logprior"], num["logprior"]
-        b_num, logZ = num["b"], num["logZ"]
-        # PENALIZED 2*logLR: the b-ridge 1/2 lam||b||^2 is INCLUDED in T (matches
-        # classifier_gof.py `t = 2(L_den - L_num)` and the gof2d_gmm notebook — both keep
-        # the kernel ridge in t). T = 2[(ll_num + logprior_num - 1/2 lam||b||^2)
-        #                              - (ll_den + logprior_den)].
-        # The weight-prior AND the b-ridge are spread over events so sum(test_np) == T.
-        # b=0 recovers the den fit (ridge=0) => T >= 0 preserved.
-        b_ridge = 0.5 * args.lam_pert * float(np.dot(b_num, b_num))
-        test_np = 2.0 * ((num_log_np - den_log_np) + (lp_num - lp_den - b_ridge) / N)
-        T = 2.0 * ((num["ll"] + lp_num - b_ridge) - (den["ll"] + lp_den))
-        assert abs(T - test_np.sum()) < 1e-4 * (1.0 + abs(T)), (T, float(test_np.sum()))
-        assert T >= -1e-4, f"T = {T} < 0: nested LRT violated — a fit did not converge."
-        print(f"T = {T:.6f}", flush=True)
-        print(f"mean per-event log LR = {float(test_np.mean()):.6f}", flush=True)
+    den = lrt.fit_nplm_tilt_constrained(
+        probs_np, w_hat, weights_cov_init, fit_w=True, name="DEN")
+    # Warm-start the joint NUM at (u_den, b*(u_den)): u already at its b=0 optimum,
+    # b at the frozen tilt optimum given u_den — near the joint optimum, so trust-exact
+    # polishes in a few iters (from (u_hat, 0) it stalls at production M=500 scale).
+    w_den_full = den["w"]                                       # (M,)
+    lw_ref_den = np.log(np.maximum(yprobs @ w_den_full, 1e-300)) - np.log(np.maximum(q_y, 1e-300))
+    b_init = lrt.fit_nplm_tilt(K_data, K_ref, lam_pert=args.lam_pert, clip=args.clip_b,
+                               log_w_ref=lw_ref_den, name="NUM-binit")["b"]
+    num = lrt.fit_nplm_tilt_constrained(
+        probs_np, w_hat, weights_cov_init, K_data, yprobs, K_ref, q_y,
+        fit_w=True, lam_pert=args.lam_pert, clip=args.clip_b,
+        u_init=den["u"], b_init=b_init, name="NUM")
+    if not (den["converged"] and num["converged"]):
+        print(f"WARNING: constrained fit not converged (DEN ||g||={den['grad_norm']:.2e}, "
+              f"NUM ||g||={num['grad_norm']:.2e})", flush=True)
 
-        with open(os.path.join(out_dir, f"seed{label}_T.txt"), "w") as f:
-            f.write(f"{T}\n")
-        np.save(os.path.join(out_dir, f"seed{label}_T.npy"), np.array(T, dtype=np.float64))
-        if args.save_arrays:
-            np.save(os.path.join(out_dir, f"seed{label}_test.npy"),        test_np)
-            np.save(os.path.join(out_dir, f"seed{label}_numerator.npy"),   num_log_np)
-            np.save(os.path.join(out_dir, f"seed{label}_denominator.npy"), den_log_np)
-        np.save(os.path.join(out_dir, f"seed{label}_coeffs.npy"),         b_num)
-        np.save(os.path.join(out_dir, f"seed{label}_kernel_centers.npy"), centers_np)
-        np.save(os.path.join(out_dir, f"seed{label}_den_weights.npy"),    den["w"][:-1])
-        np.save(os.path.join(out_dir, f"seed{label}_num_weights.npy"),    num["w"][:-1])
-        np.save(os.path.join(out_dir, f"seed{label}_init_weights.npy"),   w_free)
-        with open(os.path.join(out_dir, f"seed{label}_fit_report.json"), "w") as f:
-            json.dump({"den": {**{k: den[k] for k in ("ll", "logprior", "grad_norm",
-                                                   "n_iter", "converged", "hit_max_iter")},
-                               "veto": den["veto"]},
-                       "num": {**{k: num[k] for k in ("ll", "logprior", "logZ", "grad_norm",
-                                                   "max_b", "n_iter", "converged", "hit_max_iter")},
-                               "veto": num["veto"]}},
-                      f, indent=2)
-        # Feasibility-constraint diagnostic (Sean Opt 1): how hard the f_ens>0 constraint
-        # bound on this toy. Aggregate `start_infeasible` / `n_feas_capped_steps` across the
-        # 100 null toys -> if the constraint rarely binds (~1/100) the toy distortion is small.
-        print(f"  [veto] DEN start_infeasible={den['veto']['start_infeasible']} "
-              f"nneg_data@start={den['veto']['n_neg_data_at_start']} "
-              f"capped_steps={den['veto']['n_feas_capped_steps']} "
-              f"min_dens={den['veto']['min_data_dens_soln']:.2e} | "
-              f"NUM start_infeasible={num['veto']['start_infeasible']} "
-              f"capped_steps={num['veto']['n_feas_capped_steps']}", flush=True)
-        print("--- Numerator (multiplicative NPLM exp-tilt, CONSTRAINED w) ---")
-        print(f"  {len(b_num)} tilt coeffs b, max|b|={np.abs(b_num).max():.3e}, logZ={logZ:.4f}; "
-              f"||w_num-w_hat||={np.linalg.norm(num['w']-w_hat):.4f}", flush=True)
-        raise SystemExit(0)
+    den_log_np = den["log_model_data"]        # (N,) log f_ens(x; w_den)
+    num_log_np = num["log_model_data"]        # (N,) log f_num(x; w_num, b)
+    lp_den, lp_num = den["logprior"], num["logprior"]
+    b_num, logZ = num["b"], num["logZ"]
+    # PENALIZED 2*logLR: the b-ridge 1/2 lam||b||^2 is INCLUDED in T (matches
+    # classifier_gof.py `t = 2(L_den - L_num)` and the gof2d_gmm notebook — both keep
+    # the kernel ridge in t). T = 2[(ll_num + logprior_num - 1/2 lam||b||^2)
+    #                              - (ll_den + logprior_den)].
+    # The weight-prior AND the b-ridge are spread over events so sum(test_np) == T.
+    # b=0 recovers the den fit (ridge=0) => T >= 0 preserved.
+    b_ridge = 0.5 * args.lam_pert * float(np.dot(b_num, b_num))
+    test_np = 2.0 * ((num_log_np - den_log_np) + (lp_num - lp_den - b_ridge) / N)
+    T = 2.0 * ((num["ll"] + lp_num - b_ridge) - (den["ll"] + lp_den))
+    assert abs(T - test_np.sum()) < 1e-4 * (1.0 + abs(T)), (T, float(test_np.sum()))
+    assert T >= -1e-4, f"T = {T} < 0: nested LRT violated — a fit did not converge."
+    print(f"T = {T:.6f}", flush=True)
+    print(f"mean per-event log LR = {float(test_np.mean()):.6f}", flush=True)
 
+    with open(os.path.join(out_dir, f"seed{label}_T.txt"), "w") as f:
+        f.write(f"{T}\n")
+    np.save(os.path.join(out_dir, f"seed{label}_T.npy"), np.array(T, dtype=np.float64))
+    if args.save_arrays:
+        np.save(os.path.join(out_dir, f"seed{label}_test.npy"),        test_np)
+        np.save(os.path.join(out_dir, f"seed{label}_numerator.npy"),   num_log_np)
+        np.save(os.path.join(out_dir, f"seed{label}_denominator.npy"), den_log_np)
+    np.save(os.path.join(out_dir, f"seed{label}_coeffs.npy"),         b_num)
+    np.save(os.path.join(out_dir, f"seed{label}_kernel_centers.npy"), centers_np)
+    np.save(os.path.join(out_dir, f"seed{label}_den_weights.npy"),    den["w"][:-1])
+    np.save(os.path.join(out_dir, f"seed{label}_num_weights.npy"),    num["w"][:-1])
+    np.save(os.path.join(out_dir, f"seed{label}_init_weights.npy"),   w_free)
+    with open(os.path.join(out_dir, f"seed{label}_fit_report.json"), "w") as f:
+        json.dump({"den": {**{k: den[k] for k in ("ll", "logprior", "grad_norm",
+                                               "n_iter", "converged", "hit_max_iter")},
+                           "veto": den["veto"]},
+                   "num": {**{k: num[k] for k in ("ll", "logprior", "logZ", "grad_norm",
+                                               "max_b", "n_iter", "converged", "hit_max_iter")},
+                           "veto": num["veto"]}},
+                  f, indent=2)
+    # Feasibility-constraint diagnostic (Sean Opt 1): how hard the f_ens>0 constraint
+    # bound on this toy. Aggregate `start_infeasible` / `n_feas_capped_steps` across the
+    # 100 null toys -> if the constraint rarely binds (~1/100) the toy distortion is small.
+    print(f"  [veto] DEN start_infeasible={den['veto']['start_infeasible']} "
+          f"nneg_data@start={den['veto']['n_neg_data_at_start']} "
+          f"capped_steps={den['veto']['n_feas_capped_steps']} "
+          f"min_dens={den['veto']['min_data_dens_soln']:.2e} | "
+          f"NUM start_infeasible={num['veto']['start_infeasible']} "
+          f"capped_steps={num['veto']['n_feas_capped_steps']}", flush=True)
+    print("--- Numerator (multiplicative NPLM exp-tilt, CONSTRAINED w) ---")
+    print(f"  {len(b_num)} tilt coeffs b, max|b|={np.abs(b_num).max():.3e}, logZ={logZ:.4f}; "
+          f"||w_num-w_hat||={np.linalg.norm(num['w']-w_hat):.4f}", flush=True)
+
+else:
     # =====================================================================
-    # FROZEN (--fix_wifi_weights): w fixed at w_hat, only b fit — convex, VALIDATED,
-    # left exactly as before. Runs only when NOT use_prior. Z: grid | sample.
+    # FROZEN (--fix_wifi_weights): w fixed at w_hat, only b fit — convex. Z: grid | sample.
     # =====================================================================
     # ---- data + null (self-contained) ----
     if args.calibration:
@@ -510,16 +606,15 @@ if args.numerator == 'multiplicative':
         sir_w = np.maximum(f_ens_pool, 0.0) / q_dens
         sir_w /= sir_w.sum()
         ess = 1.0 / (sir_w ** 2).sum()
-        print(f"[mult] frozen null via SIR-from-q: ESS = {ess:.0f}/{n_pool}", flush=True)
+        print(f"[frozen] null via SIR-from-q: ESS = {ess:.0f}/{n_pool}", flush=True)
         idx = rng.choice(n_pool, size=Ntest, replace=True, p=sir_w)
         bootstrap_sample = q_pool[idx]
         probs_np = pool_probs[idx]
     else:
-        if args.target_data is None:
-            raise ValueError("calibration=0 but --target_data not provided.")
-        data_all = np.load(args.target_data)
-        idx = np.random.choice(len(data_all), Ntest, replace=True)   # bootstrap the target
-        bootstrap_sample = data_all[idx]
+        # calib=0 observed. 2D toy: fresh i.i.d. draw from the analytic truth
+        # (--target_truth) -> genuine oversampling, NO bootstrap. 4D: bootstrap the
+        # finite --target_data holdout (replace=True). See _draw_observed.
+        bootstrap_sample = _draw_observed(Ntest, seed)
         probs_np = _eval_ensemble(bootstrap_sample)
     N = bootstrap_sample.shape[0]
 
@@ -532,7 +627,7 @@ if args.numerator == 'multiplicative':
     f_ens_data = np.maximum(_f_ens(probs_np), 1e-300)             # (N,)
     den_log_np = np.log(f_ens_data)
     if not np.isfinite(den_log_np).all():
-        raise RuntimeError("DEN loglik not finite (multiplicative frozen).")
+        raise RuntimeError("DEN loglik not finite (frozen).")
 
     centers_np = bootstrap_sample[:n_kernels_numerator].astype(np.float64)
     K_data = lrt.gaussian_kernel_matrix(bootstrap_sample.astype(np.float64),
@@ -570,7 +665,7 @@ if args.numerator == 'multiplicative':
         print(f"Z via SAMPLE (importance from q): {n_ref} refs; ESS = {ess:.0f}/{n_ref}",
               flush=True)
 
-    res_num = lrt.fit_nplm_tilt(K_data, K_ref, lam_pert=args.lam_pert,
+    res_num = lrt.fit_nplm_tilt(K_data, K_ref, lam_pert=args.lam_pert, clip=args.clip_b,
                                 log_w_ref=log_w_ref, name="NUM", verbose=True)
     if not res_num["converged"]:
         print(f"WARNING: NUM tilt fit not converged (||g||={res_num['grad_norm']:.2e})",
@@ -581,7 +676,7 @@ if args.numerator == 'multiplicative':
     num_log_np = den_log_np + tau_data - logZ
     # PENALIZED 2*logLR: subtract the b-ridge 1/2 lam||b||^2 so T matches classifier_gof.py
     # + the gof2d_gmm notebook (both keep the kernel ridge in t). Spread over events so
-    # sum(test_np) == T; b=0 recovers den (ridge=0) => T >= 0 preserved. (Was unpenalized.)
+    # sum(test_np) == T; b=0 recovers den (ridge=0) => T >= 0 preserved.
     b_ridge  = 0.5 * args.lam_pert * float(np.dot(b_num, b_num))
     test_np  = 2.0 * (tau_data - logZ - b_ridge / N)
     T = 2.0 * (num_log_np.sum() - den_log_np.sum()) - 2.0 * b_ridge
@@ -609,257 +704,3 @@ if args.numerator == 'multiplicative':
     print("--- Numerator (multiplicative NPLM exp-tilt, frozen w) ---")
     print(f"  {len(b_num)} tilt coeffs b, max|b|={np.abs(b_num).max():.3e}, logZ={logZ:.4f}",
           flush=True)
-    raise SystemExit(0)
-
-# -------------------------------------------------------------------
-# Load calibration pool or target data
-# -------------------------------------------------------------------
-if args.calibration:
-    if args.calib_data is None:
-        raise ValueError("calibration=1 but --calib_data not provided.")
-    if os.path.isdir(args.calib_data):
-        files = sorted(glob.glob(os.path.join(args.calib_data, "*.npy")))
-        if not files:
-            raise FileNotFoundError(f"No .npy files in {args.calib_data}")
-        data_all = np.concatenate([np.load(f) for f in files], axis=0)
-    else:
-        data_all = np.load(args.calib_data)
-else:
-    if args.target_data is None:
-        raise ValueError("calibration=0 but --target_data not provided.")
-    data_all = np.load(args.target_data)
-
-print('Pool size:', data_all.shape[0], flush=True)
-np.random.seed(seed)
-
-# -------------------------------------------------------------------
-# Subsample / SIR
-# Constrained calibration (CALIBRATION=1, use_prior=True): posterior-
-# predictive null — sample w^toy ~ N(ŵ, C) and SIR-resample the pool.
-# This is necessary for the null T distribution on toys to match the
-# null T distribution on real data (CALIBRATION=1 only; in CALIBRATION=0
-# the LRT is run on real target data, no toy generation involved).
-# All other modes: standard random subsampling.
-# -------------------------------------------------------------------
-if args.calibration and use_prior:
-    cov_np   = weights_cov_init            # (M-1, M-1)
-    eps_chol = 1e-8 * np.trace(cov_np) / cov_np.shape[0]
-    L_chol   = np.linalg.cholesky(cov_np + eps_chol * np.eye(cov_np.shape[0]))
-    z        = np.random.randn(len(weights_centralv) - 1)
-    w_toy_free = weights_centralv[:-1] + L_chol @ z
-    w_toy_norm = 1.0 - w_toy_free.sum()
-    print(f"SIR: ||w^toy - w_hat|| = "
-          f"{np.linalg.norm(np.append(w_toy_free, w_toy_norm) - weights_centralv):.4f}",
-          flush=True)
-
-    # Evaluate ensemble on full pool (expensive but done once)
-    print("SIR: evaluating ensemble on full pool...", flush=True)
-    pool_all = _eval_ensemble(data_all)          # (N_pool, M)
-    pool_mix = pool_all[:, :-1]                  # (N_pool, M-1)
-    pool_nrm = pool_all[:, -1]                   # (N_pool,)
-
-    p_toy = pool_mix @ w_toy_free + pool_nrm * w_toy_norm
-    p_hat = pool_mix @ weights_centralv[:-1] + pool_nrm * weights_centralv[-1]
-    p_toy = np.maximum(p_toy, 1e-300)
-    p_hat = np.maximum(p_hat, 1e-300)
-
-    log_w  = np.log(p_toy) - np.log(p_hat)
-    log_w -= log_w.max()
-    sir_w  = np.exp(log_w)
-    sir_w /= sir_w.sum()
-    ess    = 1.0 / (sir_w ** 2).sum()
-    print(f"SIR: ESS = {ess:.0f} / {len(data_all)}", flush=True)
-
-    sir_idx        = np.random.choice(len(data_all), size=Ntest, replace=True, p=sir_w)
-    bootstrap_sample = data_all[sir_idx]
-
-    # Reuse pool evaluation — no second forward pass needed
-    model_probs_all = _np2t(pool_all[sir_idx])              # (Ntest, M)
-    del pool_all, pool_mix, pool_nrm
-    gc.collect()
-
-else:
-    # Frozen, free, or CALIBRATION=0: standard random subsampling.
-    idx              = np.random.choice(len(data_all), Ntest, replace=False)
-    bootstrap_sample = data_all[idx]
-    model_probs_all  = _np2t(_eval_ensemble(bootstrap_sample))  # (Ntest, M)
-
-# -------------------------------------------------------------------
-# Split into mixture and norm components, clamp, sanity check
-# -------------------------------------------------------------------
-EPS = 1e-300
-model_probs      = torch.clamp(model_probs_all[:, :-1], min=EPS)    # (Ntest, M-1)
-model_norm_probs = torch.clamp(model_probs_all[:, -1:], min=EPS)    # (Ntest, 1)
-
-def _stats(name, t):
-    t = t.detach().cpu()
-    print(name, "shape", tuple(t.shape),
-          "finite", torch.isfinite(t).all().item(),
-          "min", float(t.min()), "max", float(t.max()),
-          "neg", int((t < 0).sum()), "zero", int((t == 0).sum()),
-          flush=True)
-
-_stats("model_probs",      model_probs)
-_stats("model_norm_probs", model_norm_probs)
-
-x_data = _np2t(bootstrap_sample).to(device)
-x_dim  = x_data.shape[1]
-
-# -------------------------------------------------------------------
-# WiFi weight initialisation for the optimiser  (additive path only;
-# the multiplicative path is self-contained above and has already exited)
-# -------------------------------------------------------------------
-if train_wifi_weights:
-    noise_scale = 0.1 * np.abs(weights_cov_init.diagonal()).mean()
-    w_init = _np2t(weights_centralv + np.random.normal(
-        scale=noise_scale, size=weights_centralv.shape))
-else:
-    w_init = _np2t(weights_centralv)
-
-w0 = w_init[:-1]
-print("sum(w_init) =", float(w0.sum()), "w_norm_init =", float(1.0 - w0.sum()))
-p_check = (model_probs.cpu() @ w0) + (model_norm_probs.cpu().squeeze(1) * (1.0 - w0.sum()))
-print("p_check finite:", torch.isfinite(p_check).all().item(),
-      "min", float(p_check.min()), "num<=0", int((p_check <= 0).sum()), flush=True)
-
-w_centralv = _np2t(weights_centralv)
-w_cov      = _np2t(weights_cov_init)
-
-# -------------------------------------------------------------------
-# TAU models
-# -------------------------------------------------------------------
-model_den = lrt.TAU(
-    (None, x_dim),
-    ensemble_probs=model_probs.to(device),
-    ensemble_norm_probs=model_norm_probs.to(device),
-    weights_init=w_init[:-1].to(device),
-    weights_cov=w_cov.to(device)       if use_prior else None,
-    weights_mean=w_centralv[:-1].to(device) if use_prior else None,
-    gaussian_center=[],
-    gaussian_coeffs=[],
-    gaussian_sigma=None,
-    lambda_regularizer=lambda_regularizer,
-    train_net=False,
-    train_weights=train_wifi_weights,
-).to(device).double()
-
-with torch.no_grad():
-    den_p0 = torch.clamp(model_den.call(x_data)[:, 0], min=model_den.eps)
-    den0   = torch.log(den_p0).sum()
-    print("den0 finite:", torch.isfinite(den0).item(), "den0:", den0.item(), flush=True)
-    if not torch.isfinite(den0):
-        raise RuntimeError("DEN loglik not finite at init.")
-
-if train_wifi_weights:
-    den_epochs, den_losses, _ = lrt.train_loop(
-        x_data, model_den, "DEN", epochs=epochs_delta,
-        lr=lr_delta, patience=int(patience))
-    fig, ax = plt.subplots()
-    ax.plot(den_epochs, den_losses)
-    ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.set_title("Denominator loss")
-    fig.savefig(os.path.join(out_dir, f"seed{label}_denominator_loss.png"),
-                dpi=180, bbox_inches="tight")
-    plt.close(fig)
-
-centers = x_data[:n_kernels_numerator].clone()
-coeffs  = torch.ones(n_kernels_numerator, dtype=torch.float64, device=device) / n_kernels_numerator
-
-model_num = lrt.TAU(
-    (None, x_dim),
-    ensemble_probs=model_probs.to(device),
-    ensemble_norm_probs=model_norm_probs.to(device),
-    weights_init=w_init[:-1].to(device),
-    weights_cov=w_cov.to(device)       if use_prior else None,
-    weights_mean=w_centralv[:-1].to(device) if use_prior else None,
-    gaussian_center=centers.to(device),
-    gaussian_coeffs=coeffs.to(device),
-    gaussian_sigma=kernel_width_numerator,
-    lambda_regularizer=lambda_regularizer,
-    lambda_net=lambda_L2_numerator,
-    train_net=True,
-    train_centers=train_centers_tau,
-    clip_net_coeffs=clip_tau,
-    train_weights=train_wifi_weights,
-).to(device).double()
-
-num_epochs, num_losses, _ = lrt.train_loop(
-    x_data, model_num, "NUM", epochs=epochs_tau,
-    lr=lr_tau, patience=patience)
-
-fig, ax = plt.subplots()
-ax.plot(num_epochs, num_losses)
-ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.set_title("Numerator loss")
-fig.savefig(os.path.join(out_dir, f"seed{label}_numerator_loss.png"),
-            dpi=180, bbox_inches="tight")
-plt.close(fig)
-
-# -------------------------------------------------------------------
-# Test statistic T
-# -------------------------------------------------------------------
-with torch.no_grad():
-    N = x_data.shape[0]
-
-    den_p      = torch.clamp(model_den.call(x_data)[:, 0], min=model_den.eps)
-    den_log    = torch.log(den_p)
-
-    ens_p, net_out = model_num.call(x_data)
-    num_p      = torch.clamp(ens_p[:, 0] + net_out, min=model_num.eps)
-    num_log    = torch.log(num_p)
-
-    if train_wifi_weights:
-        aux_num  = model_num.log_auxiliary_term()
-        aux_den  = model_den.log_auxiliary_term()
-        T_tensor = 2.0 * ((num_log.sum() + aux_num) - (den_log.sum() + aux_den))
-        test     = 2.0 * ((num_log - den_log) + ((aux_num - aux_den) / N))
-    else:
-        T_tensor = 2.0 * (num_log.sum() - den_log.sum())
-        test     = 2.0 * (num_log - den_log)
-
-    T        = float(T_tensor.detach().cpu().item())
-    numerator   = num_log.detach().cpu().numpy().copy()
-    denominator = den_log.detach().cpu().numpy().copy()
-    test_np  = test.detach().cpu().numpy().copy()
-
-print(f"T = {T:.6f}")
-print(f"mean per-event log LR = {float(test.mean()):.6f}", flush=True)
-
-# -------------------------------------------------------------------
-# Save outputs
-# -------------------------------------------------------------------
-with open(os.path.join(out_dir, f"seed{label}_T.txt"), "w") as f:
-    f.write(f"{T}\n")
-np.save(os.path.join(out_dir, f"seed{label}_T.npy"), np.array(T, dtype=np.float64))
-
-if args.save_arrays:
-    np.save(os.path.join(out_dir, f"seed{label}_test.npy"),       test_np)
-    np.save(os.path.join(out_dir, f"seed{label}_numerator.npy"),  numerator)
-    np.save(os.path.join(out_dir, f"seed{label}_denominator.npy"), denominator)
-
-np.save(os.path.join(out_dir, f"seed{label}_coeffs.npy"),
-        model_num.network.get_coefficients().detach().cpu().numpy().copy())
-np.save(os.path.join(out_dir, f"seed{label}_kernel_centers.npy"),
-        centers.detach().cpu().numpy().copy())
-
-w_den_final  = model_den.weights.detach().cpu().numpy().copy()
-w_num_final  = model_num.weights.detach().cpu().numpy().copy()
-w_init_arr   = w_init[:-1].detach().cpu().numpy().copy()
-w_prior_mean = w_centralv[:-1].cpu().numpy().copy()
-
-np.save(os.path.join(out_dir, f"seed{label}_den_weights.npy"),  w_den_final)
-np.save(os.path.join(out_dir, f"seed{label}_num_weights.npy"),  w_num_final)
-np.save(os.path.join(out_dir, f"seed{label}_init_weights.npy"), w_init_arr)
-
-kernel_coeffs_final = model_num.network.get_coefficients().detach().cpu().numpy().copy()
-raw_coeffs_final    = model_num.network.coefficients.detach().cpu().numpy().copy()
-n_at_clip = sum(1 for c in raw_coeffs_final.flat if abs(float(c)) >= clip_tau * 0.999)
-
-np.set_printoptions(precision=6, suppress=True, linewidth=120)
-M_free = len(w_prior_mean)
-print(f"--- WiFi weights ({M_free} free components) ---")
-print(f"  prior mean : {w_prior_mean}")
-print(f"  init       : {w_init_arr}")
-print(f"  DEN final  : {w_den_final}")
-print(f"  NUM final  : {w_num_final}")
-print(f"--- Kernel coefficients (mean-centred, {n_kernels_numerator} components) ---")
-print(f"  final      : {kernel_coeffs_final}")
-print(f"  saturated at clip={clip_tau}: {n_at_clip}/{n_kernels_numerator}", flush=True)

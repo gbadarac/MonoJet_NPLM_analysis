@@ -1,8 +1,12 @@
 import numpy as np
 import torch
 from scipy.spatial.distance import pdist
-import jax.numpy as jnp
-from jax import random
+try:                                  # jax is OPTIONAL: only compute_bandwidths (the MMDfuse
+    import jax.numpy as jnp           # bandwidth grid) uses it, and the LRT/NF pipelines never
+    from jax import random            # call it. Guarding the import lets jax-free envs (e.g.
+except ModuleNotFoundError:           # nplm_env, the NF-LRT env) still import GENutils for
+    jnp = None                        # candidate_sigma / evaluate_gaussian_components. Envs
+    random = None                     # that DO have jax (kernels_env) are unaffected.
                                                                                                                                                      
 def standardize(dataset, mean_all, std_all):
     dataset_new = np.copy(dataset)

@@ -2,19 +2,28 @@
 analyse_LRT_output.py
 ---------------------
 Unified analysis script for LRT results — works for both Sparker kernels and
-normalizing flow model types. Reads the standard output format produced by LRT.py:
+normalizing flow model types. Reads the standard output format produced by LRT.py
+(and LRT_1model_profiling.py). --results_dir IS the run-tag directory itself; it
+contains the calibration/ and test/ subtrees:
 
-    <results_dir>/<run_tag>/
-        calibration/seed{N}/seed{N}_T.npy
-        test/seed{N}/seed{N}_T.npy
-        calibration/seed{N}/seed{N}_den_weights.npy   (optional)
-        calibration/seed{N}/seed{N}_coeffs.npy        (optional, kernels only)
+    <results_dir>/                                        (= the run-tag dir)
+        calibration/seed{N}/seed{N}_T.npy                 (always)
+        test/seed{N}/seed{N}_T.npy                        (always)
+        {calibration,test}/seed{N}/seed{N}_init_weights.npy   (always)
+        {calibration,test}/seed{N}/seed{N}_den_weights.npy    (always)
+        {calibration,test}/seed{N}/seed{N}_num_weights.npy    (always)
+
+    (LRT.py also writes seed{N}_coeffs.npy = the NPLM exp-tilt coeffs b, for both
+     kernels and NF; not consumed by this script.)
 
 Produces:
-    <out_dir>/T_distribution.{png,pdf}   — null + test T distributions vs chi2,
-                                           two-panel layout with Z and p in side panel
+    <out_dir>/T_distribution.{png,pdf}   — null + test T distributions vs chi2(DOF_eff),
+                                           with N/median/std/Z/p in a side panel
     <out_dir>/chi2_quantile_table.txt    — empirical vs chi2 quantile comparison
-    <out_dir>/weight_shifts.{png,pdf}    — Δw = w_den - w_init per weight component
+    <out_dir>/weight_shifts.{png,pdf}    — Δw = w - w_init per component, DEN and NUM
+                                           panels (constrained mode only; skipped when
+                                           weights are frozen or there are none)
+    <out_dir>/weight_pulls.{png,pdf}     — Δw / sqrt(diag Σ_w) pulls (only with --w_cov_path)
 
 Usage:
     python analyse_LRT_output.py \\

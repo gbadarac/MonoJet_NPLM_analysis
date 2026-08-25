@@ -107,8 +107,7 @@ run_tag = "SparKer1_%s_Ntest%i_M%i_W%s" % (
     n_kernels_numerator,
     str(kernel_width_numerator),
 )
-# Multiplicative NPLM exp-tilt (convex fit); folder tagged with the L2 ridge.
-run_tag += "_num_multiplicative"
+# NPLM exp-tilt is the only numerator; folder tagged with the L2 ridge (no numerator label).
 if args.lam_pert > 0:
     run_tag += "_L%g" % args.lam_pert
 if args.clip_b is not None:
