@@ -43,6 +43,8 @@ RIDGE_A     = P["ridge_a"]
 ALPHA_CLIP  = P["alpha_clip"]
 
 S_REF       = P["s_ref"]
+S_EVAL_FACTOR = P.get("s_eval_factor", 10)
+S_EVAL_MAX    = P.get("s_eval_max", 2_000_000)
 ALPHA_LEVEL = P["alpha_level"]
 
 def chunk_size(test_type, n_test):

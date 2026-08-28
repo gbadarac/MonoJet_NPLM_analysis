@@ -53,7 +53,11 @@ PARAMS = dict(
     ridge_a=1.0,               # L2 on alpha (standardized features)
     alpha_clip=1.0,            # sup-norm bound on each kernel's log-distortion
 
-    s_ref=100_000 if not FAST else 3_000,  # Z-hat bank; keep >> largest N_test
+    s_ref=100_000 if not FAST else 3_000,  # PREP bank: Fisher + dictionary (fixed
+                               # per model; does NOT need to track N_test anymore)
+    s_eval_factor=10,          # Z-hat evaluation bank in workers: S = factor x N_test
+                               # (Z-noise pinned at ~1/factor dof at every working point)
+    s_eval_max=2_000_000,      # memory guard on the evaluation bank
     alpha_level=0.05,
 
     # ---- chunking (target ~15-40 min per single-core task) ------------------------
@@ -72,7 +76,7 @@ def run_dir(P):
            f"_cm-{P['cov_mode']}_M-{P['m_eig']}_lmax{P['lam_max']:g}"
            f"_ts{int(P['theta_sampled_calib'])}"
            f"_J{P['j_centers']}_sc{srt(P['scale_fracs'])}"
-           f"_rA{P['ridge_a']:g}_ac{P['alpha_clip']:g}_S{P['s_ref']}")
+           f"_rA{P['ridge_a']:g}_ac{P['alpha_clip']:g}_S{P['s_ref']}se{P.get('s_eval_factor', 10)}x")
     return os.path.join("runs", tag + ("_FAST" if FAST else ""))
 
 # keys that may GROW between launches without invalidating existing results

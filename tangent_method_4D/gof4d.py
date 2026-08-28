@@ -229,11 +229,18 @@ def build_tangent(theta, K, N_fit, X_dens, r0_seed=777):
                 centers=centers, sigs=np.array(sigs), mu_k=mu_k, sd_k=sd_k, bnd=bnd,
                 R0=R0, Phi_R=Phi_R, Kstd_R=Kstd_R)
 
-def rehydrate_tangent(art_entry):
-    """Rebuild the heavy per-model arrays (R0, Phi_R, Kstd_R) from a slim artifact."""
+def rehydrate_tangent(art_entry, n_test=None):
+    """Rebuild the heavy per-model arrays (R0, Phi_R, Kstd_R) from a slim artifact.
+    The Z-hat evaluation bank size adapts to the working point: S_eval = S_EVAL_FACTOR
+    x n_test (floored at 1000, capped at S_EVAL_MAX), pinning the Z-noise contribution
+    to the statistic at ~ 1/S_EVAL_FACTOR dof for every N_test. The Fisher matrix and
+    the dictionary (centers, standardization, bounds) come from prep and are NOT
+    affected: they define the statistic and stay identical across working points."""
     t = dict(art_entry)
+    S_eval = C.S_REF if n_test is None else int(
+        min(max(C.S_EVAL_FACTOR * int(n_test), 1_000), C.S_EVAL_MAX))
     d = load_partition()["dim"]
-    R0 = gmm_rvs(t["theta"], t["K"], C.S_REF, np.random.default_rng(int(t["r0_seed"])), d=d)
+    R0 = gmm_rvs(t["theta"], t["K"], S_eval if n_test is not None else C.S_REF, np.random.default_rng(int(t["r0_seed"])), d=d)
     t["R0"] = R0
     W = t["W"]; BLK = 20_000
     Phi_R = np.empty((len(R0), W.shape[1]))

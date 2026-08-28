@@ -29,7 +29,7 @@ N, K, nt = int(row["N_fit"]), int(row["K"]), int(row["N_test"])
 eps, n_items = float(row["eps"]), int(row["n_items"])
 
 art = np.load(C.ARTIFACTS, allow_pickle=True)
-tan = G.rehydrate_tangent(art["tans"].item()[(N, K)])   # regenerates R0 + banks
+tan = G.rehydrate_tangent(art["tans"].item()[(N, K)], n_test=nt)   # regenerates R0 + banks
 
 rng = G.rng_for(key)
 t0 = time.time()
