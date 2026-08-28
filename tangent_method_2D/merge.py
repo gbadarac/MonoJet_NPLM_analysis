@@ -33,6 +33,15 @@ def load_tstats():
 existing = load_tstats()
 if existing is not None and "key" not in existing.columns:
     existing["key"] = ""          # legacy tables (pre-compaction era)
+# CRITICAL dedupe rule: the saved table is authoritative ONLY for compacted keys
+# (whose raw files are gone). Rows from non-compacted keys are rebuilt from the raw
+# files below - otherwise every merge run would re-append them (duplicating banks).
+if existing is not None:
+    n0 = len(existing)
+    existing = existing[existing.key.isin(ledger)] if ledger else existing.iloc[0:0]
+    if len(existing) != n0:
+        print(f"note: {n0 - len(existing)} non-compacted rows in the saved table will "
+              "be rebuilt from raw files (dedupe)")
 
 new_rows, absorbed = [], []
 for f in sorted(glob.glob(os.path.join(C.RAW_DIR, "*.npz"))):
