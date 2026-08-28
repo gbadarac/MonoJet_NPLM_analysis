@@ -4,16 +4,17 @@
 #SBATCH --time=11:59:00
 #SBATCH --mem=12G          # peak RSS observed ~8 G on these (<=100k) jobs; 12 G = ~1.5x margin
 #SBATCH --ntasks=1
-#SBATCH --account=t3
-#SBATCH --partition=standard
+#SBATCH --account=gpu_gres
+#SBATCH --partition=qgpu,gpu
+#SBATCH --gres=gpu:1
 #SBATCH --nodes=1
 #SBATCH -o /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/results/logs/%x-%A_%a.out
 #SBATCH -e /work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/LRT/results/logs/%x-%A_%a.err
-# KERNELS run on CPU (density eval is single-threaded numpy; the GPU was allocated but
-# NEVER used -> the campaign was throttled to the cluster's 16 GPUs while ~2400 CPU cores
-# sat idle). Resource defaults above are CPU (standard/t3, NO --gres). standard = 12h
-# limit, big nodes (515G). NF (torch) DOES use the GPU -> override at submit time:
-#   --partition=qgpu,gpu --account=gpu_gres --gres=gpu:1
+# Resource defaults above are GPU (qgpu,gpu / gpu_gres / --gres=gpu:1) because NF (torch) needs
+# the GPU. KERNELS run on CPU (density eval is single-threaded numpy; a GPU would sit idle and
+# throttle the campaign to the cluster's ~16 GPUs). For a KERNELS run, OVERRIDE back to CPU:
+#   --partition=standard --account=t3 --gres=none
+# (run_lrt_scan.sh drives the kernels scan -> add the CPU override there before a kernels campaign.)
 
 set -euo pipefail
 
@@ -41,14 +42,19 @@ CALIBRATION=${CALIBRATION:-1}              # 1 = null toys (SIR + calib pool)  |
 FIX_WIFI_WEIGHTS=${FIX_WIFI_WEIGHTS:-false}   # respects sbatch --export override
 
 NTEST=${NTEST:-100000}
-# M = # numerator kernels (--n_kernels). NPLM guideline is M >= sqrt(NTEST) (=316 for 100k,
-# 447 for 200k), but we are DELIBERATELY holding M FIXED at 500 across the Ntest scan for now
-# (not scaling it) so DOF_eff is comparable across settings. Overridable at submit.
-N_KERNELS=${N_KERNELS:-500}
+# M = # numerator kernels (--n_kernels). NPLM rule (Grosso-Letizia 2408.12296): M >= sqrt(N_test)
+# (=316 for 100k, 447 for 200k). Default 300 = principled for the 100k base (old 500 was an
+# overshoot per the M_sigma memory); held FIXED across the Ntest scan (not scaled) so DOF_eff is
+# comparable. M is in the run_tag (_M%i_) so different M land in DISTINCT dirs -> no silent mixing.
+# (run_lrt_scan.sh passes N_KERNELS=$M explicitly, so this default only affects ad-hoc launches.)
+N_KERNELS=${N_KERNELS:-300}
 # Z = ∫ f_ens(x)·exp(Σ b_j G_j(x)) dx is a genuine 2-SAMPLE test: the integral is estimated from
 # a REFERENCE sample (importance-sampled from q). N_REF = # reference events, the 2-sample partner
-# of NTEST (test resolution). Bump it (>>NTEST) in 4D to suppress MC-Z noise.
-N_REF=${N_REF:-500000}
+# of NTEST. DEFAULT 1:1 (N_REF=NTEST) — Sean's choice (Slack, 2026-08): more N_ref only pulls the
+# already-asymptotic null closer to chi2, but we CALIBRATE WITH TOYS anyway, so 1:1 is enough;
+# extra N_ref just costs compute (esp. NF flow.sample x128). Bump (>>NTEST) only if a CLOSURE
+# needs MC-Z suppression. The N_ref/N_test ratio is recorded in the run_tag (_Nrefx%g).
+N_REF=${N_REF:-$NTEST}
 FIRSTSEED=12345
 
 # ─── Numerator knobs (EDIT / OVERRIDE AT SUBMIT TIME) ────────────────
@@ -58,7 +64,15 @@ FIRSTSEED=12345
 #   sbatch --export=ALL,FIX_WIFI_WEIGHTS=true,CALIBRATION=1 submit_LRT_toys.sh
 KERNEL_SIGMA=${KERNEL_SIGMA:-0.4}   # embedding-dependent: 0.4 (2D & old-4D) | 0.7 (gaussian-4D)
 LAM_PERT=${LAM_PERT:-1.0}           # L2 ridge on tilt coeffs b (= one-model/classifier)
-CLIP_B=${CLIP_B:-}                  # box |b_j|<=CLIP_B on tilt coeffs; tune to b's O(1) scale, empty=off
+CLIP_B=${CLIP_B:-3}                 # box |b_j|<=CLIP_B on tilt coeffs. NON-EMPTY BY DEFAULT (crash fix):
+                                    # clip=None makes fit_nplm_tilt use scipy trust-exact, which Choleskys
+                                    # the tilt Hessian; on a ~0.1% tilt runaway (separation) H goes non-finite
+                                    # -> cho_solve "infs or NaNs" CRASH (job dies, writes nothing) before the
+                                    # runaway guard can flag it. Setting clip switches fit_nplm_tilt to L-BFGS-B
+                                    # (no Cholesky -> crash impossible) AND bounds b. Good fits have max|b|<=2.9
+                                    # (p99=1.23) so 3 sits above them -> bounds runaways, distorts no good fit.
+                                    # ⚠ clip CHANGES the estimator: keep it FIXED across a config's null+test;
+                                    # do NOT mix clipped T's into an unclipped null/test dist. empty=off (validation).
 Z_MODE=${Z_MODE:-sample}            # Z: sample (importance from q; any d, DEFAULT) | grid (2D cross-check)
 GRID_POINTS=${GRID_POINTS:-300}     # [grid] points per dimension
 GRID_PAD=${GRID_PAD:-0.2}           # [grid] padding beyond data range

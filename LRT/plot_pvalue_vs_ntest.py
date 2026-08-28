@@ -59,13 +59,14 @@ N_BOOT = 2000
 RNG = np.random.default_rng(20260825)
 
 # Axis furniture (spines, reference lines, annotations) stays muted grey; the
-# three data curves are blue / red / green (constrained / frozen / single).
+# three data curves are blue / red / green (composite / point-null / single).
 INK, GRID, MUTED = "#33322e", "#c9c8c0", "#8a897f"
 BLUE, RED, GREEN = "#2a78d6", "#d62728", "#2ca02c"
-# mode -> (color, marker, legend label)
+# mode -> (color, marker, legend label). Group terminology: constrained w = COMPOSITE-null
+# (weight nuisances profiled); frozen w = POINT-null (plug-in at w_hat, density treated as exact).
 MODE_STYLE = {
-    "constrained": (BLUE, "o", "constrained (uncertainty propagated)"),
-    "frozen":      (RED,  "s", "frozen (fixed weights)"),
+    "composite": (BLUE, "o", "composite (uncertainty propagated)"),
+    "point":     (RED,  "s", r"point null (plug-in at $\hat{w}$)"),
 }
 
 
@@ -121,10 +122,12 @@ def parse_tag(name):
     if not (m_n and m_t):
         return None
     name = name.rstrip("/")
-    if name.endswith("constrained"):
-        mode = "constrained"
-    elif "frozen_weights" in name:
-        mode = "frozen"
+    # New tokens (point_null / composite_null); keep back-compat with the old frozen/constrained
+    # names so legacy dirs still parse.
+    if name.endswith("composite_null") or name.endswith("constrained"):
+        mode = "composite"
+    elif "point_null" in name or "frozen_weights" in name:
+        mode = "point"
     else:
         return None
     return int(m_n.group(1)), int(m_t.group(1)), mode
@@ -183,7 +186,7 @@ def main():
     os.makedirs(os.path.dirname(out_base) or ".", exist_ok=True)
     fig, ax = plt.subplots(figsize=(6.8, 4.8))
 
-    # --- ensemble curves (constrained / frozen): IQR band + median + boot CI ---
+    # --- ensemble curves (composite / point-null): IQR band + median + boot CI ---
     for (nens, mode), pts in sorted(rows.items()):
         if nens == 1 or mode not in MODE_STYLE:
             continue

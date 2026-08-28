@@ -177,9 +177,21 @@ run_tag = "%s_Nens%i_Ntest%i_M%i_W%s" % (
     prefix, args.nensemble, Ntest,
     n_kernels_numerator, str(kernel_width_numerator),
 )
+# N_ref / N_test scaling of the 2-sample reference, ALWAYS in the path so the ratio is never
+# ambiguous (1 = N_ref=N_test, the default; 5 = N_ref=5*N_test, ...). Different ratios land in
+# DISTINCT dirs (like the clip label) so a rerun at a new N_ref can't silently mix null/test.
+n_ref_eff = args.n_ref if args.n_ref is not None else Ntest
+run_tag += "_Nrefx%g" % (n_ref_eff / Ntest)
 run_tag += "_Lp%g" % args.lam_pert   # NPLM exp-tilt is the only numerator now (no additive/mult label)
+# Clip status is ALWAYS in the path (clipb%g when on, clipoff when off). clip CHANGES the
+# estimator, so clipped and unclipped T's must NEVER be mixed into one null/test dist; the
+# explicit label makes the two land in DISTINCT dirs so a future rerun can't silently splice
+# a clipped toy into an unclipped campaign (or vice versa). The 2D scan on disk predates this
+# label and has NO clip token -> it is the (unclipped) legacy set; do not extend it with clip.
 if args.clip_b is not None:
     run_tag += "_clipb%g" % args.clip_b
+else:
+    run_tag += "_clipoff"
 if args.z_mode != 'sample':
     run_tag += "_zgrid"
 
@@ -190,10 +202,14 @@ else:
         os.path.abspath(args.w_cov_path))).split('_')[-2:])
 run_tag += "_wifi_%s" % wifi_tag
 
+# Null TYPE in the path (group terminology, aligned with the paper): frozen w = the plug-in
+# POINT-NULL (fitted density treated as exact); constrained w = the COMPOSITE-NULL (weight
+# nuisances profiled under N(w_hat, Sigma_w)). --fix_wifi_weights stays mechanism-named; these
+# tokens are the statistical labels used in the folders + plots.
 if not train_wifi_weights:
-    run_tag += "_frozen_weights"
+    run_tag += "_point_null"         # frozen weights: plug-in at w_hat (point-null)
 else:
-    run_tag += "_constrained"        # w profiled under the N(w_hat, Sigma) prior
+    run_tag += "_composite_null"     # w profiled under the N(w_hat, Sigma) prior (composite-null)
 
 if args.w_cov_scale != 1.0:          # diagnostic runs land in a SEPARATE dir (no clobber)
     run_tag += "_covscale%g" % args.w_cov_scale
@@ -504,9 +520,10 @@ if use_prior:
     N = bootstrap_sample.shape[0]
 
     sigma_anchor = gen.candidate_sigma(bootstrap_sample)
-    print(f"[sigma anchor] NPLM candidate_sigma(perc=90) = {sigma_anchor:.3f}; "
-          f"kernel_sigma={kernel_width_numerator}, M={n_kernels_numerator} "
-          f"(sqrt(N)={math.sqrt(N):.0f}). Keep sigma FIXED + MATCHED across stages.",
+    print(f"[sigma diag] RAW candidate_sigma(perc90)={sigma_anchor:.3f} — UNRESCALED; do NOT tune "
+          f"to this (raw P90 is the WRONG anchor per the M_sigma memory; use the rescaled-quantile "
+          f"scan, 2D fixed value=0.4). Running kernel_sigma={kernel_width_numerator}, "
+          f"M={n_kernels_numerator} (sqrt(N)={math.sqrt(N):.0f}); keep sigma FIXED + MATCHED.",
           flush=True)
 
     centers_np = bootstrap_sample[:n_kernels_numerator].astype(np.float64)
@@ -619,9 +636,10 @@ else:
     N = bootstrap_sample.shape[0]
 
     sigma_anchor = gen.candidate_sigma(bootstrap_sample)
-    print(f"[sigma anchor] NPLM candidate_sigma(perc=90) = {sigma_anchor:.3f}; "
-          f"running kernel_sigma={kernel_width_numerator}, M={n_kernels_numerator} "
-          f"(sqrt(N)={math.sqrt(N):.0f}). Keep sigma FIXED + MATCHED across stages.",
+    print(f"[sigma diag] RAW candidate_sigma(perc90)={sigma_anchor:.3f} — UNRESCALED; do NOT tune "
+          f"to this (raw P90 is the WRONG anchor per the M_sigma memory; use the rescaled-quantile "
+          f"scan, 2D fixed value=0.4). Running kernel_sigma={kernel_width_numerator}, "
+          f"M={n_kernels_numerator} (sqrt(N)={math.sqrt(N):.0f}); keep sigma FIXED + MATCHED.",
           flush=True)
 
     f_ens_data = np.maximum(_f_ens(probs_np), 1e-300)             # (N,)

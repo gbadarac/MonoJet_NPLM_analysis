@@ -3,7 +3,7 @@
 # Launcher for the 2D kernel LRT  Ntest/Nref  scan  (M held FIXED at 500).
 #
 # Matrix:
-#   Ntest -> Nref (= 5*Ntest):  25k->125k, 50k->250k, 100k->500k, 200k->1M
+#   Ntest -> Nref (= Ntest, 1:1 per Sean/Slack 2026-08):  25k, 50k, 100k, 200k
 #   Configs:
 #     single           : single kernel model (1model_2d, frozen forced, no ENS)
 #     ens_frozen       : kernel ensemble, w frozen at w_hat        (ENS scan)
@@ -34,19 +34,22 @@ ENS_LIST=${ENS_LIST:-"16 32 64 128"}
 NTEST_LIST=${NTEST_LIST:-"25000 50000 100000 200000"}
 M=500
 
-nref_for() { case "$1" in
-  25000) echo 125000 ;; 50000) echo 250000 ;;
-  100000) echo 500000 ;; 200000) echo 1000000 ;;
-  *) echo "bad NTEST=$1" >&2; exit 1 ;; esac; }
+# N_ref = N_test (1:1, Sean/Slack 2026-08): more N_ref only nudges the already-asymptotic null
+# toward chi2, but we calibrate with toys, so 1:1 is enough (+ cheaper). Ratio shows as _Nrefx1
+# in the run_tag. (Was 5*Ntest via nref_for(); recover from git history if 5:1 is ever needed.)
 mem_for() { [[ "$1" -ge 200000 ]] && echo "--mem=18G" || echo ""; }
 
+# submit_LRT_toys.sh now defaults to GPU (#SBATCH) for the NF path; kernels are CPU-only, so
+# force every kernels submission back to CPU (standard/t3, no GPU). Restores the deliberate
+# kernels->CPU setup: a GPU would sit idle AND throttle the scan to the cluster's ~16 GPUs.
+CPU_RES="--partition=standard --account=t3 --gres=none"
 run() {  # run <sbatch-args...>
-  if [[ "$DRYRUN" == "1" ]]; then echo "sbatch $*"; else sbatch "$@"; fi
+  if [[ "$DRYRUN" == "1" ]]; then echo "sbatch $CPU_RES $*"; else sbatch $CPU_RES "$@"; fi
 }
 
 n_submit=0
 for ntest in $NTEST_LIST; do
-  nref=$(nref_for "$ntest"); mem=$(mem_for "$ntest")
+  nref=$ntest; mem=$(mem_for "$ntest")
   for calib in $CALIBS; do
     for cfg in $CONFIGS; do
       base="MODEL=kernels,CALIBRATION=$calib,NTEST=$ntest,N_REF=$nref,N_KERNELS=$M"

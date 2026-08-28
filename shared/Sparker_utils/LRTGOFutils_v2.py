@@ -1162,25 +1162,62 @@ def fit_nplm_tilt(K_data, K_ref, lam_pert=0.0, clip=None, log_w_ref=None,
     if clip is None:
         res = _scipy_minimize(fun, b0, jac=jac, hess=hess, method="trust-exact",
                               options={"maxiter": max_iter, "gtol": tol})
+        b_final = res.x
+        n_iter = int(getattr(res, "nit", 0))
+        ll = -float(res.fun)                 # ll(b*) = -L(b*) >= 0
+        grad_norm = float(np.linalg.norm(jac(b_final)))
+        max_b = float(np.abs(b_final).max())
+        hit_max_iter = n_iter >= max_iter
+        # A small gradient at a HUGE b is the separation signature: with no (or too
+        # little) regularisation the tilt runs to infinity along kernels that have
+        # data support but little reference support, and the log-sum-exp gradient
+        # goes flat there. So require a small gradient AND that we did not exhaust the
+        # iteration budget; flag a runaway on max|b|.
+        runaway = max_b > 1e3
+        converged = (grad_norm < GRAD_NORM_OK) and (not hit_max_iter) and (not runaway)
     else:
+        # clip set: box-constrained projected NEWTON (Sean, 2026-08: a Hessian Newton is ~10x
+        # faster than L-BFGS-B for this convexified fit). The box keeps b in [-clip,clip] so the
+        # softmax + Hessian stay FINITE -> the non-finite cho_solve crash (which the old L-BFGS-B
+        # fallback was avoiding) is impossible once b is bounded. Active-set two-metric Newton on
+        # the free coords + projected Armijo; mirrors the validated box-Newton in
+        # fit_nplm_tilt_constrained._solve_feasible. Convergence on the RELATIVE projected gradient
+        # ‖gp‖/N (scales with N, so it stays meaningful at production N -- Sean pt 1).
         box = float(clip)
-        res = _scipy_minimize(fun, b0, jac=jac, method="L-BFGS-B",
-                              bounds=[(-box, box)] * M,
-                              options={"maxiter": max_iter, "ftol": 1e-14, "gtol": tol})
-
-    b_final = res.x
-    n_iter = int(getattr(res, "nit", 0))
-    ll = -float(res.fun)                 # ll(b*) = -L(b*) >= 0
-    grad_norm = float(np.linalg.norm(jac(b_final)))
-    max_b = float(np.abs(b_final).max())
-    hit_max_iter = n_iter >= max_iter
-    # A small gradient at a HUGE b is the separation signature: with no (or too
-    # little) regularisation the tilt runs to infinity along kernels that have
-    # data support but little reference support, and the log-sum-exp gradient
-    # goes flat there. So require a small gradient AND that we did not exhaust the
-    # iteration budget; flag a runaway on max|b|.
-    runaway = max_b > 1e3
-    converged = (grad_norm < GRAD_NORM_OK) and (not hit_max_iter) and (not runaway)
+        def _newton_dir(H, g):
+            Hs = 0.5 * (H + H.T)
+            ev, U = np.linalg.eigh(Hs)
+            d = 1e-8 * (float(np.abs(ev).max()) + 1.0)
+            return -(U @ ((U.T @ g) / np.maximum(ev, d)))     # eigenvalue-floored solve (no Cholesky)
+        b = b0.copy()
+        it = 0
+        for it in range(1, max_iter + 1):
+            g = jac(b)
+            gp = b - np.clip(b - g, -box, box)                # projected-gradient KKT residual
+            if np.linalg.norm(gp) / max(1.0, float(N)) < 1e-6:
+                it -= 1
+                break
+            active = ((b >= box - 1e-12) & (g < 0.0)) | ((b <= -box + 1e-12) & (g > 0.0))
+            dx = np.zeros(M)
+            free = ~active
+            if free.any():
+                dx[free] = _newton_dir(hess(b)[np.ix_(free, free)], g[free])
+            f0 = fun(b); al = 1.0
+            while al > 1e-14:                                  # projected Armijo on the actual move
+                b_try = np.clip(b + al * dx, -box, box)
+                if fun(b_try) <= f0 + 1e-4 * float(g @ (b_try - b)):
+                    break
+                al *= 0.5
+            b = np.clip(b + al * dx, -box, box)
+        b_final = b
+        n_iter = it
+        ll = -float(fun(b_final))
+        g_fin = jac(b_final)
+        grad_norm = float(np.linalg.norm(b_final - np.clip(b_final - g_fin, -box, box)))  # projected
+        max_b = float(np.abs(b_final).max())
+        hit_max_iter = n_iter >= max_iter
+        runaway = False                                       # box makes a runaway impossible
+        converged = (grad_norm / max(1.0, float(N)) < 1e-6) and (not hit_max_iter)
     T = 2.0 * ll
 
     tau_data = K_data @ b_final          # (N,)
