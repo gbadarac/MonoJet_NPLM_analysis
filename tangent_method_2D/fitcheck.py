@@ -82,6 +82,7 @@ def budget_diagnostic(N, K, tan):
 
 todo = sorted(tans_slim)          # no model selection: figures for every (N_fit, K)
 for (N, K) in todo:
-    tan = G.rehydrate_tangent(tans_slim[(N, K)])
+    # slim artifact suffices: fitcheck never touches the Z-hat bank arrays.
+    tan = dict(tans_slim[(N, K)])
     fit_check(N, K, tan)
     budget_diagnostic(N, K, tan)

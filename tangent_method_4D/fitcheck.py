@@ -39,6 +39,13 @@ if not _glob.glob(C.DATA_GLOB):
         "    GOF4D_PARAMS=<run>/params.json python fitcheck.py")
 part = G.load_partition()
 DIM = part["dim"]
+
+def heldout_pool(N):
+    """Partition v2 has no global TEST_POOL: held-out events are per-model,
+    REST minus model N's own training block (same rule as sample_data)."""
+    mask = np.ones(len(part["REST"]), dtype=bool)
+    mask[G.train_idx(N)] = False
+    return part["REST"][mask]
 PAIRS = [(a, b) for a in range(DIM) for b in range(a+1, DIM)][:4]
 
 def gmm_marginal_1d(theta, K, i, grid):
@@ -60,7 +67,7 @@ def gmm_pair_density(theta, K, pair, G1, G2):
 
 def fit_check(N, K, tan):
     th = tan["theta"]
-    Xd = part["TEST_POOL"][:200_000]
+    Xd = heldout_pool(N)[:200_000]
     ncol = max(len(PAIRS), DIM)
     fig, ax = plt.subplots(2, ncol, figsize=(3.4*ncol, 6.4))
     Jh = len(tan["centers"]) // len(tan["sigs"])
@@ -93,7 +100,8 @@ def fit_check(N, K, tan):
 def budget_diagnostic(N, K, tan):
     th = tan["theta"]
     rE = np.random.default_rng(500 + N)
-    Xe = part["TEST_POOL"][rE.choice(len(part["TEST_POOL"]), args.n_eval, replace=False)]
+    pool = heldout_pool(N)
+    Xe = pool[rE.choice(len(pool), args.n_eval, replace=False)]
     Psi_E = G.scores(Xe, th, K)
     sig2_full = np.einsum("ip,pq,iq->i", Psi_E, tan["cov"], Psi_E)
     sig2_used = ((Psi_E @ tan["W"])**2).sum(axis=1)
@@ -126,6 +134,9 @@ def budget_diagnostic(N, K, tan):
 
 todo = sorted(tans_slim)          # no model selection: figures for every (N_fit, K)
 for (N, K) in todo:
-    tan = G.rehydrate_tangent(tans_slim[(N, K)])
+    # slim artifact suffices: fitcheck only needs theta/centers/sigs/cov/W.
+    # Do NOT rehydrate here - rebuilding the Z-hat bank (S_REF x M) costs
+    # gigabytes at large K and is never used by these figures.
+    tan = dict(tans_slim[(N, K)])
     fit_check(N, K, tan)
     budget_diagnostic(N, K, tan)
