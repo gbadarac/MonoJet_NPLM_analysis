@@ -49,6 +49,10 @@ PARAMS = dict(
 
     s_ref=200_000 if not FAST else 3_000,  # PREP bank: Fisher + dictionary (fixed
                                # per model; does NOT need to track N_test anymore)
+    em_tol=1e-6,               # EM stop: per-sample logL change (sklearn default 1e-3
+                               # leaves O(N*tol) logL on the table - see headroom check)
+    em_max_iter=5000,          # cap on EM iterations (warns if hit)
+    em_n_init=3,               # random restarts; best kept
     s_eval_factor=10,          # Z-hat evaluation bank in workers: S = factor x N_test
                                # (Z-noise pinned at ~1/factor dof at every working point)
     s_eval_max=2_000_000,      # memory guard on the evaluation bank
@@ -70,7 +74,7 @@ def run_dir(P):
            f"_cm-{P['cov_mode']}_M-{P['m_eig']}_lmax{P['lam_max']:g}"
            f"_ts{int(P['theta_sampled_calib'])}"
            f"_J{P['j_centers']}_sc{srt(P['scale_fracs'])}"
-           f"_rA{P['ridge_a']:g}_ac{P['alpha_clip']:g}_S{P['s_ref']}se{P.get('s_eval_factor', 10)}x")
+           f"_rA{P['ridge_a']:g}_ac{P['alpha_clip']:g}_S{P['s_ref']}se{P.get('s_eval_factor', 10)}x_em{P.get('em_tol', 1e-3):g}")
     return os.path.join("runs", tag + ("_FAST" if FAST else ""))
 
 # keys that may GROW between launches without invalidating existing results

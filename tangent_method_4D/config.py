@@ -43,6 +43,9 @@ RIDGE_A     = P["ridge_a"]
 ALPHA_CLIP  = P["alpha_clip"]
 
 S_REF       = P["s_ref"]
+EM_TOL      = P.get("em_tol", 1e-3)       # legacy sklearn default
+EM_MAX_ITER = P.get("em_max_iter", 500)
+EM_N_INIT   = P.get("em_n_init", 3)
 S_EVAL_FACTOR = P.get("s_eval_factor", 10)
 S_EVAL_MAX    = P.get("s_eval_max", 2_000_000)
 ALPHA_LEVEL = P["alpha_level"]

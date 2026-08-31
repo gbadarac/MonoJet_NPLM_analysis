@@ -88,9 +88,12 @@ def gmm_rvs(theta, K, n, rng, d=None):
         m = comp == k; out[m] = means[k] + z[m] @ Ls[k].T
     return out
 
-def fit_gmm(X, K, seed=0, n_init=3):
-    gm = GaussianMixture(n_components=K, covariance_type="full", n_init=n_init,
-                         reg_covar=1e-6, max_iter=500, random_state=seed).fit(X)
+def fit_gmm(X, K, seed=0):
+    gm = GaussianMixture(n_components=K, covariance_type="full", n_init=C.EM_N_INIT,
+                         reg_covar=1e-6, max_iter=C.EM_MAX_ITER, tol=C.EM_TOL,
+                         random_state=seed).fit(X)
+    if not gm.converged_:
+        print(f"  WARNING: EM not converged (K={K}, n_iter={gm.n_iter_} = max_iter)")
     return pack_params(gm.weights_, gm.means_, gm.covariances_)
 
 # ---------------- ANALYTIC scores ----------------------------------------------

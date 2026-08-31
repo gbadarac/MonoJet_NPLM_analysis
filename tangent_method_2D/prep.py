@@ -17,7 +17,7 @@ print(f"2D toy: wfit={len(X_wfit)}  dens={[len(v) for v in X_dens_all.values()]}
 FIT_CACHE = "fits_cache"; os.makedirs(FIT_CACHE, exist_ok=True)
 def _fit_key(N, K):
     import hashlib
-    h = hashlib.sha256(f"2dtoy|{C.BASE_SEED}|{C.N_WFIT}".encode()).hexdigest()[:10]
+    h = hashlib.sha256(f"2dtoy|{C.BASE_SEED}|{C.N_WFIT}|em{C.EM_TOL:g}-{C.EM_MAX_ITER}-{C.EM_N_INIT}".encode()).hexdigest()[:10]
     return os.path.join(FIT_CACHE, f"fit_{h}_N{N}_K{K}.npz")
 
 models, val_nll = {}, {}

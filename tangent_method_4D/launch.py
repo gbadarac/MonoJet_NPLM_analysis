@@ -19,19 +19,19 @@ FAST = os.environ.get("NB_FAST", "0") == "1"
 # ============================ PARAMETERS ====================================
 PARAMS = dict(
     # ---- data -----------------------------------------------------------------
-    data_glob="../../physics_embedding_data/ZJetsToNuNu_1*.npz",
+    data_glob="/n/holystore01/LABS/iaifi_lab/Lab/ggrosso/physics_embedding_data/ZJetsToNuNu_1*.npz",
                                # glob for the npz event files (relative to THIS folder
                                # or absolute; workers resolve it from their cwd)
     data_key="embeddings",     # array name inside the npz files
     standardize=True,          # pooled z-score per coordinate before anything else
     base_seed=20260819,        # pool shuffling/partitioning + all RNG streams
 
-    # ---- experiment grids -------------------------------------------------------
-    n_fit_list=[10_000, 100_000] if not FAST else [2_000],
-    k_list=[4, 8, 16] if not FAST else [4],   # GMM components (P = 15K-1 at d=4)
-    comp_k_list=None,          # K values for the COMPOSITE sweep (None = all of k_list;
-                               # restrict, e.g. [8, 16], to save composite budget)
-    ntest_grid=[1_000, 3_000, 10_000, 30_000, 100_000] if not FAST else [500, 2_000],
+    # ---- experiment grids -------------------------------------------------------                                            
+    n_fit_list=[1_000, 10_000] if not FAST else [2_000],
+    k_list=[2, 4, 8, 16, 32, 64, 128] if not FAST else [4],   # GMM components (P = 15K-1 at d=4)                              
+    comp_k_list=None,          # K values for the COMPOSITE sweep (None = all of k_list;                                       
+                               # restrict, e.g. [8, 16], to save composite budget)                                             
+    ntest_grid=[100, 200, 1_000, 2_000, 10_000, 20_000, 100_000] if not FAST else [500, 2_000],
     n_wfit=50_000 if not FAST else 4_000,     # validation block (K selection only)
 
     # ---- statistics budget per (N_fit, K, N_test) working point -----------------
@@ -48,13 +48,17 @@ PARAMS = dict(
     theta_sampled_calib=True,  # calib toys from exact model at theta_b ~ N(theta, Cov)
 
     # ---- alternative dictionary ---------------------------------------------------
-    j_centers=32,              # kernels (fixed k-means centers on a model sample)
-    scale_fracs=[0.25, 0.6],   # widths x median pairwise distance (two scales)
+    j_centers=64,              # kernels (fixed k-means centers on a model sample)
+    scale_fracs=[0.25, 0.75],   # widths x median pairwise distance (two scales)
     ridge_a=1.0,               # L2 on alpha (standardized features)
     alpha_clip=1.0,            # sup-norm bound on each kernel's log-distortion
 
-    s_ref=100_000 if not FAST else 3_000,  # PREP bank: Fisher + dictionary (fixed
+    s_ref=10_000_000 if not FAST else 3_000,  # PREP bank: Fisher + dictionary (fixed
                                # per model; does NOT need to track N_test anymore)
+    em_tol=1e-6,               # EM stop: per-sample logL change (sklearn default 1e-3
+                               # leaves O(N*tol) logL on the table - see headroom check)
+    em_max_iter=5000,          # cap on EM iterations (warns if hit)
+    em_n_init=3,               # random restarts; best kept
     s_eval_factor=10,          # Z-hat evaluation bank in workers: S = factor x N_test
                                # (Z-noise pinned at ~1/factor dof at every working point)
     s_eval_max=2_000_000,      # memory guard on the evaluation bank
@@ -76,7 +80,7 @@ def run_dir(P):
            f"_cm-{P['cov_mode']}_M-{P['m_eig']}_lmax{P['lam_max']:g}"
            f"_ts{int(P['theta_sampled_calib'])}"
            f"_J{P['j_centers']}_sc{srt(P['scale_fracs'])}"
-           f"_rA{P['ridge_a']:g}_ac{P['alpha_clip']:g}_S{P['s_ref']}se{P.get('s_eval_factor', 10)}x")
+           f"_rA{P['ridge_a']:g}_ac{P['alpha_clip']:g}_S{P['s_ref']}se{P.get('s_eval_factor', 10)}x_em{P.get('em_tol', 1e-3):g}")
     return os.path.join("runs", tag + ("_FAST" if FAST else ""))
 
 # keys that may GROW between launches without invalidating existing results
