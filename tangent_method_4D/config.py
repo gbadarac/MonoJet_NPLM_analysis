@@ -43,6 +43,10 @@ RIDGE_A     = P["ridge_a"]
 ALPHA_CLIP  = P["alpha_clip"]
 
 S_REF       = P["s_ref"]
+OPT_OPTIONS = dict(maxiter=P.get("opt_maxiter", 300),   # L-BFGS-B, all 3 solves
+                   maxcor=P.get("opt_maxcor", 10),
+                   ftol=P.get("opt_ftol", 2.22e-9),
+                   gtol=P.get("opt_gtol", 1e-5))
 EM_TOL      = P.get("em_tol", 1e-3)       # legacy sklearn default
 EM_MAX_ITER = P.get("em_max_iter", 500)
 EM_N_INIT   = P.get("em_n_init", 3)

@@ -273,7 +273,7 @@ def t_point_tan(X, tan):
         return (-(K_X@a).sum() + Nt*lZ + C.RIDGE_A*(a@a),
                 -K_X.sum(axis=0) + Nt*(K_R.T@u)/u.sum() + 2*C.RIDGE_A*a)
     r = minimize(negf, np.zeros(K_X.shape[1]), jac=True, method="L-BFGS-B",
-                 bounds=[(-b, b) for b in tan["bnd"]], options=dict(maxiter=300))
+                 bounds=[(-b, b) for b in tan["bnd"]], options=C.OPT_OPTIONS)
     return max(-2*r.fun, 0.0)
 
 def t_comp_tan(X, tan):
@@ -285,7 +285,7 @@ def t_comp_tan(X, tan):
         return (-(Phi_X@v).sum() + Nt*lZ + 0.5*(v@v),
                 -Phi_X.sum(axis=0) + Nt*(Phi_R.T@u)/u.sum() + v)
     rd = minimize(negden, np.zeros(M), jac=True, method="L-BFGS-B",
-                  options=dict(maxiter=300))
+                  options=C.OPT_OPTIONS)
     B_X, B_R = np.hstack([Phi_X, K_X]), np.hstack([Phi_R, K_R])
     pen = np.concatenate([np.full(M, 0.5), np.full(J, C.RIDGE_A)])
     def negnum(p):
@@ -295,5 +295,5 @@ def t_comp_tan(X, tan):
     rn = minimize(negnum, np.concatenate([rd.x, np.zeros(J)]), jac=True,
                   method="L-BFGS-B",
                   bounds=[(None, None)]*M + [(-b, b) for b in tan["bnd"]],
-                  options=dict(maxiter=300))
+                  options=C.OPT_OPTIONS)
     return max(2*(-rn.fun - (-rd.fun)), 0.0)

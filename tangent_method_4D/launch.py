@@ -55,6 +55,12 @@ PARAMS = dict(
 
     s_ref=10_000_000 if not FAST else 3_000,  # PREP bank: Fisher + dictionary (fixed
                                # per model; does NOT need to track N_test anymore)
+    opt_maxiter=5000,          # L-BFGS-B iteration cap for the test's convex solves
+                               # (300 was binding: numerator exited st=1 with |g|~10,
+                               # compressing large t by up to ~25% - t-dependent bias!)
+    opt_maxcor=50,             # L-BFGS memory; 10 is too little in M+J ~ 10^3 dims
+    opt_ftol=1e-12,            # relative-f stop
+    opt_gtol=1e-7,             # projected-gradient stop
     em_tol=1e-6,               # EM stop: per-sample logL change (sklearn default 1e-3
                                # leaves O(N*tol) logL on the table - see headroom check)
     em_max_iter=5000,          # cap on EM iterations (warns if hit)
@@ -80,7 +86,7 @@ def run_dir(P):
            f"_cm-{P['cov_mode']}_M-{P['m_eig']}_lmax{P['lam_max']:g}"
            f"_ts{int(P['theta_sampled_calib'])}"
            f"_J{P['j_centers']}_sc{srt(P['scale_fracs'])}"
-           f"_rA{P['ridge_a']:g}_ac{P['alpha_clip']:g}_S{P['s_ref']}se{P.get('s_eval_factor', 10)}x_em{P.get('em_tol', 1e-3):g}")
+           f"_rA{P['ridge_a']:g}_ac{P['alpha_clip']:g}_S{P['s_ref']}se{P.get('s_eval_factor', 10)}x_em{P.get('em_tol', 1e-3):g}_op{P.get('opt_maxiter', 300)}")
     return os.path.join("runs", tag + ("_FAST" if FAST else ""))
 
 # keys that may GROW between launches without invalidating existing results
