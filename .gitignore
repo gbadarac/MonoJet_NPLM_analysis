@@ -69,3 +69,6 @@ Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/
 Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs_outdated/
 Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/
 Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs_outdated/
+
+# Paper appendix draft (local, not tracked)
+appendix/
