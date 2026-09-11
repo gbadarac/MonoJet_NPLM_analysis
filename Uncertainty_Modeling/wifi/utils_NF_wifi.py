@@ -191,28 +191,41 @@ def plot_ensemble_marginals_2d(f_i_models, x_data, weights, cov_w, feature_names
     plt.close(fig)
 
 def plot_ensemble_marginals_nd(f_i_models, x_data, weights, cov_w, feature_names, outdir,
-                            bins=40, K=1024, device="cpu"):
+                            bins=40, n_samples=30000, device=None):
     """1D marginals of the WiFi NF ensemble for ANY dimensionality D >= 2.
 
-    Each feature is marginalised by Monte-Carlo over the other features: the "other"
-    columns are drawn from the data (K rows) and the scanned feature is swept over the
-    bin centers, then averaged. A dense grid (as used exactly in the 2D plotter) is
-    infeasible for D > 2, so MC is used here. Works for D = 2 as well, but for 2D
-    prefer plot_ensemble_marginals_2d (exact grid, unbiased).
+    The marginal of feature j is computed EXACTLY via the linearity of the mixture:
+        p_marg(x_j) = int sum_i w_i f_i(x) dx_{-j} = sum_i w_i * m_i(x_j)
+    where m_i(x_j) = int f_i dx_{-j} is member i's own marginal. Each member is a
+    proper normalized flow, so m_i is obtained UNBIASED by sampling that member and
+    histogramming feature j (exactly what the training-side sample plot does).
+
+    This replaces the old "data-proposal" estimator (hold the other features at data
+    values and average the joint density), which actually computes
+    int f(x_j, x_-j) p_data(x_-j) dx_-j -- equal to the true marginal ONLY when x_j is
+    independent of the other features. That bias is invisible for a product density
+    (the 2D toy) but severe once the features are correlated (the 4D embedding), where
+    it produces a spurious spike at the mode.
+
+    Reduces to the exact single-member sample marginal for M = 1 (band collapses to 0).
     """
     x = x_data.cpu().numpy()
     N, D = x.shape
     weights = weights.detach().cpu().double()
     cov_w = torch.from_numpy(cov_w).double()
 
-    # Pre-sample the "other features" once per feature to reduce variance jitter across bins
-    rng = np.random.default_rng(1234)
-    others_bank = {}
-    for i in range(D):
-        # K rows, D columns; we will overwrite column i with the scan value
-        idx = rng.integers(0, N, size=K)
-        X_others = x[idx].copy()  # shape (K, D)
-        others_bank[i] = X_others
+    # Sample each member ONCE (reused across all D features). The flows are passed on
+    # CPU; move each to the sampling device (GPU if available) and back, since
+    # autoregressive sampling is slow on CPU. Reproducible per member.
+    dev = torch.device(device) if device is not None else \
+        torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    member_samples = []
+    with torch.no_grad():
+        for j, flow in enumerate(f_i_models):
+            torch.manual_seed(1234 + j)
+            flow.to(dev)
+            member_samples.append(flow.sample(n_samples).cpu().numpy())  # (n_samples, D)
+            flow.to("cpu")
 
     for i in range(D):
         fig, (ax_main, ax_ratio) = plt.subplots(2,1,figsize=(8, 10), gridspec_kw={'height_ratios': [3,1]})
@@ -232,26 +245,17 @@ def plot_ensemble_marginals_nd(f_i_models, x_data, weights, cov_w, feature_names
         hist_target = hist_counts / (N_target * bin_widths)
         err_target = np.sqrt(hist_counts) / (N_target * bin_widths)
 
-        # ---- Monte Carlo marginalization over other features ----
-        X_others = others_bank[i]  # (K, D)
-        # Build (B, K, D) tensor: each bin center paired with the same K draws for other dims
+        # ---- Exact per-member marginal via sampling (unbiased under correlation) ----
+        # v_mat[b, j] = m_j(bin_center_b): member j's marginal density of feature i, from
+        # that member's own samples. Normalized by the TOTAL sample count (samples outside
+        # the plot range are dropped, so each column integrates to ~1 over the shown
+        # support); the weighted sum f_binned is renormalized to unit area just below.
         B = len(bin_centers)
-        X_batch = np.repeat(X_others[None, :, :], B, axis=0)  # (B, K, D)
-        X_batch[:, :, i] = bin_centers[:, None]               # set the i-th column to the bin center
-
-        # Flatten to (B*K, D) and evaluate all models
-        X_flat = torch.from_numpy(X_batch.reshape(B * K, D)).float().to(device)
-
-        with torch.no_grad():
-            # probs_per_model: (B*K, M)
-            probs_per_model = torch.stack(
-                [torch.exp(flow.log_prob(X_flat)).cpu().double() for flow in f_i_models],
-                dim=1
-            )  # (B*K, M) double on CPU
-
-        # Average over K to get v(c) for each bin center: v(c) is (M,)
-        probs_per_model = probs_per_model.view(B, K, -1)      # (B, K, M)
-        v_mat = probs_per_model.mean(dim=1)                   # (B, M)
+        M = len(f_i_models)
+        v_mat = torch.empty((B, M), dtype=torch.float64)
+        for j, s in enumerate(member_samples):
+            counts, _ = np.histogram(s[:, i], bins=bin_edges)
+            v_mat[:, j] = torch.from_numpy(counts / (len(s) * bin_widths)).double()
 
         # Ensemble mean and uncertainty at each center
         w_col = weights.view(-1, 1)                           # (M,1)

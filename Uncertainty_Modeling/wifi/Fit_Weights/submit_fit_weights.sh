@@ -21,7 +21,7 @@ export LD_LIBRARY_PATH="/work/gbadarac/miniforge3/envs/nplm_env/lib${LD_LIBRARY_
 
 # ─── Mode toggles (EDIT THESE) ───────────────────────────────────────────────
 MODEL_TYPE=nf          # kernels | nf
-NDIM=2                 # 2 | 4   (nf only; kernels is 2D here)
+NDIM=4                 # 2 | 4   (nf only; kernels is 2D here)
 SELECTION=uniform      # how the N_WIFI members are chosen:
                        #   uniform    : draw N_WIFI seeds at random from all members  (kernels + nf)
                        #   stratified : (worst,medium,best) draw per M from the marginal ranking (nf)
@@ -49,11 +49,11 @@ elif [[ "$MODEL_TYPE" == "nf" ]]; then
         ENSEMBLE_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_seeds_128_4_4_64_8"
         DATA_PATH="$REPO_ROOT/data/2d_gmm_toymodel/2d_gmm_skew_Ntrain100000_Ntest100000_seed42/data_train.npy"
     elif [[ "$NDIM" == "4" ]]; then
-        # TODO: fill in once a 4D NF ensemble is trained in the per-member (model_*/model.pth) layout.
-        # Keep the SAME 3-level depth as 2D (.../<N>_dim/<dataset>/<ensemble>) so the GROUP
-        # derivation below reads "4_dim" and results land under .../4d_embedding/.
-        ENSEMBLE_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/4_dim/<FILL_IN_4D_DATASET>/<FILL_IN_4D_NF_ENSEMBLE>"
-        DATA_PATH="$REPO_ROOT/data/4d_embeddings/<FILL_IN_4D_TARGET>.npy"
+        # 4D JetClass QCD embedding, 256-member NF ensemble (per-member model_*/model.pth).
+        # SAME 3-level depth as 2D (.../<N>_dim/<dataset>/<ensemble>) so the GROUP derivation
+        # below reads "4_dim" and results land under .../4d_embedding/.
+        ENSEMBLE_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/4_dim/4d_embedding_qcd/N_100000_dim_4_seeds_256_6_8_128_10"
+        DATA_PATH="$REPO_ROOT/data/4d_embeddings/4d_embedding_qcd_Ntrain100000_Ntest100000_seed42/data_train.npy"
     else
         echo "Unknown NDIM=$NDIM for nf"; exit 1
     fi

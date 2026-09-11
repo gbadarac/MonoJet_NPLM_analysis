@@ -5,9 +5,10 @@ Single-NF-member ("ensemblecomponents1") marginal plot WITHOUT uncertainties.
 This is the M=1 companion to fit_ensemble_weights.py: one ensemble member, weight
 fixed to 1, so there are no free weights and no weight-covariance -> the marginal
 band collapses to zero width (i.e. the plot shows the target vs the single model's
-marginal, with no uncertainty band). It reuses the exact same plotting function
-(plot_ensemble_marginals_2d) as the ensemble fits so the style matches; the only
-difference is weights=[1.0] and cov_w=zeros((0,0)).
+marginal, with no uncertainty band). It reuses the exact same plotting functions as
+the ensemble fit (plot_ensemble_marginals_2d for 2D, plot_ensemble_marginals_nd for
+D>=3) so the style matches; the only difference is weights=[1.0] and cov_w=zeros((0,0))
+-> the uncertainty band collapses to zero width.
 
 Outputs, under <out_dir>:
     w_i_fitted.npy         # [1.0]
@@ -33,7 +34,10 @@ sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "Train_Ensembles" / "Train_Models"))
 
 from utils_flows import make_flow
-from Uncertainty_Modeling.wifi.utils_NF_wifi import plot_ensemble_marginals_2d
+from Uncertainty_Modeling.wifi.utils_NF_wifi import (
+    plot_ensemble_marginals_2d,
+    plot_ensemble_marginals_nd,
+)
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--trial_dir", required=True)
@@ -55,8 +59,6 @@ if not mp.exists():
 
 data_np = np.load(args.data_path)
 ndim = data_np.shape[1]
-if ndim != 2:
-    raise SystemExit(f"this single-seed plotter is 2D-only (got ndim={ndim})")
 x_data = torch.from_numpy(np.ascontiguousarray(data_np, dtype=np.float32))
 
 flow = make_flow(**flow_kwargs).to("cpu").float().eval()
@@ -80,9 +82,17 @@ wifi_plots_dir = out_dir / "wifi_ensemble_plots"
 wifi_plots_dir.mkdir(exist_ok=True)
 feature_names = [f"Feature {i+1}" for i in range(ndim)]
 
-plot_ensemble_marginals_2d(
-    [flow], x_data, w_final_t, cov_np, feature_names, str(wifi_plots_dir),
-    n_components=1,
-)
+if ndim == 2:
+    # exact grid marginal (unbiased) — 2D only
+    plot_ensemble_marginals_2d(
+        [flow], x_data, w_final_t, cov_np, feature_names, str(wifi_plots_dir),
+        n_components=1,
+    )
+else:
+    # any D >= 3: Monte-Carlo marginal (matches fit_ensemble_weights.py). Single member
+    # + cov_w=(0,0) -> the uncertainty band degenerates to zero width.
+    plot_ensemble_marginals_nd(
+        [flow], x_data, w_final_t, cov_np, feature_names, str(wifi_plots_dir),
+    )
 print(f"Marginal plot (no uncertainty band) saved to {wifi_plots_dir}", flush=True)
 print("Done.", flush=True)
