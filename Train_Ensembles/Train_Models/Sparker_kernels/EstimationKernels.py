@@ -378,7 +378,7 @@ def training_loop(seed, data_train_tot, config_json, json_path):
     # from epoch 0 against the FULL-model NLL, so the fine peak-builder kernels
     # compete for mass from the start instead of arriving last to an already-
     # explained dataset (the old greedy schedule front-loaded mass onto the
-    # coarse layer -> peaks under-filled to ~1/3; see debug_notes). Every
+    # coarse layer -> peaks under-filled to ~1/3; see NOTES.md). Every
     # layer's width anneals broad->narrow on one shared horizon. Keeps the
     # plain-SparKer form -> nothing downstream (LRT/wifi/hit-or-miss) changes.
     # =====================================================================

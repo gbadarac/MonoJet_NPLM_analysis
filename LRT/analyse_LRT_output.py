@@ -68,6 +68,9 @@ parser.add_argument("--title", type=str, default=None,
 parser.add_argument("--w_cov_path", type=str, default=None,
                     help="Path to w_cov .npy file (M-1 x M-1). If given, adds "
                          "normalized weight-pull plot Δw/sqrt(diag Σ_w).")
+parser.add_argument("--dpi", type=int, default=1200,
+                    help="PNG resolution (default 1200 for a publication single plot; "
+                         "use ~200 when batching many cells so the files stay small/fast).")
 args = parser.parse_args()
 
 results_dir = args.results_dir.rstrip("/")
@@ -150,7 +153,7 @@ def save_fig(fig, out_dir, name):
     """Save figure as both high-DPI PNG (1200 dpi) and PDF."""
     base = os.path.join(out_dir, name)
     fig.savefig(base + ".pdf", bbox_inches="tight", pad_inches=0)
-    fig.savefig(base + ".png", dpi=1200, bbox_inches="tight",
+    fig.savefig(base + ".png", dpi=args.dpi, bbox_inches="tight",
                 pad_inches=0, facecolor="white")
     print(f"Saved: {base}.pdf")
     print(f"Saved: {base}.png")

@@ -217,16 +217,17 @@ def main():
     ax.axhline(0.5,   color=GRID, lw=1.0, ls=":",   zorder=0)
     ax.axhline(floor, color=GRID, lw=1.0, ls="--",  zorder=0)
     ax.axvline(1e5,   color=GRID, lw=1.0, ls="-.",  zorder=0)
-    ax.text(2.05e5, 0.5,           " nominal",    color=MUTED, fontsize=8, va="center")
-    ax.text(2.05e5, floor + 0.012, " bank floor", color=MUTED, fontsize=8, va="bottom")
+    ax.text(2.15e5, 0.5,           " nominal",    color=MUTED, fontsize=8, va="center")
+    ax.text(2.15e5, floor + 0.012, " bank floor", color=MUTED, fontsize=8, va="bottom")
     ax.text(1e5, 0.62, r"$N_{\rm test}=N_{\rm train}$", rotation=90,
             color=MUTED, fontsize=8, va="center", ha="right")
 
     ax.set_xscale("log")
     ax.set_ylim(0, 1)
-    ax.set_xlim(2.2e4, 2.3e5)
-    ax.set_xticks([25000, 50000, 100000, 200000])
-    ax.set_xticklabels(["25k", "50k", "100k", "200k"])
+    # N_test scan spans 100 -> 200000 (oversampling factor 1e-3 .. 2 of N_train=1e5).
+    ax.set_xlim(80, 3.0e5)
+    ax.set_xticks([100, 200, 1000, 2000, 10000, 20000, 100000, 200000])
+    ax.set_xticklabels(["100", "200", "1k", "2k", "10k", "20k", "100k", "200k"], fontsize=8)
     ax.minorticks_off()
     ax.set_xlabel(r"$N_{\rm test}$", color=INK, fontsize=13)
     ax.set_ylabel(r"$p$-value   (median, 25–75%)", color=INK, fontsize=13)

@@ -93,17 +93,25 @@ def plot_ensemble_marginals_2d_kernel(
     cov_w,
     feature_names,
     outdir,
-    bins=40,
+    bins=60,
+    n_curve=300,
+    n_components=None,
+    estimator_label="Sparker kernels",
+    dataset_label="2D toy model",
 ):
     """
-    1D marginals of the WiFi ensemble vs the target data, one panel per feature.
+    All feature marginals of the WiFi ensemble vs the target in ONE figure (2 rows x
+    n_feat cols: density on top, band/mean ratio below), matching the NF plotter.
 
     Each member is the Gaussian mixture the training's exact sampler uses,
     f_m(x) = sum_k (c_k / sum_k c) N(x; mu_k, diag(wd_k^2)); its marginal over the
     other features is the closed-form 1D mixture in feature i. The ensemble mean is
     f(c) = sum_m w_m v_m(c) and the band is sigma(c)^2 = J(c)^T Cov_w J(c) with
-    J = v_{:-1} - v_{-1} (delta method over the M-1 free weights). Exact, smooth,
-    no Monte Carlo; works for any number of features D >= 2 (2D and 4D alike).
+    J = v_{:-1} - v_{-1} (delta method over the M-1 free weights). Exact, smooth, no
+    Monte Carlo; works for any D >= 2. The green target HISTOGRAM (``bins``) and the
+    red model curve + band (dense ``n_curve`` grid) are decoupled, so the curve is
+    smooth regardless of the histogram binning. Per-feature marginal_feature_*.npz
+    (keys f_binned/f_err/bin_centers, on the dense grid) are still written.
     """
     os.makedirs(outdir, exist_ok=True)
 
@@ -118,134 +126,112 @@ def plot_ensemble_marginals_2d_kernel(
 
     cov_w_np = cov_w  # numpy or None
 
-    for i in range(D):
-        fig, (ax_main, ax_ratio) = plt.subplots(
-            2, 1, figsize=(8, 10),
-            gridspec_kw={"height_ratios": [3, 1]}
-        )
-
-        feature_label = feature_names[i]
-        xi = x[:, i]
-
-        margin = 0.05 * (xi.max() - xi.min())
-        low, high = xi.min() - margin, xi.max() + margin
-
-        bin_edges = np.linspace(low, high, bins + 1)
-        bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
-        bin_widths = np.diff(bin_edges)
-
-        # Target histogram + errors
-        hist_target_counts, _ = np.histogram(xi, bins=bin_edges)
-        N_target = hist_target_counts.sum()
-        hist_target = hist_target_counts / (N_target * bin_widths)
-        err_target = np.sqrt(hist_target_counts) / (N_target * bin_widths)
-
-        # Analytic marginal. Each member is the Gaussian mixture the training's exact
-        # sampler uses: member(x) = sum_k (c_k / sum_k c) N(x; mu_k, diag(wd_k^2)).
-        # Its marginal over the OTHER features is the closed-form 1D mixture in
-        # feature i -> exact, smooth, no Monte Carlo. (IS proposals cannot resolve the
-        # razor-sharp correlated peak, and 1/p_data via KDE over-weights the mode. The
-        # ratio-form member_probs is not analytically marginalisable, but this mixture
-        # representation is -- and it is exactly what the single-model plots validate.)
-        B = len(bin_centers)
-        bc = bin_centers[:, None]  # (B, 1)
-        v_cols = []
+    def analytic_marginal(points, i):
+        """(len(points), M) analytic 1D mixture marginal of each member at feature i."""
+        bc = points[:, None]
+        cols = []
         for m in kernel_models:
             c  = m.get_coeffs().detach().cpu().double().numpy().reshape(-1)   # (Mk,)
             mu = m.get_centroids().detach().cpu().double().numpy()[:, i]      # (Mk,)
             sd = m.get_widths().detach().cpu().double().numpy()[:, i]         # (Mk,)
             c = np.clip(c, 0.0, None); s = c.sum()
             p = c / s if s > 0 else np.full_like(c, 1.0 / len(c))
-            z = (bc - mu[None, :]) / sd[None, :]                              # (B, Mk)
+            z = (bc - mu[None, :]) / sd[None, :]
             g = np.exp(-0.5 * z * z) / (sd[None, :] * np.sqrt(2.0 * np.pi))
-            v_cols.append(g @ p)                                             # (B,)
-        v_mat = torch.from_numpy(np.stack(v_cols, axis=1)).double()          # (B, M)
+            cols.append(g @ p)
+        return torch.from_numpy(np.stack(cols, axis=1)).double()             # (B, M)
 
-        # Ensemble mean
-        f_binned = (v_mat @ w_t).numpy()  # (B,)
+    fig, axes = plt.subplots(
+        2, D, figsize=(6 * D, 9),
+        gridspec_kw={"height_ratios": [3, 1]}, squeeze=False,
+    )
 
-        # Ensemble uncertainty
-        if cov_w_np is not None:
+    for i in range(D):
+        ax_main, ax_ratio = axes[0, i], axes[1, i]
+        feature_label = feature_names[i]
+        xi = x[:, i]
+
+        margin = 0.05 * (xi.max() - xi.min())
+        low, high = xi.min() - margin, xi.max() + margin
+
+        # target histogram (thin bins)
+        bin_edges = np.linspace(low, high, bins + 1)
+        bin_centers_hist = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+        bin_widths = np.diff(bin_edges)
+        hist_target_counts, _ = np.histogram(xi, bins=bin_edges)
+        N_target = hist_target_counts.sum()
+        hist_target = hist_target_counts / (N_target * bin_widths)
+        err_target = np.sqrt(hist_target_counts) / (N_target * bin_widths)
+
+        # model curve + band on a dense grid (decoupled from the histogram bins)
+        x_eval = np.linspace(low, high, n_curve)
+        dx_eval = x_eval[1] - x_eval[0]
+        v_mat = analytic_marginal(x_eval, i)                     # (n_curve, M)
+        f_binned = (v_mat @ w_t).numpy()
+        if cov_w_np is not None and v_mat.shape[1] > 1:
             cov_t = torch.from_numpy(cov_w_np).double()
-            # Delta method: cov is (M-1)x(M-1) over free params u = w[:-1].
-            # df/du_j = v_j - v_{M-1}  (last weight is fixed as 1 - sum(u))
-            J = v_mat[:, :-1] - v_mat[:, -1:]  # (B, M-1)
+            J = v_mat[:, :-1] - v_mat[:, -1:]                    # (n_curve, M-1)
             sigma2 = torch.einsum("bi,ij,bj->b", J, cov_t, J).numpy()
             f_err = np.sqrt(np.maximum(sigma2, 0.0))
         else:
             f_err = np.zeros_like(f_binned)
 
-        # Normalize over x_i axis (critical)
-        area = np.sum(f_binned * bin_widths)
+        area = np.sum(f_binned * dx_eval)
         if area != 0.0:
             f_binned /= area
-            f_err   /= abs(area)
+            f_err /= abs(area)
 
-        # Save npz like NF code
         out_marginal = os.path.join(outdir, f"marginal_feature_{i+1}_data.npz")
-        np.savez_compressed(out_marginal, f_binned=f_binned, f_err=f_err, bin_centers=bin_centers)
+        np.savez_compressed(out_marginal, f_binned=f_binned, f_err=f_err, bin_centers=x_eval)
 
-        # Bands
         band_1s_l = f_binned - f_err
         band_1s_h = f_binned + f_err
         band_2s_l = f_binned - 2.0 * f_err
         band_2s_h = f_binned + 2.0 * f_err
 
-        valid_bins = hist_target > 0
+        valid_curve = (x_eval >= xi.min()) & (x_eval <= xi.max())
 
-        # Main plot, same style as your NF plots
-        ax_main.bar(
-            bin_centers, hist_target, width=bin_widths, alpha=0.2,
-            label="Target", color="green", edgecolor="black"
-        )
-        ax_main.errorbar(
-            bin_centers, hist_target, yerr=err_target,
-            fmt="None", color="green", alpha=0.7
-        )
-        ax_main.plot(
-            bin_centers[valid_bins], f_binned[valid_bins], "-",
-            color="red", linewidth=1.2, label=r"$f(x)=\sum_i w_i f_i(x)$"
-        )
-
+        ax_main.bar(bin_centers_hist, hist_target, width=bin_widths, alpha=0.2,
+                    label="Target", color="green", edgecolor="black")
+        ax_main.errorbar(bin_centers_hist, hist_target, yerr=err_target, fmt="None",
+                         color="green", alpha=0.7)
+        ax_main.plot(x_eval[valid_curve], f_binned[valid_curve], "-", color="red",
+                     linewidth=1.5, label=r"$f(x)=\sum_i w_i f_i(x)$")
         if cov_w_np is not None:
-            ax_main.fill_between(
-                bin_centers, band_1s_l, band_1s_h,
-                alpha=0.15, label=r"$\pm 1\sigma$", color="blue"
-            )
-            ax_main.fill_between(
-                bin_centers, band_2s_l, band_2s_h,
-                alpha=0.08, label=r"$\pm 2\sigma$", color="purple"
-            )
+            ax_main.fill_between(x_eval, band_1s_l, band_1s_h, alpha=0.15,
+                                 label=r"$\pm 1\sigma$", color="blue")
+            ax_main.fill_between(x_eval, band_2s_l, band_2s_h, alpha=0.08,
+                                 label=r"$\pm 2\sigma$", color="purple")
+        ax_main.set_ylabel("Density", fontsize=15)
+        ax_main.legend(fontsize=12)
 
-        ax_main.set_xlabel(feature_label, fontsize=16)
-        ax_main.set_ylabel("Density", fontsize=16)
-        ax_main.legend(fontsize=14)
-
-        # Ratio plot, identical logic to NF
         f_safe = np.where(f_binned > 0, f_binned, np.nan)
         r1h = band_1s_h / f_safe
         r2h = band_2s_h / f_safe
         r1l = band_1s_l / f_safe
         r2l = band_2s_l / f_safe
-
         valid = ~np.isnan(r1h)
         if cov_w_np is not None:
-            ax_ratio.plot(bin_centers[valid], r1h[valid], "o-", color="blue", alpha=0.3, label=r"$+1\sigma$ / mean")
-            ax_ratio.plot(bin_centers[valid], r2h[valid], "o-", color="purple", alpha=0.3, label=r"$+2\sigma$ / mean")
-            ax_ratio.plot(bin_centers[valid], r1l[valid], "o-", color="blue", alpha=0.3, label=r"$-1\sigma$ / mean")
-            ax_ratio.plot(bin_centers[valid], r2l[valid], "o-", color="purple", alpha=0.3, label=r"$-2\sigma$ / mean")
-
+            ax_ratio.plot(x_eval[valid], r1h[valid], "-", color="blue", alpha=0.4, label=r"$+1\sigma$ / mean")
+            ax_ratio.plot(x_eval[valid], r2h[valid], "-", color="purple", alpha=0.4, label=r"$+2\sigma$ / mean")
+            ax_ratio.plot(x_eval[valid], r1l[valid], "-", color="blue", alpha=0.4)
+            ax_ratio.plot(x_eval[valid], r2l[valid], "-", color="purple", alpha=0.4)
         ax_ratio.axhline(1.0, color="black", linestyle="--", linewidth=1)
         ax_ratio.set_ylim(0.9, 1.1)
-        ax_ratio.set_ylabel("Band / Mean", fontsize=14)
-        ax_ratio.set_xlabel(feature_label, fontsize=14)
-        ax_ratio.legend(fontsize=12)
+        ax_ratio.set_ylabel("Band / mean", fontsize=13)
+        ax_ratio.set_xlabel(feature_label, fontsize=15)
+        ax_ratio.legend(fontsize=10)
         ax_ratio.grid(True, which="both", linestyle="--", linewidth=0.5, alpha=0.7)
 
-        plt.tight_layout()
-        outpath = os.path.join(outdir, f"ensemble_marginal_feature_{i+1}.png")
-        plt.savefig(outpath)
-        plt.close()
+    title = f"{dataset_label} marginals for {estimator_label}"
+    if n_components is not None:
+        comp_word = "component" if n_components == 1 else "components"
+        title += f" ({n_components} ensemble {comp_word})"
+    fig.suptitle(title, fontsize=18)
+
+    fig.tight_layout(rect=[0, 0, 1, 0.97])
+    fig.savefig(os.path.join(outdir, "ensemble_marginals.png"), dpi=130, bbox_inches="tight")
+    plt.close(fig)
 
 # -------------------------------------------------------------------
 # Plot helpers

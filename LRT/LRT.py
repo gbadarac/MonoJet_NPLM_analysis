@@ -78,6 +78,13 @@ parser.add_argument('--w_cov_scale', type=float, default=1.0,
                          "toward frozen (Sigma_w->0 must reduce constrained T to frozen T); "
                          "!=1 appends _covscale%%g to the run_tag so it never clobbers the "
                          "nominal (scale=1) outputs.")
+parser.add_argument('--member_seeds', type=str, default=None,
+                    help="Comma-separated member indices to load, IN ORDER (kernels: seed<s:03d>/, "
+                         "nf: model_<s:03d>/); LAST one is the norm model. MUST match the wifi "
+                         "fit's --member_seeds so w_hat pairs with the right models — the uniform/"
+                         "pinned selection loads a NON-first-k subset. Length must == nensemble. "
+                         "Default None = first-k (0..M-1), the legacy behaviour. Resolve with "
+                         "shared select_member_seeds.py (same rng_seed as the wifi fit).")
 parser.add_argument('--out_base', type=str, required=True,
                     help="Base output directory.")
 parser.add_argument('--target_data', type=str, default=None,
@@ -245,6 +252,20 @@ else:
 
 n_wifi_components = args.nensemble   # M total models (last is norm model)
 
+# Member indices to load, IN ORDER (last = norm model). The uniform/pinned wifi ensemble is a
+# NON-first-k subset, so the LRT MUST load the same seeds in the same order the wifi fit used,
+# else w_hat is paired with the wrong models. Resolved by the submit script via
+# select_member_seeds.py (same rng_seed as the wifi fit) and passed as --member_seeds.
+# Default None -> first-k (0..M-1), the legacy behaviour.
+if args.member_seeds is not None:
+    member_seeds = [int(t) for t in args.member_seeds.split(",") if t.strip() != ""]
+    if len(member_seeds) != n_wifi_components:
+        raise ValueError(f"--member_seeds has {len(member_seeds)} seeds but nensemble="
+                         f"{n_wifi_components}")
+else:
+    member_seeds = list(range(n_wifi_components))
+print(f"Member seeds (load order; last=norm): {member_seeds}", flush=True)
+
 # -------------------------------------------------------------------
 # Load ensemble model (model-type specific)
 # -------------------------------------------------------------------
@@ -258,8 +279,8 @@ if args.model_type == 'kernels':
     centroids_init, coefficients_init, widths_init = [], [], []
     centroids_norm, coefficients_norm, widths_norm = [], [], []
 
-    for i in range(n_wifi_components):
-        seed_dir = os.path.join(args.ensemble_dir, seed_fmt % i)
+    for i, s in enumerate(member_seeds):
+        seed_dir = os.path.join(args.ensemble_dir, seed_fmt % s)
         tmp = np.load(os.path.join(seed_dir, "widths_history.npy"))
         count = -1
         for j in range(tmp.shape[0]):
@@ -307,9 +328,9 @@ elif args.model_type == 'nf':
         arch_path = args.arch_config or os.path.join(args.nf_train_dir,
                                                       "architecture_config.json")
         f_i_statedicts = [
-            torch.load(os.path.join(args.nf_train_dir, "model_%03d" % i, "model.pth"),
+            torch.load(os.path.join(args.nf_train_dir, "model_%03d" % s, "model.pth"),
                        map_location="cpu")
-            for i in range(n_wifi_components)
+            for s in member_seeds
         ]
     elif args.fi_path is not None:
         arch_path = args.arch_config

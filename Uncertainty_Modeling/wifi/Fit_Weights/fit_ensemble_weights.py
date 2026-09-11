@@ -59,12 +59,31 @@ parser.add_argument("--folder_path", default=None,
 # NF-specific
 parser.add_argument("--trial_dir", default=None,
                     help="[nf] Dir with model_*/model.pth members + architecture_config.json.")
+parser.add_argument("--seed_order_file", default=None,
+                    help="[nf] Text file whose first whitespace-token per non-'#' line is a "
+                         "member seed, listed best->worst. If given, the ensemble uses the "
+                         "first M seeds (mapped to model_<seed:03d>/model.pth) INSTEAD of the "
+                         "default model_000..model_{M-1}. Lets us pin the best-ranked members.")
+parser.add_argument("--member_seeds", default=None,
+                    help="Explicit comma-separated list of member seeds to use (length must "
+                         "== M). Works for both model types: each seed s maps to the member "
+                         "subdir (kernels: seed<s:03d>/, nf: model_<s:03d>/). Takes priority "
+                         "over --seed_order_file. This is how the uniform/stratified/pinned "
+                         "draws are passed in.")
 parser.add_argument("--no_plots", action="store_true")
 args = parser.parse_args()
 
 out_dir = Path(args.out_dir)
 out_dir.mkdir(parents=True, exist_ok=True)
 M = args.n_wifi_components
+
+# Optional explicit member-seed list, shared by both model types. Each seed s selects
+# the member subdir (kernels: seed<s:03d>/, nf: model_<s:03d>/). Length must equal M.
+member_seeds = None
+if args.member_seeds is not None:
+    member_seeds = [int(t) for t in args.member_seeds.split(",") if t.strip() != ""]
+    if len(member_seeds) != M:
+        raise ValueError(f"--member_seeds has {len(member_seeds)} seeds but M={M} requested")
 
 # ── Load data ─────────────────────────────────────────────────────────────────
 data_np = np.load(args.data_path)
@@ -80,12 +99,15 @@ if args.model_type == "kernels":
         plot_ensemble_marginals_2d_kernel,
         plot_final_marginals_and_ratio,
     )
+    if member_seeds is not None:
+        print(f"Seed selection (explicit --member_seeds): {member_seeds}", flush=True)
     ensemble, _ = build_wifi_ensemble(
         folder_path=Path(args.folder_path).resolve(),
         n_wifi_components=M,
         train_centroids=False, train_coeffs=False,
         train_widths=False, train_weights=True,
         weights_activation=None,
+        member_seeds=member_seeds,
     )
     ensemble = ensemble.to(device=torch.device("cpu"), dtype=torch.float64)
     data_t = _np2t(data_np, dtype=torch.float64)
@@ -109,16 +131,52 @@ elif args.model_type == "nf":
     flow_kwargs = {k: v for k, v in arch.items() if k != "backend"}
     # Per-member layout: each ensemble member is <trial_dir>/model_<seed:03d>/model.pth
     # (a raw flow.state_dict()). This replaces the old monolithic f_i.pth.
-    member_dirs = sorted(
+    all_member_dirs = sorted(
         d for d in trial_dir.glob("model_*") if (d / "model.pth").exists()
     )
-    if len(member_dirs) < M:
+    if len(all_member_dirs) < M:
         raise ValueError(
-            f"Requested M={M} NF members but only {len(member_dirs)} "
+            f"Requested M={M} NF members but only {len(all_member_dirs)} "
             f"model_*/model.pth found in {trial_dir}"
         )
+    if member_seeds is not None:
+        # Explicit seed list (uniform/stratified/pinned draw). Map each seed
+        # s -> <trial_dir>/model_<s:03d>/model.pth. Length already checked == M.
+        member_dirs = []
+        for s in member_seeds:
+            d = trial_dir / f"model_{s:03d}"
+            if not (d / "model.pth").exists():
+                raise ValueError(f"seed {s} -> {d}/model.pth not found in {trial_dir}")
+            member_dirs.append(d)
+        print(f"Seed selection (explicit --member_seeds): {member_seeds}", flush=True)
+    elif args.seed_order_file is not None:
+        # Select the first M seeds from the ranking file (best->worst) and map each
+        # seed s to <trial_dir>/model_<s:03d>/model.pth. This pins the best members.
+        order = []
+        with open(args.seed_order_file) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                order.append(int(line.split()[0]))
+        seen = set()
+        order = [s for s in order if not (s in seen or seen.add(s))]  # dedup, keep order
+        if len(order) < M:
+            raise ValueError(
+                f"seed_order_file lists {len(order)} seeds but M={M} requested"
+            )
+        member_dirs = []
+        for s in order[:M]:
+            d = trial_dir / f"model_{s:03d}"
+            if not (d / "model.pth").exists():
+                raise ValueError(f"seed {s} -> {d}/model.pth not found in {trial_dir}")
+            member_dirs.append(d)
+        print(f"Seed selection (top-{M} by {Path(args.seed_order_file).name}): "
+              f"{[int(d.name.split('_')[1]) for d in member_dirs]}", flush=True)
+    else:
+        member_dirs = all_member_dirs[:M]
     f_i_statedicts = [
-        torch.load(str(d / "model.pth"), map_location="cpu") for d in member_dirs[:M]
+        torch.load(str(d / "model.pth"), map_location="cpu") for d in member_dirs
     ]
     print(f"Loaded {len(f_i_statedicts)} NF member state dicts from {trial_dir}", flush=True)
     device_nf = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -336,7 +394,7 @@ if not args.no_plots:
                 outdir=str(wifi_plots_dir), tag="final",
             )
 
-        # Per-feature marginals + weight-uncertainty bands (works for any ndim).
+        # All-feature marginals in one figure + weight-uncertainty bands (any ndim).
         plot_ensemble_marginals_2d_kernel(
             kernel_models=ensemble.ensemble,
             x_data=data_t.detach().cpu(),
@@ -344,7 +402,7 @@ if not args.no_plots:
             cov_w=cov_np,
             feature_names=feature_names,
             outdir=str(wifi_plots_dir),
-            bins=40,
+            n_components=M,
         )
 
     elif args.model_type == "nf":
@@ -362,7 +420,7 @@ if not args.no_plots:
             # exact grid marginal (unbiased) — 2D only
             plot_ensemble_marginals_2d(
                 f_i_models, x_data_plot, w_final_t, cov_np,
-                feature_names, str(wifi_plots_dir),
+                feature_names, str(wifi_plots_dir), n_components=M,
             )
         else:
             # any D >= 3: Monte-Carlo marginal (dense grid infeasible)

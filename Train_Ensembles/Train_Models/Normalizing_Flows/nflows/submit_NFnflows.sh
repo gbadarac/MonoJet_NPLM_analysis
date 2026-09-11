@@ -2,15 +2,20 @@
 #SBATCH --job-name=nf_nflows
 # Ensemble size is set HERE: use --array=0-(M-1). MODEL_SEEDS below auto-derives
 # from the array count, so this is the ONLY line to change to resize the ensemble.
-#SBATCH --array=0-128
-#SBATCH --time=12:00:00
+# --array=0-255 = 256-member production ensemble on the 4D embedding (arch
+# L6/blk8/h128/bins10, validated end-to-end by the single-seed dry run).
+# Use --array=0 for a single-seed dry run.
+#SBATCH --array=0-255
+# per-array-task budget (one flow member); the biggest 4D grid config finished <25 min
+# at 24G, so 6h/32G is a safe per-member envelope and stays valid when you scale --array.
+#SBATCH --time=06:00:00
 #SBATCH --partition=gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --mem=64G
+#SBATCH --mem=32G
 #SBATCH --gres=gpu:1
-#SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/logs/nf_%A_%a.out
-#SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/logs/nf_%A_%a.err
+#SBATCH --output=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/4_dim/4d_embedding_qcd/logs/nf_%A_%a.out
+#SBATCH --error=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/4_dim/4d_embedding_qcd/logs/nf_%A_%a.err
 
 # ⚠ PART 2 TODO (loader symmetrization not finished): this trainer no longer
 # produces f_i.pth — the ensemble IS the per-member model_*/ subdirs. Downstream
@@ -28,22 +33,22 @@ export PYTHONPATH=/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensemb
 # =============================
 # USER PARAMETERS (like the kernel submit)
 # =============================
-DATA_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/data/2d_gmm_toymodel/2d_gmm_skew_Ntrain100000_Ntest100000_seed42/data_train.npy"
-NUM_FEATURES=2
+DATA_PATH="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/data/4d_embeddings/4d_embedding_qcd_Ntrain100000_Ntest100000_seed42/data_train.npy"
+NUM_FEATURES=4
 MODEL_SEEDS=${SLURM_ARRAY_TASK_COUNT}   # ensemble size = number of array tasks (see --array above)
 
 # Model hyperparameters
 N_EPOCHS=1001
 LR=1e-5          # match the grid search that selected this architecture (was 5e-6)
 BATCH_SIZE=512
-HIDDEN_FEATURES=64
-NUM_BLOCKS=4
-NUM_BINS=8
-NUM_LAYERS=4
+HIDDEN_FEATURES=128
+NUM_BLOCKS=8
+NUM_BINS=10
+NUM_LAYERS=6
 
 NFLOWS_DIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/Train_Models/Normalizing_Flows/nflows"
 ESTIMATOR="${NFLOWS_DIR}/EstimationNFnflows.py"
-BASE_DIR="${NFLOWS_DIR}/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail"
+BASE_DIR="${NFLOWS_DIR}/EstimationNFnflows_outputs/4_dim/4d_embedding_qcd"
 
 # Trial dir (num_events from the data; deterministic -> identical across all tasks)
 NUM_EVENTS=$(python -c "import numpy as np; print(np.load('${DATA_PATH}').shape[0])")

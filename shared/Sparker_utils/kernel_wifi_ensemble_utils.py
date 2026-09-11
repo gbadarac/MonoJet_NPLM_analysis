@@ -152,10 +152,14 @@ def _load_kernel_config(folder_path: Path):
     )
 
 
-def _load_kernel_members(folder_path: Path, n_wifi_components, split_indices, n_layers):
+def _load_kernel_members(folder_path: Path, n_wifi_components, split_indices, n_layers,
+                         member_seeds=None):
     centroids_init, coefficients_init, widths_init = [], [], []
 
-    for i in range(n_wifi_components):
+    # Default = the first M seeds (seed000..seed{M-1}); an explicit member_seeds list
+    # (e.g. a uniform/stratified draw) overrides which seed dirs are loaded.
+    seeds = list(member_seeds) if member_seeds is not None else list(range(n_wifi_components))
+    for i in seeds:
         # use zero-padded seed directories: seed000, seed001, ...
         seed_dir = folder_path / f"seed{i:03d}"
 
@@ -205,6 +209,7 @@ def build_wifi_ensemble(
     train_widths=False,
     train_weights=True,
     weights_activation=None,
+    member_seeds=None,
 ):
     """
     Build an Ensemble object from a SparKer 'folder_path'.
@@ -226,8 +231,13 @@ def build_wifi_ensemble(
         model_type,
     ) = _load_kernel_config(folder_path)
 
+    if member_seeds is not None and len(member_seeds) != n_wifi_components:
+        raise ValueError(
+            f"member_seeds has {len(member_seeds)} seeds but n_wifi_components="
+            f"{n_wifi_components}"
+        )
     centroids_init, coefficients_init, widths_init = _load_kernel_members(
-        folder_path, n_wifi_components, split_indices, n_layers
+        folder_path, n_wifi_components, split_indices, n_layers, member_seeds=member_seeds
     )
 
     weights_init = torch.ones((n_wifi_components,), dtype=torch.float32) / float(

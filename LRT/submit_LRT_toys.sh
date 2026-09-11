@@ -56,6 +56,11 @@ N_KERNELS=${N_KERNELS:-300}
 # needs MC-Z suppression. The N_ref/N_test ratio is recorded in the run_tag (_Nrefx%g).
 N_REF=${N_REF:-$NTEST}
 FIRSTSEED=12345
+# MEMBER_SEEDS: comma-separated member indices to load, IN ORDER (last=norm), passed to
+# LRT.py --member_seeds. REQUIRED for the uniform/pinned wifi (the ensemble is a NON-first-k
+# subset, so the models must match the seeds the wifi fit used). Resolve with
+# select_member_seeds.py --rng_seed <same as the wifi fit>. Empty = first-k (legacy).
+MEMBER_SEEDS=${MEMBER_SEEDS:-}
 
 # ─── Numerator knobs (EDIT / OVERRIDE AT SUBMIT TIME) ────────────────
 # The numerator is the NPLM exp-tilt  f_num = f_ens*exp(Σ b_j G_j)/Z  (log-space, clean chi2;
@@ -117,7 +122,7 @@ case "$MODEL:$SCENARIO" in
     # many members (-e = first-ENS subset) AND the matching wifi fit (ensemblecomponents$ENS).
     NENSEMBLE=${ENS:-64}
     ENSEMBLE_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Sparker_kernels/EstimationKernels_outputs/2_dim/2d_gmm/N_100000_dim_2_kernels_SparKer_models128_L5_K80_M300_Nboot100000_lr0.05_clip_10000000_joint_norm_wf0.15-0.035"
-    WIFI_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernels/N_100000_dim_2_kernels_SparKer_models128_L5_K80_M300_Nboot100000_lr0.05_clip_10000000_joint_norm_wf0.15-0.035_2d_gmm_ensemblecomponents${NENSEMBLE}"
+    WIFI_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_kernels/2d_toymodel/N_100000_dim_2_kernels_SparKer_models128_L5_K80_M300_Nboot100000_lr0.05_clip_10000000_joint_norm_wf0.15-0.035_2d_gmm_ensemblecomponents${NENSEMBLE}"
     W_PATH="$WIFI_DIR/w_i_fitted.npy"
     W_COV_PATH="$WIFI_DIR/cov_w.npy"
     TARGET_TRUTH="2d_gmm_skew"   # observed: draw fresh from the analytic truth each toy (no data file)
@@ -141,7 +146,7 @@ case "$MODEL:$SCENARIO" in
     NENSEMBLE=${ENS:-128}
     NF_TRAIN_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_seeds_128_4_4_64_8"
     ARCH_CONFIG="$NF_TRAIN_DIR/architecture_config.json"
-    NF_WIFI_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/N_100000_dim_2_seeds_128_4_4_64_8_2d_bimodal_gaussian_heavy_tail_ensemblecomponents${NENSEMBLE}"
+    NF_WIFI_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF/2d_toymodel/N_100000_dim_2_seeds_128_4_4_64_8_2d_bimodal_gaussian_heavy_tail_ensemblecomponents${NENSEMBLE}"
     W_PATH="$NF_WIFI_DIR/w_i_fitted.npy"
     W_COV_PATH="$NF_WIFI_DIR/cov_w.npy"
     # Same 2D truth as kernels (identical DGP) — observed draws fresh from it, no data file.
@@ -149,9 +154,25 @@ case "$MODEL:$SCENARIO" in
     OUT_BASE="$REPO_ROOT/LRT/results/nf/2d_ensemble"
     ;;
 
+  nf:ens_2d_uniform)
+    # NF campaign on the UNIFORM-selected wifi ensembles (results_fit_weights_NF_uniform). The
+    # ensemble members are a NON-first-k random subset, so the driver MUST pass MEMBER_SEEDS
+    # (resolved via select_member_seeds.py --rng_seed 0) so LRT.py loads the SAME members, in the
+    # SAME order, that the wifi fit used. Single model (ENS=1) = the pinned NF single (seed 100):
+    # driver passes MEMBER_SEEDS=100; the ensemblecomponents1 wifi is ignored (M=1 synthesizes w).
+    NENSEMBLE=${ENS:-128}
+    NF_TRAIN_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/2_dim/2d_bimodal_gaussian_heavy_tail/N_100000_dim_2_seeds_128_4_4_64_8"
+    ARCH_CONFIG="$NF_TRAIN_DIR/architecture_config.json"
+    NF_WIFI_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF_uniform/2d_toymodel/N_100000_dim_2_seeds_128_4_4_64_8_2d_bimodal_gaussian_heavy_tail_ensemblecomponents${NENSEMBLE}"
+    W_PATH="$NF_WIFI_DIR/w_i_fitted.npy"
+    W_COV_PATH="$NF_WIFI_DIR/cov_w.npy"
+    TARGET_TRUTH="2d_gmm_skew"   # observed: draw fresh from the analytic truth each toy (no data file)
+    OUT_BASE="$REPO_ROOT/LRT/results/nf/2d_uniform_ensemble"
+    ;;
+
   *)
     echo "Unsupported MODEL/SCENARIO combo: MODEL=$MODEL SCENARIO=$SCENARIO"
-    echo "  implemented -> kernels: 1model_2d | ens_2d | 1model_4d | ens_4d ; nf: ens_2d"
+    echo "  implemented -> kernels: 1model_2d | ens_2d | 1model_4d | ens_4d ; nf: ens_2d | ens_2d_uniform"
     exit 1 ;;
 esac
 
@@ -227,6 +248,7 @@ elif [[ "$MODEL_TYPE" == "nf" ]]; then
 fi
 
 [[ -n "$CLIP_B" ]] && CMD+=(--clip_b "$CLIP_B")
+[[ -n "$MEMBER_SEEDS" ]] && CMD+=(--member_seeds "$MEMBER_SEEDS")
 [[ "$W_COV_SCALE" != "1.0" ]] && CMD+=(--w_cov_scale "$W_COV_SCALE")
 [[ "$FIX_WIFI_WEIGHTS" == "true" ]] && CMD+=(--fix_wifi_weights)
 

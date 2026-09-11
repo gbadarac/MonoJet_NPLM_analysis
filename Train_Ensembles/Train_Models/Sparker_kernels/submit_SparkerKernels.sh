@@ -30,7 +30,7 @@ BASE_OUTDIR="/work/gbadarac/MonoJet_NPLM/MonoJet_NPLM_analysis/Train_Ensembles/T
 mkdir -p "${BASE_OUTDIR}"
 
 # 4D-QCD with JOINT training: kernel COUNT was ruled out as the peak cause
-# (debug_notes: M 270->460 no change; an equal-weight KDE already fills the peaks),
+# (NOTES.md: M 270->460 no change; an equal-weight KDE already fills the peaks),
 # so use the smaller/faster 300-kernel schedule. The Option A rebalance
 # (40,60,90,130,180, M500) only existed to fight the OLD greedy schedule -- it's
 # unnecessary once training is joint, and ~1.7x slower per model x 128-160 models.
