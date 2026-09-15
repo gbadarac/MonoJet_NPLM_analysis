@@ -34,7 +34,7 @@ Usage:
         [--title "My run"]
 """
 
-import os, glob, argparse
+import os, glob, argparse, re
 import numpy as np
 import matplotlib as mpl
 mpl.use("Agg")
@@ -64,7 +64,9 @@ parser.add_argument("--xmin", type=float, default=None)
 parser.add_argument("--xmax", type=float, default=None)
 parser.add_argument("--ymax", type=float, default=None)
 parser.add_argument("--title", type=str, default=None,
-                    help="Plot title (default: last two components of results_dir).")
+                    help="Plot title. Default: a parsed human-readable title "
+                         "'<dim>D toy model LRT (<Nens>-component ensemble, "
+                         "<null> null)' (estimator name + hyperparameters omitted).")
 parser.add_argument("--w_cov_path", type=str, default=None,
                     help="Path to w_cov .npy file (M-1 x M-1). If given, adds "
                          "normalized weight-pull plot Δw/sqrt(diag Σ_w).")
@@ -77,7 +79,42 @@ results_dir = args.results_dir.rstrip("/")
 out_dir = args.out_dir or os.path.join(results_dir, "plots")
 os.makedirs(out_dir, exist_ok=True)
 
-title = args.title or "/".join(results_dir.split("/")[-2:])
+def pretty_title(path):
+    """Human-readable default title parsed from the run-tag folder tokens.
+
+    The raw folder slug (e.g. NF_Nens128_Ntest100_M500_W0.4_..._composite_null)
+    is unreadable as a title, so we surface only what a reader of THIS plot needs:
+    the dimension, the ensemble size, and the null type. Deliberately omitted:
+      * the estimator name (NF / SparKer) — it isn't drawn on this plot, so which
+        density estimator produced the toys is not something the figure shows;
+      * the reproducibility hyperparameters (M, sigma, N_ref, lambda, clip_b) —
+        those stay recoverable from the folder path + chi2_quantile_table.txt.
+    Falls back to the raw leaf name if the tokens don't parse (so nothing breaks
+    on an unexpected folder layout). Overridden by --title."""
+    parts  = path.split("/")
+    leaf   = parts[-1]
+    parent = parts[-2] if len(parts) > 1 else ""
+    m_dim = re.search(r"(\d+)d", parent) or re.search(r"(\d+)d", leaf)
+    m_ens = re.search(r"Nens(\d+)", leaf)
+    if not (m_dim and m_ens):
+        return leaf
+    dim  = f"{int(m_dim.group(1))}D"
+    # dataset label: this repo's 4D data IS the JetClass QCD embedding (real data,
+    # not a toy); 2D is the analytic toy model. Keep the title honest for each.
+    dataset = "embedding" if dim == "4D" else "toy model"
+    nens = int(m_ens.group(1))
+    ens  = "single model" if nens == 1 else f"{nens}-component ensemble"
+    # null-type tokens mirror plot_pvalue_vs_ntest.parse_tag (+ legacy names)
+    if leaf.endswith("composite_null") or leaf.endswith("constrained"):
+        null = ", composite null"
+    elif "point_null" in leaf or "frozen_weights" in leaf:
+        null = ", point null"
+    else:
+        null = ""
+    return f"{dim} {dataset} LRT ({ens}{null})"
+
+
+title = args.title or pretty_title(results_dir)
 label = "2T"
 
 # -------------------------------------------------------------------

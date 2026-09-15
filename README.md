@@ -46,8 +46,10 @@ The pipeline has four components.
 
 ```text
 MonoJet_NPLM_analysis/
+├─ data/                                  # Shared inputs; self-reproducing generators
+│  ├─ 2d_gmm_toymodel/                    # 2D GMM+skew "heavy tail" target + generator
+│  └─ 4d_embeddings/                      # 4D embedding datasets (JetClass)
 ├─ Train_Ensembles/                       # Orchestration for NF ensembles (arrays, logs)
-│  ├─ Generate_Data/                      # Prepare training splits and ensemble datasets
 │  └─ Train_Models/                       # Train individual ensemble members
 │     ├─ Normalizing_Flows/               # NF training backends
 │     │  ├─ nflows/                       # nflows-based NF training
@@ -106,30 +108,31 @@ conda activate kernels_env  # for kernel backend
 
 ## 4. Generate Data
 
-This step creates the **2D target distribution** used across the pipeline.
+This step creates the **2D target distribution** used across the pipeline. It lives
+alongside the data it produces and reproduces Sean's `wifi_better_basis` sample
+(seed 42) byte-for-byte, so both pipelines run on identical events.
 
-The script also **saves the analytic first moment** of the target, which is required later for the coverage test.
+**Where:** `data/2d_gmm_toymodel/`  
+**Main script:** `generate_2d_gaussian_heavy_tail_target_data.py`  
+**Plotting notebook:** `plot_2d_gaussian_heavy_tail_target.ipynb`
 
-**Where:** `Train_Ensembles/Generate_Data/`  
-**Main script:** e.g. `generate_2d_gaussian_heavy_tail_target_data.py`  
-**Plotting notebook:** e.g. `plot_2d_gaussian_heavy_tail_target.ipynb`
-
-**Event counts**
-- For training the NF ensemble (“statistical power”): **100,000** target events
-- For the statistical test (GoF calibration, toys): **500,000** target events
+**Split convention**
+- `data_train` — sample the density model / kernel ensemble is fit on
+- `data_test`  — disjoint draw (seed + 1) the GoF/LRT is run against
+- default **100,000 / 100,000** train/test at seed 42
 
 **Run**
 ```bash
-cd Train_Ensembles/Generate_Data
+cd data/2d_gmm_toymodel
 python generate_2d_gaussian_heavy_tail_target_data.py
 ```
 
-This will create outputs under something like:
+This creates a cache dir alongside the script:
 ```text
-Train_Ensembles/Generate_Data/saved_generated_target_data/2_dim/
-├── 100k_2d_gaussian_heavy_tail_target_set.npy
-├── 500k_2d_gaussian_heavy_tail_target_set.npy
-└── <file with analytic first moment used for coverage>
+data/2d_gmm_toymodel/2d_gmm_skew_Ntrain100000_Ntest100000_seed42/
+├── data_train.npy
+├── data_test.npy
+└── data_config.json
 ```
 
 ---

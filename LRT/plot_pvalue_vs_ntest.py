@@ -150,6 +150,11 @@ def main():
     ap.add_argument("--min_ntest", type=int, default=0,
                     help="Skip runs with Ntest below this — drops off-scan/debug runs "
                          "(e.g. the Ntest=1000/M40 test).")
+    ap.add_argument("--mode", choices=["all", "point", "composite"], default="all",
+                    help="Restrict ENSEMBLE curves to one null mode (the single model is "
+                         "always kept as the baseline). 'composite'/'point' give a clean "
+                         "per-size colour scan of that one mode; 'all' (default) keeps both "
+                         "(→ the per-size single/point/composite comparison when one --nens).")
     args = ap.parse_args()
     if args.out is None:                 # figs/ default lives inside the primary base dir
         args.out = os.path.join(args.base[0], "figs", "pvalue_vs_ntest.pdf")
@@ -169,6 +174,8 @@ def main():
                 continue
             if args.nens is not None and nens != 1 and nens not in set(args.nens):
                 continue
+            if args.mode != "all" and nens != 1 and mode != args.mode:
+                continue
             res = pvalue_percentiles(run_dir)
             if res is None:
                 continue
@@ -186,19 +193,39 @@ def main():
     os.makedirs(os.path.dirname(out_base) or ".", exist_ok=True)
     fig, ax = plt.subplots(figsize=(6.8, 4.8))
 
-    # --- ensemble curves (composite / point-null): IQR band + median + boot CI ---
+    # --- ensemble curves: framing auto-selected ---
+    #   * ONE null mode across MANY sizes (a size scan: 4D point-only, or a
+    #     --mode composite 2D run) -> colour by ENSEMBLE SIZE (Nens).
+    #   * MULTIPLE modes (the per-ensemble single/point/composite comparison at one
+    #     --nens) -> colour by NULL MODE (composite=blue, point=red) — the script's
+    #     original framing (do NOT colour those by size, or the two modes of a single
+    #     size collapse to one colour).
+    # Both draw the light IQR (25-75%) toy-spread band + median + bootstrap-CI bars. In a
+    # size scan the per-size bands overlap (colour-matched, lower alpha) — busy but shows
+    # the spread; the per-ensemble Nens* plots give one clean band per size.
+    ens_sizes = sorted({n for (n, m) in rows if n != 1 and m in MODE_STYLE})
+    ens_modes = sorted({m for (n, m) in rows if n != 1 and m in MODE_STYLE})
+    size_scan = (len(ens_modes) == 1 and len(ens_sizes) > 1)
+    cmap = plt.cm.plasma
+    ecol = {n: cmap(0.12 + 0.76 * i / max(1, len(ens_sizes) - 1))
+            for i, n in enumerate(ens_sizes)}
     for (nens, mode), pts in sorted(rows.items()):
         if nens == 1 or mode not in MODE_STYLE:
             continue
         pts = np.array(sorted(pts))                        # sort by Ntest
         x, q25, med, q75, lo, hi = (pts[:, 0], pts[:, 1], pts[:, 2],
                                     pts[:, 3], pts[:, 4], pts[:, 5])
-        color, mk, lab = MODE_STYLE[mode]
+        if size_scan:
+            color, mk, lab, band_alpha = (ecol[nens], MODE_STYLE[mode][1],
+                                          rf"$N_{{\rm ens}}={nens}$", 0.10)
+        else:
+            color, mk, lab = MODE_STYLE[mode]
+            band_alpha = 0.16
         if len(x) > 1:
-            ax.fill_between(x, q25, q75, color=color, alpha=0.16, lw=0)
-        ax.plot(x, med, color=color, lw=2.3, marker=mk, ms=6.5, label=lab, zorder=3)
+            ax.fill_between(x, q25, q75, color=color, alpha=band_alpha, lw=0)
+        ax.plot(x, med, color=color, lw=2.0, marker=mk, ms=6, label=lab, zorder=3)
         ax.errorbar(x, med, yerr=[med - lo, hi - med], fmt="none",
-                    ecolor=color, elinewidth=1.2, capsize=3, zorder=4)
+                    ecolor=color, elinewidth=1.1, capsize=3, zorder=4)
 
     # --- single-model baseline: muted dashed line + its own light IQR band ---
     for (nens, mode), pts in sorted(rows.items()):

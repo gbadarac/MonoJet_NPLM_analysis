@@ -170,9 +170,28 @@ case "$MODEL:$SCENARIO" in
     OUT_BASE="$REPO_ROOT/LRT/results/nf/2d_uniform_ensemble"
     ;;
 
+  nf:ens_4d_uniform)
+    # 4D JetClass QCD embedding campaign on the UNIFORM-selected wifi ensembles
+    # (results_fit_weights_NF_uniform/4d_embedding). Members are a NON-first-k random subset
+    # drawn with --n_members 256, so the driver MUST pass MEMBER_SEEDS (resolved via
+    # select_member_seeds.py --n_members 256 --rng_seed 0) so LRT.py loads the SAME members,
+    # in the SAME order, that the wifi fit used. Single model (ENS=1) = the pinned uniform
+    # single (seed 133); NENSEMBLE=1 -> LRT.py synthesizes w=[1.0] (ensemblecomponents1 wifi
+    # ignored). No analytic truth (real embedding) -> calib=0 bootstraps the held-out
+    # (non-training) holdout data_heldout_qcd.npy (1.9M events, disjoint from data_train).
+    NENSEMBLE=${ENS:-64}
+    NF_TRAIN_DIR="$REPO_ROOT/Train_Ensembles/Train_Models/Normalizing_Flows/nflows/EstimationNFnflows_outputs/4_dim/4d_embedding_qcd/N_100000_dim_4_seeds_256_6_8_128_10"
+    ARCH_CONFIG="$NF_TRAIN_DIR/architecture_config.json"
+    NF_WIFI_DIR="$REPO_ROOT/Uncertainty_Modeling/wifi/Fit_Weights/results_fit_weights_NF_uniform/4d_embedding/N_100000_dim_4_seeds_256_6_8_128_10_4d_embedding_qcd_ensemblecomponents${NENSEMBLE}"
+    W_PATH="$NF_WIFI_DIR/w_i_fitted.npy"
+    W_COV_PATH="$NF_WIFI_DIR/cov_w.npy"
+    TARGET_DATA="$REPO_ROOT/data/4d_embeddings/4d_embedding_qcd_Ntrain100000_Ntest100000_seed42/data_heldout_qcd.npy"
+    OUT_BASE="$REPO_ROOT/LRT/results/nf/4d_uniform_ensemble"
+    ;;
+
   *)
     echo "Unsupported MODEL/SCENARIO combo: MODEL=$MODEL SCENARIO=$SCENARIO"
-    echo "  implemented -> kernels: 1model_2d | ens_2d | 1model_4d | ens_4d ; nf: ens_2d | ens_2d_uniform"
+    echo "  implemented -> kernels: 1model_2d | ens_2d ; nf: ens_2d | ens_2d_uniform | ens_4d_uniform"
     exit 1 ;;
 esac
 
